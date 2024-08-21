@@ -1,0 +1,48 @@
+---
+output: html_document
+---
+
+## Linear Regression Model
+Linear regression is a type of modeling used to predict a response based on explanatory variables by fitting a linear equation to observed data. For simple linear regression, using a single explanatory variable to predict a response variable, the equation is ${Y}_{i} = \beta_{0} + \beta_{1}{x}_{i} + {E}_{i}$ where ${Y}_{i}$ is the response for the ${i}^{th}$ observation, ${x}_{i}$ is the value of the explanatory variable for the ${i}^{th}$ observation, $\beta_{0}$ is the y-intercept, $\beta_{1}$ is the slope, and ${E}_{i}$ is the error for the ${i}^{th}$ observation. Fitting a linear model to the observed dataset requires estimating the coefficients $\beta$ such that the error term ${E}_{i} = {Y}_{i} - \beta_{0} - \beta_{1}{x}_{i}$ is minimized. The most common way to minimize this term is through least-squares where we minimize the sum of squared residuals through $min_{\beta_{0},\beta_{1}}\sum_{i=1}^n ({y}_{i} - \beta_{0} - \beta_{1}{x}_{i})$. Simple linear regression can be extended in many ways to include:  
+  
+* higher order terms: ${Y}_{i} = \beta_{0} + \beta_{1}{x}_{i} + \beta_{2}{x}_{i}^{2} + {E}_{i}$  
+* more explanatory variables: ${Y}_{i} = \beta_{0} + \beta_{1}{x}_{1i} + \beta_{2}{x}_{2i} + \beta_{3}{x}_{1i}{x}_{2i} + {E}_{i}$  
+* more explanatory variables and higher order terms: ${Y}_{i} = \beta_{0} + \beta_{1}{x}_{1i} + \beta_{2}{x}_{2i} + \beta_{3}{x}_{1i}{x}_{2i} + \beta_{4}{x}_{1i}^{2} + \beta_{5}{x}_{2i}^{2} + {E}_{i}$  
+  
+In each of these linear regressions the model is still fit by minimizing the sum of squared errors. As the number of explanatory variables increase these regression models can become quite large, so it is best to compare different candidate models to see which provides the best fit of the data. Usually you would have some sort of subject matter knowledge to help select these candidate models by understanding which variables are related and which variables scientifically should be put in the model. Without subject matter knowledge you might select multiple candidate models and compare them using fit criteria such as AIC, BIC, AICc, Adjusted R-squared or Variance Inflation Factor (VIF). Alternatively, you may compare prediction error by splitting the data into a training and test set and fit the candidate models on the training set to predict the response of the test set. The model with the lowest RMSE should be considered to be the best fit as it minimized the error the best.  
+
+#### Benefits
+  * Simple and easy to implement
+  * Overfitting can be reduced by using regularization
+
+#### Drawbacks
+  * Outliers can have a huge effects on the regression
+  * Can oversimplify data by assuming linear relationships among the variables
+  * Assumes the data is independent which may not always be the case
+  
+  
+## Regression Tree Model
+The regression tree model is a type of tree based method used to predict a continuous response based on explanatory variables by splitting up the predictor space into regions with a different prediction for each region. Assuming we want to model a constant in each region, the mean of the observations is the optimal predictor. Every split of the tree is determined using recursive binary splitting which is a top-down approach that starts at the top of the tree (at which all observations fall into a single region) and successively splits the predictor space into new branches. This is done by finding the Residual Sum of Squares for every possible value of each predictor and trying to minimize that. For the regions ${R}_{1} (j, s) = \{{x|x_{j} < s}\}$ and ${R}_{2} (j, s) = \{{x|x_{j} \geq s}\}$ where $j$ is the possible predictors and $s$ is the splitting point, we seek the value of $j$ and $s$ that minimize the equation $$\sum\limits_{i:x_j\in R_1(j,s)}(y_i - \hat{y}_{{R}_1})^2 + \sum\limits_{i:x_j\in R_2(j,s)}(y_i - \hat{y}_{{R}_2})^2$$ Once that split is chosen, the same process is used to create the second split. Generally a large tree is grown which is then pruned back using cost-complexity pruning to not over-fit the data. Pruning will increase bias but decrease variance to hopefully improve prediction. The number of nodes can be chosen using a training and test set and compared using a method like cross-validation.
+
+#### Benefits
+  * Simple to understand and interpret output
+  * Predictors don't need to be scaled
+  * No statistical assumptions necessary
+  * Built in variable selection
+
+#### Drawbacks
+  * Small changes in data can vastly change tree
+  * Greedy algorithm necessary (no optimal algorithm)
+  * Need to prune
+
+## Random Forest Model
+The random forest model is a type of tree based method where we create multiple trees from bootstrap samples of the data and then average the results. This process is done by first creating a bootstrap sample of the data and then training a tree on this sample where we call the prediction for a given set of $x$ values $\hat{y}^{*1}(x)$. This process is then repeated a $B$ number of times to obtain $\hat{y}^{*j}(x), j = 1,...,B$. The final prediction is the average of these predictions $\hat{y}(x) = \frac{1}{B}\sum_{j=1}^{B}\hat{y}^{*j}(x)$. For each of these bootstrap sample/tree fits, a random subset of predictors is chosen becausee if a really strong predictor exists, every bootstrap tree will probably use it as the first split. By selecting a subset of predictors, a good predictor or two will not dominate the tree fits. The number of predictors for a random forest regression tree is usually $m = p/3$ where $m$ is the random predictors chosen and $p$ is the full set of possible predictors. Cross-validation can also be used to select these random predictors.  
+
+#### Benefits
+  * Decrease variance over individual tree fit
+  * Reduces overfitting in decision trees and helps to improve the accuracy
+
+#### Drawbacks
+  * Lose interpretibility
+  * Need to prune
+  * Requires much computational power as well as resources as it builds numerous trees to combine their outputs
