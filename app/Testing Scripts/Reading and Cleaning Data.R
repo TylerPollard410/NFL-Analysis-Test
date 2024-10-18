@@ -100,7 +100,7 @@ playerPassingSumTableBase <- playerPassingDataComb |>
   ) |>
   ungroup() |>
   mutate(
-    completion_percentage = completions_sum/attempts_sum
+    completion_percentage = round(completions_sum/attempts_sum, 4)
   ) |>
   mutate(
     across(contains(c("mean")), ~round(.x, 2))
@@ -291,7 +291,8 @@ gt(playerPassingSumTable$`_footnotes`)
 #### Reactable ----
 playerPassingSumTableReactData <- playerPassingSumTableBase |>
   left_join(teamsAllData |> select(team_abbr, team_logo_espn)) |>
-  select(team_logo_espn, everything())
+  select(team_logo_espn, everything()) |>
+  mutate()
 playerPassingSumTableReact <- reactable(
   data = playerPassingSumTableReactData,
   theme = espn(),
@@ -300,16 +301,10 @@ playerPassingSumTableReact <- reactable(
   pagination = FALSE,
   columns = list(
     team_logo_espn = colDef(
-      name = "Logo",
-      maxWidth = 30,
+      name = "",
+      maxWidth = 25,
       sortable = FALSE,
       style = background_img() #height = "100%", width = "100%")
-    ),
-    player_display_name = colDef(
-      #name = "Player",
-      cell = merge_column(playerPassingSumTableReactData,
-                          merged_name = "Logo", 
-                          merged_position = "left")
     )
   )
 )
