@@ -17,6 +17,8 @@ library(markdown)
 library(gt)
 library(gtsummary)
 library(gtExtras)
+library(reactable)
+library(reactablefmtr)
 # library(pointblank)
 # library(tfrmt)
 # library(gto)
@@ -71,7 +73,7 @@ library(tidyverse)
 # library(dplyr)
 
 
-# Set theme
+# Set theme ====
 my_theme <- create_theme(
   theme = "paper",
   bs4dash_sidebar_dark(
@@ -172,9 +174,9 @@ shinyUI(
                   sidebarMenu(
                     id = "menu_items",
                     menuItem(text = "Home", tabName = "home", icon = icon("home")),
-                    menuItem(text = "Data", tabName = "data", icon = icon("table"),
-                             menuSubItem(text = "Team Statistics", tabName = "data_team_stats", icon = icon("users")),
-                             menuSubItem(text = "Player Statistics", tabName = "data_player_stats", icon = icon("user"))
+                    menuItem(text = "Summary Statistics", tabName = "summary_data", icon = icon("table"),
+                             menuSubItem(text = "Team Statistics", tabName = "summary_data_team_stats", icon = icon("users")),
+                             menuSubItem(text = "Player Statistics", tabName = "summary_data_player_stats", icon = icon("user"))
                     )
                   ) # close sidebar menu
                 ), # close dashboard sidebar
@@ -195,18 +197,18 @@ shinyUI(
                     # Data ===============
                     ## Team Statistics ----
                     tabItem(
-                      tabName = "data_team_stats",
+                      tabName = "summary_data_team_stats",
                       fluidPage(
                         tabsetPanel(
-                          id = "team_tabset",
+                          id = "summary_data_team_tabset",
                           type = "pills",
                           ### Offense ----
                           tabPanel(
                             title = "Offense", 
                             br(),
-                            h1("Offensive Team Statistics"),
+                            h1("Offensive Team Summary Statistics"),
                             tabsetPanel(
-                              id = "offense_team_statistics",
+                              id = "summary_data_team_stats_offense",
                               vertical = TRUE,
                               side = "left",
                               
@@ -241,9 +243,9 @@ shinyUI(
                           tabPanel(
                             title = "Defense",
                             br(),
-                            h1("Defensive Team Statistics"),
+                            h1("Defensive Team Summary Statistics"),
                             tabsetPanel(
-                              id = "defense_team_statistics",
+                              id = "summary_data_team_stats_defense",
                               vertical = TRUE,
                               side = "left",
                               
@@ -283,10 +285,10 @@ shinyUI(
                           tabPanel(
                             title = "Special Teams",
                             br(),
-                            h1("Special Teams Team Statistics"),
+                            h1("Special Teams Team Summary Statistics"),
                             
                             tabsetPanel(
-                              id = "special_team_statistics",
+                              id = "summary_data_team_stats_special",
                               vertical = TRUE,
                               side = "left",
                               
@@ -305,108 +307,248 @@ shinyUI(
                                 title = "Punting",
                               ) # end punting
                             ) # Special Team tabset
-                          ) # end Speacial Team Tab
+                          ) # end Special Team Tab
                         ) # end team tabset panel
                       ) # end fluid page
                     ), # end Team Statistics subItem
                     
                     ## Player Statistics ----
                     tabItem(
-                      tabName = "data_player_stats",
+                      tabName = "summary_data_player_stats",
                       fluidPage(
-                        textOutput(outputId = "player_stats_title"),
-                        tabsetPanel(
-                          id = "player_tabset",
-                          type = "pills",
-                          ### Offense ----
-                          tabPanel(
-                            title = "Offense", 
-                            br(),
-                            # h1("Offensive Player Statistics"),
-                            tabBox(
-                              id = "offense_player_statistics", width = 12,
-                              # vertical = FALSE,
-                              # side = "left",
-                              
-                              #### Passing ----
-                              tabPanel(
-                                title = "Passing",
-                                withSpinner(
-                                  gt_output(outputId = "playerOffensivePassingSumTable_out"), type = 8)
-                              ),
-                              
-                              #### Rushing ----
-                              tabPanel(
-                                title = "Rushing",
-                              ),
-                              
-                              #### Receiving ----
-                              tabPanel(
-                                title = "Receiving",
-                              ),
-                              
-                              #### Touchdowns ----
-                              tabPanel(
-                                title = "Touchdowns",
-                              )
-                            )
+                        # tabsetPanel(
+                        #   id = "summary_data_player_tabset",
+                        #   type = "pills",
+                        #   ### Offense ----
+                        #   tabPanel(
+                        #     title = "Offense", 
+                        #     br(),
+                        # tabBox(
+                        #   id = "summary_player_offense_statistics", width = 12,
+                        #   # vertical = FALSE,
+                        #   # side = "left",
+                        #   
+                        #### Passing ----
+                        #   tabPanel(
+                        #     title = "Passing",
+                        #     withSpinner(
+                        #       reactableOutput(outputId = "summaryPlayerOffensePassingTable"), type = 8)
+                        #   ),
+                        #   
+                        #### Rushing ----
+                        #   tabPanel(
+                        #     title = "Rushing",
+                        #   ),
+                        #   
+                        #### Receiving ----
+                        #   tabPanel(
+                        #     title = "Receiving",
+                        #   ),
+                        #   
+                        #### Touchdowns ----
+                        #   tabPanel(
+                        #     title = "Touchdowns",
+                        #   )
+                        # )
+                        radioGroupButtons(
+                          inputId = "summaryPlayerType",
+                          label = "Select Offensive Play Type",
+                          choices = c("Offense", 
+                                      "Defense",
+                                      "Special Teams" = "Special"),
+                          individual = TRUE,
+                          status = "primary",
+                          checkIcon = list(
+                            yes = tags$i(class = "fa fa-circle"), # style = "color: "),
+                            no = tags$i(class = "fa fa-circle-o")
+                          )
+                        ),
+                        radioGroupButtons(
+                          inputId = "summaryPlayerCategory",
+                          label = "Select Offensive Play Type",
+                          choices = c("Passing" = "passing", 
+                                      "Rushing" = "rushing",
+                                      "Receiving" = "receiving",
+                                      "Scoring"),
+                          individual = TRUE,
+                          status = "info",
+                          checkIcon = list(
+                            yes = tags$i(class = "fa fa-circle"), # style = "color: "),
+                            no = tags$i(class = "fa fa-circle-o")
+                          )
+                        ),
+                        fluidRow(
+                          column(width = 3,
+                                 sliderTextInput(
+                                   inputId = "summaryPlayerSeason",
+                                   label = "Select seasons",
+                                   choices = seq(2003, get_current_season()),
+                                   selected = c(get_current_season(),get_current_season())
+                                 )
                           ),
-                          
-                          ### Defense ----
-                          tabPanel(
-                            title = "Defense",
-                            br(),
-                            h1("Defensive Player Statistics"),
-                            tabsetPanel(
-                              id = "defense_player_statistics",
-                              vertical = TRUE,
-                              side = "left",
-                              
-                              #### Tackles ----
-                              tabPanel(
-                                title = "Yards Allowed",
-                              ),
-                              
-                              #### Sacks ----
-                              tabPanel(
-                                title = "Passing",
-                              ),
-                              
-                              #### Interceptions ----
-                              tabPanel(
-                                title = "Rushing",
-                              )
-                            )
+                          column(width = 3,
+                                 pickerInput(
+                                   inputId = "summaryPlayerGameType",
+                                   label = "Game Type",
+                                   choices = c(
+                                     "Regular Season" = "REG",
+                                     "Wild Card" = "WC", 
+                                     "Divisional Round" = "DIV", 
+                                     "Conference Championship" = "CON", 
+                                     "Super Bowl" = "SB"
+                                   ),
+                                   selected = "REG",
+                                   multiple = TRUE,
+                                   options = pickerOptions(
+                                     actionsBox = TRUE
+                                   )
+                                 )
                           ),
-                          
-                          ### Special Teams ----
-                          tabPanel(
-                            title = "Special Teams",
-                            br(),
-                            h1("Special Teams Player Statistics"),
-                            
-                            tabsetPanel(
-                              id = "special_player_statistics",
-                              vertical = TRUE,
-                              side = "left",
-                              
-                              #### Returning ----
-                              tabPanel(
-                                title = "Returning",
-                              ),
-                              
-                              #### Kicking ----
-                              tabPanel(
-                                title = "Kicking",
-                              ),
-                              
-                              #### Punting ----
-                              tabPanel(
-                                title = "Punting",
-                              ) # end punting
-                            ) # end Special Teams tabset panel
-                          ) # end Special Teams tab
-                        ) # end player tabset
+                          column(width = 3,
+                                 pickerInput(
+                                   inputId = "summaryPlayerTeam",
+                                   label = "Select team to analyze", 
+                                   choices = c(
+                                     "Arizona Cardinals" = "ARI",
+                                     "Atlanta Falcons" = "ATL", 
+                                     "Baltimore Ravens" = "BAL", 
+                                     "Buffalo Bills" = "BUF", 
+                                     "Carolina Panthers" = "CAR", 
+                                     "Chicago Bears" = "CHI", 
+                                     "Cincinnati Bengals" = "CIN", 
+                                     "Cleveland Browns" = "CLE", 
+                                     "Dallas Cowboys" = "DAL", 
+                                     "Denver Broncos" = "DEN", 
+                                     "Detroit Lions" = "DET", 
+                                     "Green Bay Packers" = "GB", 
+                                     "Houston Texans" = "HOU", 
+                                     "Indianapolis Colts" = "IND", 
+                                     "Jacksonville Jaguars" = "JAX", 
+                                     "Kansas City Chiefs" = "KC", 
+                                     "Los Angeles Chargers" = "LAC",
+                                     "Los Angeles Rams" = "LAR",
+                                     "Las Vegas Raiders" = "LV",
+                                     "Miami Dolphins" = "MIA", 
+                                     "Minnesota Viking's" = "MIN", 
+                                     "New England Patriots" = "NE",
+                                     "New Orleans Saints" = "NO", 
+                                     "New York Giants" = "NYG", 
+                                     "New York Jets" = "NYJ",
+                                     "Philadelphia Eagles" = "PHI", 
+                                     "Pittsburgh Steelers" = "PIT", 
+                                     "Seattle Seahawks" = "SEA",
+                                     "San Francisco 49ers" = "SF",
+                                     "Tampa Bay Buccaneers" = "TB", 
+                                     "Tennessee Titans" = "TEN", 
+                                     "Washington Commanders" = "WAS"
+                                   ),
+                                   multiple = TRUE,
+                                   selected = c(
+                                     "ARI",
+                                     "ATL", 
+                                     "BAL", 
+                                     "BUF", 
+                                     "CAR", 
+                                     "CHI", 
+                                     "CIN", 
+                                     "CLE", 
+                                     "DAL", 
+                                     "DEN", 
+                                     "DET", 
+                                     "GB", 
+                                     "HOU", 
+                                     "IND", 
+                                     "JAX", 
+                                     "KC", 
+                                     "LAC",
+                                     "LAR",
+                                     "LV",
+                                     "MIA", 
+                                     "MIN", 
+                                     "NE",
+                                     "NO", 
+                                     "NYG", 
+                                     "NYJ",
+                                     "PHI", 
+                                     "PIT", 
+                                     "SEA",
+                                     "SF",
+                                     "TB", 
+                                     "TEN", 
+                                     "WAS"
+                                   ),
+                                   # choicesOpt = list(
+                                   #   content = paste0("<div style='background: ", teamsData$team_color, "; color: white;'>", teamsData$team_name, "</div>")
+                                   # ),
+                                   options = pickerOptions(
+                                     actionsBox = TRUE
+                                   )
+                                 )
+                          ),
+                          column(width = 3,
+                                 radioGroupButtons(
+                                   inputId = "summaryPlayerStat",
+                                   label = "Table Statistic",
+                                   choices = c("Total", "Game"),
+                                   status = "info"
+                                 )
+                          )
+                        ), # end fluidRow
+                        
+                        withSpinner(
+                          reactableOutput(outputId = "summaryPlayerOffensePassingTable"), type = 8
+                        )
+                        #  )
+                        
+                        #   ### Defense ----
+                        #   tabPanel(
+                        #     title = "Defense",
+                        #     br(),
+                        #     tabBox(
+                        #       id = "summary_player_defense_statistics",
+                        #       
+                        #       #### Tackles ----
+                        #       tabPanel(
+                        #         title = "Yards Allowed",
+                        #       ),
+                        #       
+                        #       #### Sacks ----
+                        #       tabPanel(
+                        #         title = "Passing",
+                        #       ),
+                        #       
+                        #       #### Interceptions ----
+                        #       tabPanel(
+                        #         title = "Rushing",
+                        #       )
+                        #     )
+                        #   ),
+                        #   
+                        #   ### Special Teams ----
+                        #   tabPanel(
+                        #     title = "Special Teams",
+                        #     br(),
+                        #     
+                        #     tabBox(
+                        #       id = "summary_player_special_statistics",
+                        #       
+                        #       #### Returning ----
+                        #       tabPanel(
+                        #         title = "Returning",
+                        #       ),
+                        #       
+                        #       #### Kicking ----
+                        #       tabPanel(
+                        #         title = "Kicking",
+                        #       ),
+                        #       
+                        #       #### Punting ----
+                        #       tabPanel(
+                        #         title = "Punting",
+                        #       ) # end punting
+                        #     ) # end Special Teams tabset panel
+                        #   ) # end Special Teams tab
+                        # ) # end player tabset
                       ) # end fluid page
                     ) # end Player Statistics tabItem
                   ) # end tab Items
