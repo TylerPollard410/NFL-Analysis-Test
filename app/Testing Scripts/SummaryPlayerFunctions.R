@@ -26,14 +26,14 @@ library(nflverse)
 library(tidyverse)
 
 # Team Data ----
-teamsData <- load_teams(current = FALSE)
+#teamsData <- load_teams(current = FALSE)
 
 # Player Data ====
 # Weekly Player Stats
 ## Offense ----
 
 ### Passing ----
-make_player_offensive_passing_table <- function(season = 2024, gameType = "REG", teams, stat = "Total"){
+make_player_offensive_passing_table <- function(teams_data, season = 2024, gameType = "REG", teams, stat = "Total"){
   # NFL verse player data
   playerData <- load_player_stats(
     seasons = season,
@@ -118,7 +118,7 @@ make_player_offensive_passing_table <- function(season = 2024, gameType = "REG",
     arrange(desc(passing_yards))
   
   summaryPlayerTableReactData <- summaryPlayerTableBase |>
-    left_join(teamsData |> select(team_abbr, team_logo_espn)) |>
+    left_join(teams_data |> select(team_abbr, team_logo_espn)) |>
     select(team_logo_espn, everything())
   
   summaryPlayerTableReact <- reactable(

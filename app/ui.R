@@ -1,4 +1,4 @@
-#### NFL Analysis App
+## NFL Analysis App
 ## Tyler Pollard
 ## 8 Aug 2023
 
@@ -13,65 +13,22 @@ library(RColorBrewer)
 library(fresh)
 library(markdown)
 
+## Data Manipulation
+library(stringr)
+
 ## Tables ----
+library(htmltools)
 library(gt)
 library(gtsummary)
 library(gtExtras)
 library(reactable)
 library(reactablefmtr)
-# library(pointblank)
-# library(tfrmt)
-# library(gto)
 
 ## NFL Verse ----
 library(nflverse)
 
 ## Tidyverse ----
 library(tidyverse)
-
-#library(shinybrowser)
-#library(shinycssloaders)
-# library(shinyalert)
-# library(shinyBS)
-# library(shinyjs)
-# library(colourpicker)
-# library(bs4Dash)
-# library(plotly)
-# library(plyr)
-# library(readxl)
-#library(readr)
-# library(haven)
-# library(ggplot2)
-# library(data.table)
-# library(lubridate)
-# library(hms)
-# library(RColorBrewer)
-# library(sp)
-# library(htmltools)
-# library(fresh)
-# library(extrafont)
-# library(stringr)
-# library(reshape2)
-# library(png)
-# library(ggpubr)
-# library(htmlTable)
-# library(tibble)
-# library(EnvStats)
-# library(xtable)
-# library(grid)
-# library(DT)
-# library(rhandsontable)
-# library(rvest)
-# library(scales)
-# library(caret)
-# library(knitr)
-# library(data.table)
-# library(markdown)
-# library(nflverse)
-# library(progressr)
-# library(gt)
-# library(dplyr)
-
 
 # Set theme ====
 my_theme <- create_theme(
@@ -84,32 +41,6 @@ my_theme <- create_theme(
   )
 )
 tags$style(".buttoncolor.bttn-primary{background-color: #6399b8")
-
-# tags$head(tags$script('
-#                     // Define function to set height of "map" and "map_container"
-#                     setHeight = function() {
-#                       var window_height = $(window).height();
-#                       var header_height = $(".main-header").height();
-# 
-#                       var boxHeight = window_height - header_height - 30;
-# 
-#                       $("#picks_popularity").height(boxHeight - 400);
-#                       $("#pick_popularity_table").height(boxHeight - 400);
-# 
-#                       $("#picks_output").height(boxHeight - 130);
-#                       $("#picks_table").height(boxHeight - 130);
-#                     };
-# 
-#                     // Set input$box_height when the connection is established
-#                     $(document).on("shiny:connected", function(event) {
-#                       setHeight();
-#                     });
-# 
-#                     // Refresh the box height on every window resize event
-#                     $(window).on("resize", function(){
-#                       setHeight();
-#                     });
-#                   '))
 
 # Define UI for application that draws a histogram
 shinyUI(
@@ -148,7 +79,7 @@ shinyUI(
                       ),
                       notificationItem(
                         inputId = "info2",
-                        text = "Release Date: 8 Aug 2023",
+                        text = "Release Date: 20 Oct 2024",
                         icon = icon("calendar"),
                         status = "info"
                       ),
@@ -159,7 +90,69 @@ shinyUI(
                         status = "info"
                       )
                     )
-                  )
+                  ),
+                  ## Navbar Menu ------------------
+                  navbarMenu(
+                    id = "navMenu",
+                    navbarTab(tabName = "homeTab", text = "Home"),
+                    navbarTab(tabName = "dataTab", text = "Data",
+                              navbarTab(tabName = "standingsTab", text = "Standing"), # end Standings
+                              navbarTab(tabName = "scoresTab", text = "Scores"), # end Scores
+                              navbarTab(tabName = "teamTab", text = "Team",
+                                        dropdownHeader("Offense"),
+                                        navbarTab(tabName = "teamOffenseOverviewTab", text = "Overview"),
+                                        navbarTab(tabName = "teamOffensePassingTab", text = "Passing"),
+                                        navbarTab(tabName = "teamOffenseRushingTab", text = "Rushing"),
+                                        navbarTab(tabName = "teamOffenseConversionsTab", text = "Conversions"),
+                                        navbarTab(tabName = "teamOffenseDriveAveragesTab", text = "Drive Averages"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Defense"),
+                                        navbarTab(tabName = "teamDefenseOverviewTab", text = "Overview"),
+                                        navbarTab(tabName = "teamDefensePassingTab", text = "Passing"),
+                                        navbarTab(tabName = "teamDefenseRushingTab", text = "Rushing"),
+                                        navbarTab(tabName = "teamDefenseConversionsTab", text = "Conversions"),
+                                        navbarTab(tabName = "teamDefenseDriveAveragesTab", text = "Drive Averages"),
+                                        navbarTab(tabName = "teamDefensePositionTab", text = "Against Position",
+                                                  navbarTab(tabName = "teamDefensePositionQBTab", text = "Against QB"),
+                                                  navbarTab(tabName = "teamDefensePositionRBTab", text = "Against RB"),
+                                                  navbarTab(tabName = "teamDefensePositionTETab", text = "Against TE"),
+                                                  navbarTab(tabName = "teamDefensePositionWRTab", text = "Against WR")
+                                        ),
+                                        dropdownDivider(),
+                                        dropdownHeader("Special Teams"),
+                                        navbarTab(tabName = "teamSpecialTeamsReturnsTab", text = "Kick/Punt Returns"),
+                                        navbarTab(tabName = "teamSpecialTeamsKickingTab", text = "Kicing"),
+                                        navbarTab(tabName = "teamSpecialTeamsPuntingTab", text = "Punting"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Scoring"),
+                                        navbarTab(tabName = "teamScoringForTab", text = "Scoring For"),
+                                        navbarTab(tabName = "teamScoringAgainstTab", text = "Scoring Against")
+                              ), # end Team
+                              navbarTab(tabName = "playerTab", text = "Player",
+                                        dropdownHeader("Offense"),
+                                        navbarTab(tabName = "playerOffenseScrimmageTab", text = "Scrimmage"),
+                                        navbarTab(tabName = "playerOffensePassingTab", text = "Passing"),
+                                        navbarTab(tabName = "playerOffenseRushingTab", text = "Rushing"),
+                                        navbarTab(tabName = "playerOffenseReceivingTab", text = "Receiving"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Defense"),
+                                        navbarTab(tabName = "playerDefenseOverviewTab", text = "Overview"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Special Teams"),
+                                        navbarTab(tabName = "playerSpecialTeamsReturnsTab", text = "Kick/Punt Returns"),
+                                        navbarTab(tabName = "playerSpecialTeamsKickingTab", text = "Kicking"),
+                                        navbarTab(tabName = "playerSpecialTeamsPuntingTab", text = "Punting"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Scoring"),
+                                        navbarTab(tabName = "playerScoringOverviewTab", text = "Overview"),
+                                        dropdownDivider(),
+                                        dropdownHeader("Fantasy"),
+                                        navbarTab(tabName = "playerFantasyRanksTab", text = "Ranks") # end Fantasy
+                              ) # end Player
+                    ), # end Data Tab
+                    navbarTab(tabName = "bettingTab", text = "Betting"),
+                    navbarTab(tabName = "predictionTab", text = "Prediction Models")
+                  ) # end navbarMenu
                 ), # close header
                 scrollToTop = TRUE,
                 # Dashboard Sidebar =============
@@ -170,243 +163,104 @@ shinyUI(
                   minified = FALSE,
                   status = "primary",
                   compact = TRUE,
+                  collapsed = TRUE,
                   ## Sidebar Menu ---------------
-                  sidebarMenu(
-                    id = "menu_items",
-                    menuItem(text = "Home", tabName = "home", icon = icon("home")),
-                    menuItem(text = "Summary Statistics", tabName = "summary_data", icon = icon("table"),
-                             menuSubItem(text = "Team Statistics", tabName = "summary_data_team_stats", icon = icon("users")),
-                             menuSubItem(text = "Player Statistics", tabName = "summary_data_player_stats", icon = icon("user"))
-                    )
-                  ) # close sidebar menu
+                  # sidebarMenu(
+                  #   id = "menu_items",
+                  #   menuItem(text = "Home", tabName = "home", icon = icon("home")),
+                  #   menuItem(text = "Summary Statistics", tabName = "summary_data", icon = icon("table"),
+                  #            menuSubItem(text = "Team Statistics", tabName = "summary_data_team_stats", icon = icon("users")),
+                  #            menuSubItem(text = "Player Statistics", tabName = "summary_data_player_stats", icon = icon("user"))
+                  #   )
+                  # ) # close sidebar menu
                 ), # close dashboard sidebar
                 # Dashboard Body ================
                 body = dashboardBody(
                   tabItems(
-                    # Home Tab ===============
+                    # Home Tab  ###############################################
                     tabItem(
-                      tabName = "home",
+                      tabName = "homeTab",
                       h1("Welcome to the NFL Game Dashboard", align  = "center"),
                       br(),
                       box(width = 12, closable = FALSE, collapsible = FALSE, headerBorder = FALSE,
-                          fluidRow(column(width = 12, align = "center", plotOutput("image"))),
+                          fluidRow(column(width = 12, align = "center", 
+                                          imageOutput("image"))
+                          ),
                           withMathJax(),
                           includeMarkdown("../RMarkdown Files/Description.Rmd")
-                      )
+                      ) # end box
                     ), # close Home tab Item 
-                    # Data ===============
-                    ## Team Statistics ----
+                    # Data Tab ################################################
+                    ## Standings Tab ##########################################
                     tabItem(
-                      tabName = "summary_data_team_stats",
+                      tabName = "standingsTab",
                       fluidPage(
-                        tabsetPanel(
-                          id = "summary_data_team_tabset",
-                          type = "pills",
-                          ### Offense ----
-                          tabPanel(
-                            title = "Offense", 
-                            br(),
-                            h1("Offensive Team Summary Statistics"),
-                            tabsetPanel(
-                              id = "summary_data_team_stats_offense",
-                              vertical = TRUE,
-                              side = "left",
-                              
-                              #### Totals ----
-                              tabPanel(
-                                title = "Total Yards",
-                              ),
-                              
-                              #### Passing ----
-                              tabPanel(
-                                title = "Passing",
-                              ),
-                              
-                              #### Rushing ----
-                              tabPanel(
-                                title = "Rushing",
-                              ),
-                              
-                              #### Receiving ----
-                              tabPanel(
-                                title = "Receiving",
-                              ),
-                              
-                              #### Downs ----
-                              tabPanel(
-                                title = "Downs",
-                              )
-                            )
-                          ),
-                          
-                          ### Defense ----
-                          tabPanel(
-                            title = "Defense",
-                            br(),
-                            h1("Defensive Team Summary Statistics"),
-                            tabsetPanel(
-                              id = "summary_data_team_stats_defense",
-                              vertical = TRUE,
-                              side = "left",
-                              
-                              #### Totals ----
-                              tabPanel(
-                                title = "Yards Allowed",
-                              ),
-                              
-                              #### Passing ----
-                              tabPanel(
-                                title = "Passing",
-                              ),
-                              
-                              #### Rushing ----
-                              tabPanel(
-                                title = "Rushing",
-                              ),
-                              
-                              #### Receiving ----
-                              tabPanel(
-                                title = "Receiving",
-                              ),
-                              
-                              #### Downs ----
-                              tabPanel(
-                                title = "Downs",
-                              ),
-                              
-                              #### Turnovers ----
-                              tabPanel(
-                                title = "Turnovers",
-                              )
-                            )
-                          ),
-                          
-                          ### Special Teams ----
-                          tabPanel(
-                            title = "Special Teams",
-                            br(),
-                            h1("Special Teams Team Summary Statistics"),
-                            
-                            tabsetPanel(
-                              id = "summary_data_team_stats_special",
-                              vertical = TRUE,
-                              side = "left",
-                              
-                              #### Returning ----
-                              tabPanel(
-                                title = "Returning",
-                              ),
-                              
-                              #### Kicking ----
-                              tabPanel(
-                                title = "Kicking",
-                              ),
-                              
-                              #### Punting ----
-                              tabPanel(
-                                title = "Punting",
-                              ) # end punting
-                            ) # Special Team tabset
-                          ) # end Special Team Tab
-                        ) # end team tabset panel
-                      ) # end fluid page
-                    ), # end Team Statistics subItem
-                    
-                    ## Player Statistics ----
+                        withSpinner(
+                          reactableOutput(outputId = "standingsTable"), type = 8
+                          )
+                      ) # end fluidPage
+                    ), # end Player Offense Scrimmage tabItem
+                    ## Scores Tab #############################################
+                    ## Team Tab ###############################################
+                    ### Team Offense ==========================================
+                    #### Overview ----
+                    #### Passing ----
+                    #### Rushing ----
+                    #### Conversions ----
+                    #### Drive Averages ----
+                    ### Team Defense ==========================================
+                    #### Overview ----
+                    #### Passing ----
+                    #### Rushing ----
+                    #### Conversions ----
+                    #### Drive Averages ----
+                    #### Against Position ----
+                    ### Team Special Teams ====================================
+                    #### Kick/Punt Returns ----
+                    #### Kicking ----
+                    #### Punting ----
+                    ### Team Scoring ==========================================
+                    #### Scoring For ----
+                    #### Scoring Against ----
+                    ## Player Tab  ############################################
+                    ### Player Offense ========================================
+                    #### Scrimmage ----
                     tabItem(
-                      tabName = "summary_data_player_stats",
+                      tabName = "playerOffenseScrimmageTab",
                       fluidPage(
-                        # tabsetPanel(
-                        #   id = "summary_data_player_tabset",
-                        #   type = "pills",
-                        #   ### Offense ----
-                        #   tabPanel(
-                        #     title = "Offense", 
-                        #     br(),
-                        # tabBox(
-                        #   id = "summary_player_offense_statistics", width = 12,
-                        #   # vertical = FALSE,
-                        #   # side = "left",
-                        #   
-                        #### Passing ----
-                        #   tabPanel(
-                        #     title = "Passing",
-                        #     withSpinner(
-                        #       reactableOutput(outputId = "summaryPlayerOffensePassingTable"), type = 8)
-                        #   ),
-                        #   
-                        #### Rushing ----
-                        #   tabPanel(
-                        #     title = "Rushing",
-                        #   ),
-                        #   
-                        #### Receiving ----
-                        #   tabPanel(
-                        #     title = "Receiving",
-                        #   ),
-                        #   
-                        #### Touchdowns ----
-                        #   tabPanel(
-                        #     title = "Touchdowns",
-                        #   )
-                        # )
-                        radioGroupButtons(
-                          inputId = "summaryPlayerType",
-                          label = "Select Offensive Play Type",
-                          choices = c("Offense", 
-                                      "Defense",
-                                      "Special Teams" = "Special"),
-                          individual = TRUE,
-                          status = "primary",
-                          checkIcon = list(
-                            yes = tags$i(class = "fa fa-circle"), # style = "color: "),
-                            no = tags$i(class = "fa fa-circle-o")
-                          )
-                        ),
-                        radioGroupButtons(
-                          inputId = "summaryPlayerCategory",
-                          label = "Select Offensive Play Type",
-                          choices = c("Passing" = "passing", 
-                                      "Rushing" = "rushing",
-                                      "Receiving" = "receiving",
-                                      "Scoring"),
-                          individual = TRUE,
-                          status = "info",
-                          checkIcon = list(
-                            yes = tags$i(class = "fa fa-circle"), # style = "color: "),
-                            no = tags$i(class = "fa fa-circle-o")
-                          )
-                        ),
+                      ) # end fluidPage
+                    ), # end Player Offense Scrimmage tabItem
+                    #### Passing ----
+                    tabItem(
+                      tabName = "playerOffensePassingTab",
+                      fluidPage(
                         fluidRow(
+                          ##### Season ----
                           column(width = 3,
                                  sliderTextInput(
-                                   inputId = "summaryPlayerSeason",
+                                   inputId = "playerOffensePassingSeason",
                                    label = "Select seasons",
                                    choices = seq(2003, get_current_season()),
                                    selected = c(get_current_season(),get_current_season())
                                  )
                           ),
-                          column(width = 3,
-                                 pickerInput(
-                                   inputId = "summaryPlayerGameType",
-                                   label = "Game Type",
-                                   choices = c(
-                                     "Regular Season" = "REG",
-                                     "Wild Card" = "WC", 
-                                     "Divisional Round" = "DIV", 
-                                     "Conference Championship" = "CON", 
-                                     "Super Bowl" = "SB"
-                                   ),
+                          ##### Game Type ----
+                          column(width = 2,
+                                 prettyCheckboxGroup(
+                                   inputId = "playerOffensePassingGameType",
+                                   label = "Game Type", 
+                                   choices = c("Regular Season" = "REG",
+                                               "Playoffs" = "POST"),
                                    selected = "REG",
-                                   multiple = TRUE,
-                                   options = pickerOptions(
-                                     actionsBox = TRUE
-                                   )
+                                   inline = FALSE, 
+                                   status = "info",
+                                   fill = TRUE
                                  )
                           ),
+                          ##### Team ----
                           column(width = 3,
                                  pickerInput(
-                                   inputId = "summaryPlayerTeam",
+                                   inputId = "playerOffensePassingTeam",
                                    label = "Select team to analyze", 
                                    choices = c(
                                      "Arizona Cardinals" = "ARI",
@@ -485,72 +339,37 @@ shinyUI(
                                    )
                                  )
                           ),
-                          column(width = 3,
+                          ##### Table Stat ----
+                          column(width = 2,
                                  radioGroupButtons(
-                                   inputId = "summaryPlayerStat",
+                                   inputId = "playerOffensePassingStat",
                                    label = "Table Statistic",
                                    choices = c("Total", "Game"),
                                    status = "info"
                                  )
-                          )
+                          ) # end column
                         ), # end fluidRow
                         
                         withSpinner(
-                          reactableOutput(outputId = "summaryPlayerOffensePassingTable"), type = 8
+                          reactableOutput(outputId = "playerOffensePassingTable"), type = 8
                         )
-                        #  )
-                        
-                        #   ### Defense ----
-                        #   tabPanel(
-                        #     title = "Defense",
-                        #     br(),
-                        #     tabBox(
-                        #       id = "summary_player_defense_statistics",
-                        #       
-                        #       #### Tackles ----
-                        #       tabPanel(
-                        #         title = "Yards Allowed",
-                        #       ),
-                        #       
-                        #       #### Sacks ----
-                        #       tabPanel(
-                        #         title = "Passing",
-                        #       ),
-                        #       
-                        #       #### Interceptions ----
-                        #       tabPanel(
-                        #         title = "Rushing",
-                        #       )
-                        #     )
-                        #   ),
-                        #   
-                        #   ### Special Teams ----
-                        #   tabPanel(
-                        #     title = "Special Teams",
-                        #     br(),
-                        #     
-                        #     tabBox(
-                        #       id = "summary_player_special_statistics",
-                        #       
-                        #       #### Returning ----
-                        #       tabPanel(
-                        #         title = "Returning",
-                        #       ),
-                        #       
-                        #       #### Kicking ----
-                        #       tabPanel(
-                        #         title = "Kicking",
-                        #       ),
-                        #       
-                        #       #### Punting ----
-                        #       tabPanel(
-                        #         title = "Punting",
-                        #       ) # end punting
-                        #     ) # end Special Teams tabset panel
-                        #   ) # end Special Teams tab
-                        # ) # end player tabset
                       ) # end fluid page
-                    ) # end Player Statistics tabItem
+                    ) # end Player Offense Passing tabItem
+                    #### Rushing ----
+                    #### Receiving ----
+                    #### Conversions ----
+                    ### Player Defense ========================================
+                    #### Overview ----
+                    ### Player Special Teams ==================================
+                    #### Kick/Punt Returns ----
+                    #### Kicking ----
+                    #### Punting ----
+                    ### Player Scoring ========================================
+                    #### Overview ----
+                    ### Player Fantasy ========================================
+                    #### Ranks ----
+                    # Betting Tab  ############################################
+                    # Prediction Tab  #########################################
                   ) # end tab Items
                 ) # end dashboard body
   ) # end dashboard Page
