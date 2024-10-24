@@ -15,6 +15,7 @@ library(markdown)
 
 ## Data Manipulation
 library(stringr)
+library(rvest)
 
 ## Tables ----
 library(htmltools)
