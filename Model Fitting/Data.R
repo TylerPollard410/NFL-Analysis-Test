@@ -22,6 +22,7 @@ library(reactable)
 library(reactablefmtr)
 
 ## Plotting ----
+library(smplot2)
 # library(cowplot)
 # library(GGally)
 # library(patchwork)
@@ -159,20 +160,28 @@ gameData <- load_schedules(seasons = TRUE) |>
   filter(season %in% seasonTrain)
 gameID <- sort(unique(gameData$game_id))
 
-##  Officials
-#load_officials()
-
-##  Trades
-#load_trades()
-
-##  Draft Picks from PFR
-#load_draft_picks()
-
-##  Combine Data from PFR
-#load_combine()
-
-##  Player Level Weekly NFL Next Gen Stats
-playerPassingNextGenData <- load_nextgen_stats(seasons = TRUE, stat_type = "passing") |>
+gameDataLong <- gameData |>
+  mutate(
+    home_team = clean_team_abbrs(home_team),
+    away_team = clean_team_abbrs(away_team)
+  ) |>
+  clean_homeaway(invert = c("result", "spread_line")) 
+  
+  
+  ##  Officials
+  #load_officials()
+  
+  ##  Trades
+  #load_trades()
+  
+  ##  Draft Picks from PFR
+  #load_draft_picks()
+  
+  ##  Combine Data from PFR
+  #load_combine()
+  
+  ##  Player Level Weekly NFL Next Gen Stats
+  playerPassingNextGenData <- load_nextgen_stats(seasons = TRUE, stat_type = "passing") |>
   filter(season %in% seasonTrain)
 
 playerRushingNextGenData <- load_nextgen_stats(seasons = TRUE, stat_type = "rushing") |>
@@ -321,63 +330,11 @@ gameDataLong |>
   ) |>
   view(title = "dataView")
 
-## MoV, SOS, SRS 2005----
-gameDataLong2005 <- gameDataLong |> 
-  filter(season == 2005) #|>
-  #filter(game_type == "REG") 
-standing2005 <- gameDataLong2005 |>
-  filter(!is.na(result)) |>
-  select(
-    week,
-    team,
-    team_score,
-    opponent,
-    opponent_score,
-    location,
-    result
-  ) |>
-  mutate(
-    win = ifelse(result > 0, 1, 0),
-    loss = ifelse(result < 0, 1, 0),
-    tie = ifelse(result == 0, 1, 0)
-  ) |>
-  group_by(team) |>
-  summarise(
-    games_played = n(),
-    across(c(win, 
-             loss,
-             tie,
-             team_score,
-             opponent_score,
-             result),
-           ~sum(.x)),
-  ) |>
-  mutate(
-    win_loss_percent = (win + tie/2)/(win + loss + tie/2),
-    MoV = result/games_played
-  )
 
-gameData2005 <- gameData |> 
-  filter(season == 2005) #|>
-  #filter(game_type == "REG")
-standing2005b <- calculate_standings(gameData2005) |>
-  arrange(team) |>
-  mutate(
-    win_pct_scale = scale(win_pct),
-    sov_scale = scale(sov),
-    sos_scale = scale(sos)
-  )
-
-standing2005b |>
-  summarise(
-    across(contains("win_pct"), ~mean(.x)),
-    across(contains("sov"), ~mean(.x)),
-    across(contains("sos"), ~mean(.x))
-  )
-
-standing2005$win == standing2005b$wins
-
-standingPFRData <- read_html("https://www.pro-football-reference.com/years/2005/index.htm")
+# Standings Table ----
+## 2024 season ----
+### PFR standing data ----
+standingPFRData <- read_html("https://www.pro-football-reference.com/years/2023/index.htm")
 standingPFRDataTables <- standingPFRData |> html_table()
 standingAFCDataTables <- standingPFRDataTables[[1]] |>
   slice(-c(1,6,11,16)) |>
@@ -391,7 +348,7 @@ standingNFCDataTables <- standingPFRDataTables[[2]] |>
     across(-Tm, as.numeric)
   )
 
-standing2005c <- bind_rows(
+standing2024pfr <- bind_rows(
   standingAFCDataTables,
   standingNFCDataTables) |>
   rename(team_name = Tm) |>
@@ -403,194 +360,25 @@ standing2005c <- bind_rows(
       select(team_name, team_abbr)
   ) |>
   mutate(
-    team_abbr = ifelse(team_name == "Washington Redskins", "WAS", 
-                       ifelse(team_name == "St Louis Rams", "STL", 
-                              team_abbr)),
     team_abbr = clean_team_abbrs(team_abbr, 
                                  current = TRUE,
-                                 keep_non_matches = TRUE)
+                                 keep_non_matches = FALSE)
   ) |>
+  distinct() |>
   arrange(team_abbr) |>
   select(
     team_abbr,
     team_name,
     everything()
   ) |>
-  rename(team = team_abbr)
+  rename(team = team_abbr) 
 
-standing2005$win == standing2005b$wins
-standing2005$win == standing2005c$W
+standing2024$win == standing2024pfr$W
 
-
-standing2005d <- left_join(standing2005c, standing2005b) |>
-  arrange(desc(SRS)) |>
-  select(-c(
-    "conf", "division","div_rank","seed","games","wins","losses","ties","conf_pct","div_pct"
-  ))
-
-
-ind_teams <- gameDataLong2005 |> filter(team == "IND") |> pull(opponent)
-
-# Load necessary libraries
-library(dplyr)
-library(nflreadr)
-
-# Step 1: Set the Season Year to 2024
-current_season <- 2024
-
-# Step 2: Load Game Data using nflreadr
-# Note: The load_schedules() function will fetch data for the specified season.
-# For future seasons, data will only be available once the games have been played.
-# Attempting to load data for future games may result in an empty or incomplete dataset.
-
-# Fetch the schedule for the 2024 season
-game_data <- load_schedules(current_season)
-
-# # Check if data is available
-# if (nrow(game_data) == 0) {
-#   cat("No game data available for the 2024 season yet.\n")
-# } else {
-#   # Step 3: Prepare the Data
-#   # Filter out games that haven't been played yet
-#   played_games <- game_data %>%
-#     filter(!is.na(home_score) & !is.na(away_score))
-#   
-#   if (nrow(played_games) == 0) {
-#     cat("No completed games found for the 2024 season yet.\n")
-#   } else {
-#     # Create the game data frame in the required format
-#     game_data_formatted <- played_games %>%
-#       select(
-#         Week = week,
-#         Game_Date = gameday,
-#         Team = home_team,
-#         Opponent = away_team,
-#         Team_Score = home_score,
-#         Opponent_Score = away_score,
-#         Location = "Home"
-#       ) %>%
-#       bind_rows(
-#         played_games %>%
-#           select(
-#             Week = week,
-#             Game_Date = gameday,
-#             Team = away_team,
-#             Opponent = home_team,
-#             Team_Score = away_score,
-#             Opponent_Score = home_score,
-#             Location = "Away"
-#           )
-#       ) %>%
-#       arrange(Game_Date)
-#     
-#     # Step 4: Calculate Point Differentials for Each Game
-#     game_data_formatted <- game_data_formatted %>%
-#       mutate(Point_Differential = Team_Score - Opponent_Score)
-#     
-#     # Step 5: Calculate Initial Average Point Differential for Each Team
-#     team_stats <- game_data_formatted %>%
-#       group_by(Team) %>%
-#       summarise(
-#         Games_Played = n(),
-#         Total_Points_For = sum(Team_Score),
-#         Total_Points_Against = sum(Opponent_Score),
-#         Average_Point_Differential = mean(Point_Differential)
-#       ) %>%
-#       ungroup() %>%
-#       mutate(
-#         SRS = Average_Point_Differential, # Initial SRS (since SOS is 0 at first)
-#         SOS = 0 # Initialize SOS to 0
-#       )
-
-standing2005new <- standing2005 |>
-  mutate(
-    SOS = 0,
-    SRS = MoV
-  )
-
-# Step 6: Iterative Calculation of SRS and SOS
-max_iterations <- 100
-tolerance <- 0.001
-for (i in 1:max_iterations) {
-  previous_SRS <- standing2005new$SRS
-  
-  # standing2005new <- standing2005new |>
-  #   select(team, SRS)
-  # 
-  # gameDataLong2005A <- gameDataLong2005 |>
-  #   select(team, opponent, MOV = result)
-  # 
-  # gameDataLong2005B <- gameDataLong2005A |>
-  #   left_join(standing2005newA, by = c("opponent" = "team")) |>
-  #   rename(SOS = SRS) |>
-  #   group_by(team)
-  # 
-  # gameDataLong2005C <- gameDataLong2005B |>
-  #   mutate(SRS = MOV + SOS)
-  # 
-  # gameDataLong2005D <- gameDataLong2005C |> summarise(
-  #   newSOS = mean(SOS, na.rm = TRUE),
-  #   newSRS = mean(SRS, na.rm = TRUE)
-  # )
-  # 
-  # standing2005new <- standing2005new |>
-  #   left_join(gameDataLong2005D) |>
-  #   mutate(
-  #     SOS = ifelse(is.na(newSOS), 0, newSOS),
-  #     SRS = ifelse(is.na(newSRS), 0, newSRS)
-  # )
-  
-  standing2005new <- standing2005new |>
-    left_join(
-      gameDataLong2005 |>
-        select(team, opponent, MOV = result) |>
-        left_join(standing2005new |> select(team, SRS), by = c("opponent" = "team")) |>
-        rename(SOS = SRS) |>
-        group_by(team) |>
-        mutate(
-          SRS = MOV + SOS
-        ) |>
-        summarise(
-          newSOS = mean(SOS, na.rm = TRUE),
-          newSRS = mean(SRS, na.rm = TRUE)
-        )
-    ) |>
-    mutate(
-      SOS = ifelse(is.na(newSOS), 0, newSOS),
-      SRS = ifelse(is.na(newSRS), 0, newSRS)
-    ) |>
-    select(-newSOS, -newSRS)
-  
-  if(max(abs(standing2005new$SRS - previous_SRS)) < tolerance){
-    cat("Converged after", i, "iterations.\n")
-    break
-  }
-  
-  # If last iteration and not converged
-  if (i == max_iterations) {
-    cat("Reached maximum iterations = ",i, "without full convergence.\n")
-  }
-}
-standing2005newB <- standing2005new
-standing2005newComp <- left_join(
-  standing2005new,
-  standing2005newB |> select(team, MoVold = MoV, SOSold = SOS, SRSold = SRS)
-)
-
-standing2005newDiff <- standing2005newComp |>
-  mutate(
-    MoVdiff = MoV - MoVold,
-    SOSdiff = SOS - SOSold,
-    SRSdiff = SRS - SRSold
-  ) |>
-  select(-c(MoV, MoVold, SOS, SOSold, SRS, SRSold))
-
-
-
-## MoV, SOS, SRS 2005----
+### Calculate using OSRS ----
 gameData2024 <- load_schedules(seasons = 2024) |>
   filter(complete.cases(result)) |>
-  slice(1:93) |>
+  filter(game_type == "REG") |>
   mutate(
     home_team = clean_team_abbrs(home_team),
     away_team = clean_team_abbrs(away_team)
@@ -598,7 +386,8 @@ gameData2024 <- load_schedules(seasons = 2024) |>
 
 gameDataLong2024 <- gameData2024 |>
   clean_homeaway(invert = c("result", "spread_line")) 
-  
+
+
 standing2024 <- gameDataLong2024 |>
   filter(!is.na(result)) |>
   select(
@@ -628,278 +417,54 @@ standing2024 <- gameDataLong2024 |>
   ) |>
   mutate(
     win_loss_percent = (win + tie/2)/(win + loss + tie/2),
-    MoV = result/games_played
+    MOV = result/games_played
   ) |>
   mutate(team_PPG = team_score/games_played, .after = team_score) |>
   mutate(opp_PPG = opponent_score/games_played, .after = opponent_score)
 
-gameData2024 <- gameData |> 
-  filter(season == 2024) |>
-  filter(game_type == "REG")
+leaguePPG2024 <- sum(standing2024$team_score)/sum(standing2024$games_played)
+standing2024 <- standing2024 |>
+  mutate(SOS = 0, .after = MOV) |>
+  mutate(SRS = MOV, .after = SOS) |>
+  mutate(OSRS = team_PPG - leaguePPG2024) |>
+  mutate(DSRS = SRS - OSRS)
 
-
-standing2024b <- calculate_standings(gameData2024) |>
-  arrange(team) |>
-  mutate(
-    win_pct_scale = scale(win_pct),
-    sov_scale = scale(sov),
-    sos_scale = scale(sos)
-  )
-
-standing2024b |>
-  summarise(
-    across(contains("win_pct"), ~mean(.x)),
-    across(contains("sov"), ~mean(.x)),
-    across(contains("sos"), ~mean(.x))
-  )
-
-standing2024$win == standing2024b$wins
-
-standingPFRData <- read_html("https://www.pro-football-reference.com/years/2024/index.htm")
-standingPFRDataTables <- standingPFRData |> html_table()
-standingAFCDataTables <- standingPFRDataTables[[1]] |>
-  slice(-c(1,6,11,16)) |>
-  mutate(
-    across(-Tm, as.numeric)
-    
-  )
-standingNFCDataTables <- standingPFRDataTables[[2]] |>
-  slice(-c(1,6,11,16)) |>
-  mutate(
-    across(-Tm, as.numeric)
-  )
-
-standing2024c <- bind_rows(
-  standingAFCDataTables,
-  standingNFCDataTables) |>
-  rename(team_name = Tm) |>
-  mutate(
-    team_name = str_replace_all(team_name, "[:punct:]|[:symbol:]", "")
-  ) |>
-  left_join(
-    teamsData |>
-      select(team_name, team_abbr)
-  ) |>
-  mutate(
-    team_abbr = clean_team_abbrs(team_abbr, 
-                                 current = TRUE,
-                                 keep_non_matches = FALSE)
-  ) |>
-  distinct() |>
-  arrange(team_abbr) |>
-  select(
-    team_abbr,
-    team_name,
-    everything()
-  ) |>
-  rename(team = team_abbr)
-
-standing2024$win == standing2024b$wins
-standing2024$win == standing2024c$W
-
-
-standing2024d <- left_join(standing2024c, standing2024b) |>
-  arrange(desc(SRS)) |>
-  select(-c(
-    "conf", "division","div_rank","seed","games","wins","losses","ties","conf_pct","div_pct"
-  ))
-
-
-### 2024 MOV ----
-standing2024new <- standing2024 |>
-  mutate(SOS = 0, .after = MoV) |>
-  mutate(SRS = MoV, .after = SOS) #|>
-  #mutate(OSRS = PFG) |>
-  #mutate(DSRS = 0)
-
-# Step 6: Iterative Calculation of SRS and SOS
 max_iterations <- 100
 tolerance <- 0.001
 for (i in 1:max_iterations) {
-  previous_SRS <- standing2024new$SRS
+  previous_SRS <- standing2024$SRS
+  previous_OSRS <- standing2024$OSRS
+  previous_DSRS <- standing2024$DSRS
   
-  standing2024new <- standing2024new |>
+  standing2024 <- standing2024 |>
     left_join(
       gameDataLong2024 |>
-        select(team, opponent, MOV = result) |>
-        left_join(standing2024new |> select(team, SRS), by = c("opponent" = "team")) |>
-        rename(SOS = SRS) |>
-        group_by(team) |>
+        select(team, opponent, result, team_score) |>
+        left_join(standing2024 |> select(team, SRS, DSRS), by = c("opponent" = "team")) |>
         mutate(
-          SRS = MOV + SOS
+          SOS = SRS,
+          SRS = result + SOS,
+          OSOS = DSRS,
+          OSRS = team_score + OSOS - mean(team_score)
         ) |>
+        group_by(team) |>
         summarise(
           newSOS = mean(SOS, na.rm = TRUE),
-          newSRS = mean(SRS, na.rm = TRUE)
+          newSRS = mean(SRS, na.rm = TRUE),
+          newOSRS = mean(OSRS)
         )
     ) |>
     mutate(
       SOS = ifelse(is.na(newSOS), 0, newSOS),
-      SRS = ifelse(is.na(newSRS), 0, newSRS)
-    ) |>
-    select(-newSOS, -newSRS)
-  
-  if(max(abs(standing2024new$SRS - previous_SRS)) < tolerance){
-    cat("Converged after", i, "iterations.\n")
-    break
-  }
-  
-  # If last iteration and not converged
-  if (i == max_iterations) {
-    cat("Reached maximum iterations = ",i, "without full convergence.\n")
-  }
-}
-standing2024new <- standing2024new |> arrange(desc(SRS))
-
-standing2024final <- left_join(
-  standing2024d,
-  standing2024new |> select(team, MOVnew = MoV, SOSnew = SOS, SRSnew = SRS)
-) |>
-  mutate(
-    MOVdiff = MOVnew - MoV,
-    SOSdiff = SOSnew - SoS,
-    SRSdiff = SRSnew - SRS
-  )
-
-standing2024final$W == standing2024new$win
-standing2024final$L == standing2024new$loss
-standing2024final$`W-L%` == round(standing2024new$win_loss_percent, 3)
-standing2024final$PF == standing2024new$team_score
-standing2024final$PA == standing2024new$opponent_score
-standing2024final$PD == standing2024new$result
-
-
-### 2024 OSRS ----
-standing2024new3 <- standing2024new |>
-  mutate(OSRS = SRS) |>
-  mutate(DSRS = 0) #|>
-#mutate(OSRS = PFG) |>
-#mutate(DSRS = 0)
-
-team_stats <- game_data_formatted %>%
-  group_by(Team) %>%
-  summarise(
-    Games_Played = n(),
-    Total_Points_For = sum(Points_Scored),
-    Total_Points_Against = sum(Points_Allowed),
-    Average_Points_For = mean(Points_Scored),
-    Average_Points_Against = mean(Points_Allowed)
-  ) %>%
-  ungroup() %>%
-  mutate(
-    Off_SRS = Average_Points_For,  # Initial Offensive SRS
-    Def_SRS = Average_Points_Against,  # Initial Defensive SRS
-    SRS = Off_SRS - Def_SRS,  # Initial Overall SRS
-    Off_SOS = 0,  # Initialize Offensive SOS
-    Def_SOS = 0   # Initialize Defensive SOS
-  )
-
-# Iterative Calculation of Offensive and Defensive SRS
-max_iterations <- 100
-tolerance <- 0.001
-for (i in 1:max_iterations) {
-  previous_Off_SRS <- team_stats$Off_SRS
-  previous_Def_SRS <- team_stats$Def_SRS
-  
-  # Update Offensive SOS for each team (Average of Opponents' Defensive SRS)
-  Off_SOS_update <- game_data_formatted %>%
-    left_join(team_stats %>% select(Team, Def_SRS), by = c("Opponent" = "Team")) %>%
-    group_by(Team) %>%
-    summarise(Off_SOS = mean(Def_SRS, na.rm = TRUE))
-  
-  # Update Defensive SOS for each team (Average of Opponents' Offensive SRS)
-  Def_SOS_update <- game_data_formatted %>%
-    left_join(team_stats %>% select(Team, Off_SRS), by = c("Opponent" = "Team")) %>%
-    group_by(Team) %>%
-    summarise(Def_SOS = mean(Off_SRS, na.rm = TRUE))
-  
-  # Merge SOS updates into team_stats
-  team_stats <- team_stats %>%
-    left_join(Off_SOS_update, by = "Team") %>%
-    left_join(Def_SOS_update, by = "Team") %>%
-    mutate(
-      Off_SOS = ifelse(is.na(Off_SOS), 0, Off_SOS),
-      Def_SOS = ifelse(is.na(Def_SOS), 0, Def_SOS)
-    )
-  
-  # Update Offensive SRS
-  team_stats <- team_stats %>%
-    mutate(
-      Off_SRS = Average_Points_For + Off_SOS,
-      Def_SRS = Average_Points_Against - Def_SOS,  # Lower Def_SRS is better
-      SRS = Off_SRS - Def_SRS  # Overall SRS
-    )
-  
-  # Check for convergence
-  if (max(abs(team_stats$Off_SRS - previous_Off_SRS), abs(team_stats$Def_SRS - previous_Def_SRS)) < tolerance) {
-    cat("Converged after", i, "iterations.\n")
-    break
-  }
-  
-  # If last iteration and not converged
-  if (i == max_iterations) {
-    cat("Reached maximum iterations without full convergence.\n")
-  }
-}
-
-
-standing2024new3 <- standing2024new |>
-  mutate(OSRS = team_PPG - mean(team_PPG)) |>
-  mutate(DSRS = 0) 
-
-GD1 <- gameDataLong2024 |>
-  select(team, opponent, team_score, opponent_score) |>
-  group_by(opponent) |>
-  mutate(
-    tempDSOS = mean(opponent_score),
-    tempOSOS = mean(team_score)
-  )
-
-
-GD2 <- GD1 |>
-  group_by(team) |>
-  summarise(newOSRS = round(mean(tempOSRS), 2))
-
-GD3 <- left_join(standing2024new3, GD2) |>
-  mutate(
-    OSRS = ifelse(is.na(newOSRS), 0, newOSRS),
-    DSRS = SRS - OSRS
-    ) |>
-  select(-newOSRS)
-  
-
-GD1 <- gameDataLong2024 |>
-  select(team, opponent, team_score, opponent_score) |>
-  left_join(standing2024new3 |> select(team, OSRS))
-  ungroup() 
-
-
-# Step 6: Iterative Calculation of SRS and SOS
-max_iterations <- 100
-tolerance <- 0.001
-for (i in 1:max_iterations) {
-  previous_OSRS <- standing2024new3$OSRS
-  previous_DSRS <- standing2024new3$DSRS
-  
-  standing2024new3 <- standing2024new3 |>
-    left_join(
-      gameDataLong2024 |>
-        select(team, opponent, team_score) |>
-        group_by(opponent) |>
-        mutate(
-          tempDSRS = mean(team_score),
-          tempOSRS = team_score - tempDSRS
-        ) |>
-        group_by(team) |>
-        summarise(newOSRS = mean(tempOSRS))
-    ) |>
-    mutate(
+      SRS = ifelse(is.na(newSRS), 0, newSRS),
       OSRS = ifelse(is.na(newOSRS), 0, newOSRS),
       DSRS = SRS - OSRS
     ) |>
-    select(-newOSRS)
+    select(-newSOS, -newSRS, -newOSRS)
   
-  if(max(abs(standing2024new3$OSRS - previous_OSRS)) < tolerance){
+  if(max(abs(standing2024$SRS - previous_SRS),
+         abs(standing2024$OSRS - previous_OSRS),
+         abs(standing2024$DSRS - previous_DSRS)) < tolerance){
     cat("Converged after", i, "iterations.\n")
     break
   }
@@ -909,8 +474,521 @@ for (i in 1:max_iterations) {
     cat("Reached maximum iterations = ",i, "without full convergence.\n")
   }
 }
-standing2024new3 <- standing2024new3 |> arrange(desc(SRS))
-standing2024new3
+standing2024 <- standing2024 |> arrange(desc(SRS))
+standing2024pfr <- standing2024pfr |> arrange(desc(SRS))
+
+### Calculate using OSRS ----
+gameData2002 <- load_schedules(seasons = 2002) |>
+  filter(complete.cases(result)) |>
+  filter(game_type == "REG") |>
+  mutate(
+    home_team = clean_team_abbrs(home_team),
+    away_team = clean_team_abbrs(away_team)
+  ) 
+
+gameDataLong2002 <- gameData2002 |>
+  clean_homeaway(invert = c("result", "spread_line")) 
+
+
+standing2002 <- gameDataLong2002 |>
+  filter(!is.na(result)) |>
+  select(
+    week,
+    team,
+    team_score,
+    opponent,
+    opponent_score,
+    location,
+    result
+  ) |>
+  mutate(
+    win = ifelse(result > 0, 1, 0),
+    loss = ifelse(result < 0, 1, 0),
+    tie = ifelse(result == 0, 1, 0)
+  ) |>
+  group_by(team) |>
+  summarise(
+    games_played = n(),
+    across(c(win, 
+             loss,
+             tie,
+             team_score,
+             opponent_score,
+             result),
+           ~sum(.x)),
+  ) |>
+  mutate(
+    win_loss_percent = (win + tie/2)/(win + loss + tie/2),
+    MOV = result/games_played
+  ) |>
+  mutate(team_PPG = team_score/games_played, .after = team_score) |>
+  mutate(opp_PPG = opponent_score/games_played, .after = opponent_score)
+
+leaguePPG2002 <- sum(standing2002$team_score)/sum(standing2002$games_played)
+standing2002 <- standing2002 |>
+  mutate(SOS = 0, .after = MOV) |>
+  mutate(SRS = MOV, .after = SOS) |>
+  mutate(OSRS = team_PPG - leaguePPG2002) |>
+  mutate(DSRS = SRS - OSRS)
+
+max_iterations <- 100
+tolerance <- 0.001
+for (i in 1:max_iterations) {
+  previous_SRS <- standing2002$SRS
+  previous_OSRS <- standing2002$OSRS
+  previous_DSRS <- standing2002$DSRS
+  
+  standing2002 <- standing2002 |>
+    left_join(
+      gameDataLong2002 |>
+        select(team, opponent, result, team_score) |>
+        left_join(standing2002 |> select(team, SRS, DSRS), by = c("opponent" = "team")) |>
+        mutate(
+          SOS = SRS,
+          SRS = result + SOS,
+          OSOS = DSRS,
+          OSRS = team_score + OSOS - mean(team_score)
+        ) |>
+        group_by(team) |>
+        summarise(
+          newSOS = mean(SOS, na.rm = TRUE),
+          newSRS = mean(SRS, na.rm = TRUE),
+          newOSRS = mean(OSRS)
+        )
+    ) |>
+    mutate(
+      SOS = ifelse(is.na(newSOS), 0, newSOS),
+      SRS = ifelse(is.na(newSRS), 0, newSRS),
+      OSRS = ifelse(is.na(newOSRS), 0, newOSRS),
+      DSRS = SRS - OSRS
+    ) |>
+    select(-newSOS, -newSRS, -newOSRS)
+  
+  if(max(abs(standing2002$SRS - previous_SRS),
+         abs(standing2002$OSRS - previous_OSRS),
+         abs(standing2002$DSRS - previous_DSRS)) < tolerance){
+    cat("Converged after", i, "iterations.\n")
+    break
+  }
+  
+  # If last iteration and not converged
+  if (i == max_iterations) {
+    cat("Reached maximum iterations = ",i, "without full convergence.\n")
+  }
+}
+standing2002 <- standing2002 |> arrange(desc(SRS))
+standing2002pfr <- standing2002pfr |> arrange(desc(SRS))
+
+## All regular season games ----
+gameData |>
+  filter(game_type=="REG") |>
+  group_by(season) |>
+  summarise(
+    weeks = max(week)
+  ) |>
+  print(n = length(seasonTrain))
+
+
+### By Season ----
+seasonStandings <- data.frame()
+seasonStandingsConvergence <- data.frame()
+
+tic()
+for(i in seasonTrain){
+  gameDataTemp <- gameData |>
+    filter(season == i) |>
+    filter(game_type == "REG") |>
+    filter(complete.cases(result)) |>
+    mutate(
+      home_team = clean_team_abbrs(home_team),
+      away_team = clean_team_abbrs(away_team)
+    ) 
+  
+  gameDataLongTemp <- gameDataTemp |>
+    clean_homeaway(invert = c("result", "spread_line")) 
+  
+  standingTemp <- gameDataLongTemp |>
+    filter(!is.na(result)) |>
+    select(
+      week,
+      team,
+      team_score,
+      opponent,
+      opponent_score,
+      location,
+      result
+    ) |>
+    mutate(
+      win = ifelse(result > 0, 1, 0),
+      loss = ifelse(result < 0, 1, 0),
+      tie = ifelse(result == 0, 1, 0)
+    ) |>
+    group_by(team) |>
+    summarise(
+      games_played = n(),
+      across(c(win, 
+               loss,
+               tie,
+               team_score,
+               opponent_score,
+               result),
+             ~sum(.x)),
+    ) |>
+    mutate(
+      win_loss_percent = (win + tie/2)/(win + loss + tie/2),
+      MOV = result/games_played
+    ) |>
+    mutate(team_PPG = team_score/games_played, .after = team_score) |>
+    mutate(opp_PPG = opponent_score/games_played, .after = opponent_score)
+  
+  leaguePPGTemp <- sum(standingTemp$team_score)/sum(standingTemp$games_played)
+  standingTemp <- standingTemp |>
+    mutate(SOS = 0, .after = MOV) |>
+    mutate(SRS = MOV, .after = SOS) |>
+    mutate(OSRS = team_PPG - leaguePPGTemp) |>
+    mutate(DSRS = SRS - OSRS)
+  
+  max_iterations <- 100
+  tolerance <- 0.001
+  for (k in 1:max_iterations) {
+    previous_SRS <- standingTemp$SRS
+    previous_OSRS <- standingTemp$OSRS
+    previous_DSRS <- standingTemp$DSRS
+    
+    standingTemp <- standingTemp |>
+      left_join(
+        gameDataLongTemp |>
+          select(team, opponent, result, team_score) |>
+          left_join(standingTemp |> select(team, SRS, DSRS), by = c("opponent" = "team")) |>
+          mutate(
+            SOS = SRS,
+            SRS = result + SOS,
+            OSOS = DSRS,
+            OSRS = team_score + OSOS - mean(team_score)
+          ) |>
+          group_by(team) |>
+          summarise(
+            newSOS = mean(SOS, na.rm = TRUE),
+            newSRS = mean(SRS, na.rm = TRUE),
+            newOSRS = mean(OSRS)
+          ), 
+        by = join_by(team)
+      ) |>
+      mutate(
+        SOS = ifelse(is.na(newSOS), 0, newSOS),
+        SRS = ifelse(is.na(newSRS), 0, newSRS),
+        OSRS = ifelse(is.na(newOSRS), 0, newOSRS),
+        DSRS = SRS - OSRS
+      ) |>
+      select(-newSOS, -newSRS, -newOSRS)
+    
+    if(max(abs(standingTemp$SRS - previous_SRS),
+           abs(standingTemp$OSRS - previous_OSRS),
+           abs(standingTemp$DSRS - previous_DSRS)) < tolerance){
+      cat("Converged after", k, "iterations.\n")
+      break
+    }
+    
+    # If last iteration and not converged
+    if (k == max_iterations) {
+      cat("Reached maximum iterations = ",k, "without full convergence.\n")
+    }
+  }
+  standingTemp <- standingTemp |> 
+    mutate(season = i, .before = 1) |>
+    arrange(team)
+  
+  seasonStandingsConvergence <- rbind(
+    seasonStandingsConvergence,
+    data.frame(season = i, Converge = k)
+  )
+  
+  seasonStandings <- rbind(seasonStandings, standingTemp)
+  
+  cat("Season", i, "\n")
+}
+toc()
+save(seasonStandings, file = "./Model Fitting/Data/seasonStandings.RData")
+
+### By Season and Week ----
+#### No prior ----
+seasonWeekStandings <- data.frame()
+seasonWeekStandingsConvergence <- data.frame()
+
+tic()
+for(i in seasonTrain){
+  gameDataSeason <- gameData |>
+    filter(season == i) |>
+    filter(game_type == "REG")
+  seasonWeeks <- max(gameDataSeason$week)
+  
+  for(j in 1:seasonWeeks){
+    gameDataTemp <- gameDataSeason |>
+      filter(week %in% 1:j) |>
+      filter(complete.cases(result)) |>
+      mutate(
+        home_team = clean_team_abbrs(home_team),
+        away_team = clean_team_abbrs(away_team)
+      ) 
+    
+    gameDataLongTemp <- gameDataTemp |>
+      clean_homeaway(invert = c("result", "spread_line")) 
+    
+    standingTemp <- gameDataLongTemp |>
+      filter(!is.na(result)) |>
+      select(
+        week,
+        team,
+        team_score,
+        opponent,
+        opponent_score,
+        location,
+        result
+      ) |>
+      mutate(
+        win = ifelse(result > 0, 1, 0),
+        loss = ifelse(result < 0, 1, 0),
+        tie = ifelse(result == 0, 1, 0)
+      ) |>
+      group_by(team) |>
+      summarise(
+        games_played = n(),
+        across(c(win, 
+                 loss,
+                 tie,
+                 team_score,
+                 opponent_score,
+                 result),
+               ~sum(.x)),
+      ) |>
+      mutate(
+        win_loss_percent = (win + tie/2)/(win + loss + tie/2),
+        MOV = result/games_played
+      ) |>
+      mutate(team_PPG = team_score/games_played, .after = team_score) |>
+      mutate(opp_PPG = opponent_score/games_played, .after = opponent_score)
+    
+    leaguePPGTemp <- sum(standingTemp$team_score)/sum(standingTemp$games_played)
+    standingTemp <- standingTemp |>
+      mutate(SOS = 0, .after = MOV) |>
+      mutate(SRS = MOV, .after = SOS) |>
+      mutate(OSRS = team_PPG - leaguePPGTemp) |>
+      mutate(DSRS = SRS - OSRS)
+    
+    max_iterations <- 100
+    tolerance <- 0.001
+    for (k in 1:max_iterations) {
+      previous_SRS <- standingTemp$SRS
+      previous_OSRS <- standingTemp$OSRS
+      previous_DSRS <- standingTemp$DSRS
+      
+      standingTemp <- standingTemp |>
+        left_join(
+          gameDataLongTemp |>
+            select(team, opponent, result, team_score) |>
+            left_join(standingTemp |> select(team, SRS, DSRS), by = c("opponent" = "team")) |>
+            mutate(
+              SOS = SRS,
+              SRS = result + SOS,
+              OSOS = DSRS,
+              OSRS = team_score + OSOS - mean(team_score)
+            ) |>
+            group_by(team) |>
+            summarise(
+              newSOS = mean(SOS, na.rm = TRUE),
+              newSRS = mean(SRS, na.rm = TRUE),
+              newOSRS = mean(OSRS)
+            ), 
+          by = join_by(team)
+        ) |>
+        mutate(
+          SOS = ifelse(is.na(newSOS), 0, newSOS),
+          SRS = ifelse(is.na(newSRS), 0, newSRS),
+          OSRS = ifelse(is.na(newOSRS), 0, newOSRS),
+          DSRS = SRS - OSRS
+        ) |>
+        select(-newSOS, -newSRS, -newOSRS)
+      
+      if(max(abs(standingTemp$SRS - previous_SRS),
+             abs(standingTemp$OSRS - previous_OSRS),
+             abs(standingTemp$DSRS - previous_DSRS)) < tolerance){
+        cat("Converged after", k, "iterations.\n")
+        break
+      }
+      
+      # If last iteration and not converged
+      if (k == max_iterations) {
+        cat("Reached maximum iterations = ",k, "without full convergence.\n")
+      }
+    }
+    standingTemp <- standingTemp |> 
+      mutate(week = j, .before = 1) |>
+      mutate(season = i, .before = 1) |>
+      arrange(team)
+    
+    seasonWeekStandings <- rbind(seasonWeekStandings, standingTemp)
+    
+    seasonWeekStandingsConvergence <- rbind(
+      seasonWeekStandingsConvergence,
+      data.frame(season = i, week = j, Converge = k)
+    )
+    
+    cat("Season", i, "Week", j, "\n")
+  }
+}
+toc()
+save(seasonWeekStandings, file = "./Model Fitting/Data/seasonWeekStandings.RData")
+
+##### Plot results ----
+seasonWeekStandingsMerge <- seasonWeekStandings |>
+  mutate(week = week + 1) |>
+  select(
+    season,
+    week,
+    team,
+    games_played,
+    win,
+    loss,
+    tie,
+    team_PPG,
+    opp_PPG,
+    win_loss_percent,
+    MOV,
+    SOS,
+    SRS,
+    OSRS,
+    DSRS
+  )
+
+seasonWeekGameData <- gameData |>
+  left_join(seasonWeekStandingsMerge |>
+              select(
+                season,
+                week,
+                team,
+                games_played,
+                win,
+                loss,
+                tie,
+                team_PPG,
+                opp_PPG,
+                win_loss_percent,
+                MOV,
+                SOS,
+                SRS,
+                OSRS,
+                DSRS
+              ) |>
+              rename_with(~paste0("home_", .x), .cols = c(-season,-week, -team)),
+            by = join_by(season, week, "home_team" == "team")) |>
+  left_join(seasonWeekStandingsMerge |>
+              select(
+                season,
+                week,
+                team,
+                games_played,
+                win,
+                loss,
+                tie,
+                team_PPG,
+                opp_PPG,
+                win_loss_percent,
+                MOV,
+                SOS,
+                SRS,
+                OSRS,
+                DSRS
+              ) |>
+              rename_with(~paste0("away_", .x), .cols = c(-season,-week, -team)),
+            by = join_by(season, week, "away_team" == "team"))
+
+seasonWeekGameDataLong <- gameDataLong |>
+  left_join(seasonWeekStandingsMerge |>
+              select(
+                season,
+                week,
+                team,
+                games_played,
+                win,
+                loss,
+                tie,
+                team_PPG,
+                opp_PPG,
+                win_loss_percent,
+                MOV,
+                SOS,
+                SRS,
+                OSRS,
+                DSRS
+              ) |>
+              rename_with(~paste0("team_", .x), .cols = c(-season,-week, -team)),
+            by = join_by(season, week, team)) |>
+  left_join(seasonWeekStandingsMerge |>
+              select(
+                season,
+                week,
+                team,
+                games_played,
+                win,
+                loss,
+                tie,
+                team_PPG,
+                opp_PPG,
+                win_loss_percent,
+                MOV,
+                SOS,
+                SRS,
+                OSRS,
+                DSRS
+              ) |>
+              rename_with(~paste0("opponent_", .x), .cols = c(-season,-week, -team)),
+            by = join_by(season, week, "opponent" == "team"))
+
+seasonWeekGameData <- seasonWeekGameData |>
+  mutate(
+    SRS_spread = home_SRS - away_SRS + 2,
+    SRS_spread_diff = SRS_spread - spread_line
+    ) |>
+  filter(game_type == "REG") |>
+  mutate(
+    season = factor(season, ordered = TRUE),
+    week = factor(week, ordered = TRUE)
+  )
+
+ggplot(data = seasonWeekGameData, 
+       aes(x = SRS_spread, y = result, color = week, group = week)) +
+  geom_point() +
+  sm_statCorr(legends = TRUE) +
+  facet_wrap(vars(season))
+
+ggplot(data = seasonWeekGameData, 
+       aes(x = SRS_spread, y = spread_line, color = week, group = week)) +
+  geom_point() +
+  sm_statCorr(legends = TRUE)
+
+seasonWeekGameData |>
+  group_by(season) |>
+  summarise(
+    mean(SRS_spread_diff, na.rm = TRUE)
+    ) |>
+  print(n = length(seasonTrain))
+
+ggplot(data = seasonWeekGameData) +
+  geom_histogram(
+    aes(x = SRS_spread_diff, after_stat(density)), bins = 100,
+    color = "#99c7c7", fill = "#bcdcdc") +
+  geom_vline(aes(xintercept = mean(SRS_spread_diff, na.rm = TRUE)),
+             color = "orange", linewidth = 2) +
+  geom_vline(aes(xintercept = median(SRS_spread_diff, na.rm = TRUE)),
+             color = "orange3", linewidth = 2) +
+  geom_density(#data = final_data3,
+    aes(x = SRS_spread_diff),
+    color = "#007C7C", 
+    linewidth = 1) +
+  theme_bw()
+
+
+
 iters <- 5000
 burn <- 1000
 chains <- 1
