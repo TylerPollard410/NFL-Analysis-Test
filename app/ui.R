@@ -25,6 +25,30 @@ library(gtExtras)
 library(reactable)
 library(reactablefmtr)
 
+## Plotting ----
+library(smplot2)
+# library(cowplot)
+# library(GGally)
+# library(patchwork)
+
+## Modeling ----
+library(elo)
+library(MASS)
+library(bestNormalize)
+library(tictoc)
+library(caret)
+library(splines)
+library(mgcv)
+library(DescTools)
+library(car)
+library(bayesplot)
+library(BayesFactor)
+library(rstanarm)
+library(tidybayes)
+library(loo)
+library(brms)
+library(performance)
+
 ## NFL Verse ----
 library(nflverse)
 
@@ -38,7 +62,7 @@ my_theme <- create_theme(
     bg = "#2d3b4d"
   ),
   bs4dash_status(
-    primary = "purple", info = "gold"
+    primary = "purple", info = "#eec900"
   )
 )
 tags$style(".buttoncolor.bttn-primary{background-color: #6399b8")
@@ -95,7 +119,9 @@ shinyUI(
                   ## Navbar Menu ------------------
                   navbarMenu(
                     id = "navMenu",
+                    ### Home Tab ----
                     navbarTab(tabName = "homeTab", text = "Home"),
+                    ### Data Tab ----
                     navbarTab(tabName = "dataTab", text = "Data",
                               navbarTab(tabName = "standingsTab", text = "Standing"), # end Standings
                               navbarTab(tabName = "scoresTab", text = "Scores"), # end Scores
@@ -151,7 +177,13 @@ shinyUI(
                                         navbarTab(tabName = "playerFantasyRanksTab", text = "Ranks") # end Fantasy
                               ) # end Player
                     ), # end Data Tab
-                    navbarTab(tabName = "bettingTab", text = "Betting"),
+                    ### Betting Tab ----
+                    navbarTab(tabName = "bettingTab", text = "Betting",
+                              navbarTab(tabName = "bettingGameTab", text = "Games"),
+                              navbarTab(tabName = "bettingPlayerPropsTab", text = "Player Props")
+                    ), # end Betting Tab
+                    
+                    ### Prediction Tab ----
                     navbarTab(tabName = "predictionTab", text = "Prediction Models")
                   ) # end navbarMenu
                 ), # close header
@@ -175,6 +207,8 @@ shinyUI(
                   #   )
                   # ) # close sidebar menu
                 ), # close dashboard sidebar
+                # Dashboard Controlbar ==================
+                controlbar = dashboardControlbar(),
                 # Dashboard Body ================
                 body = dashboardBody(
                   tabItems(
@@ -196,11 +230,59 @@ shinyUI(
                     tabItem(
                       tabName = "standingsTab",
                       fluidPage(
-                        withSpinner(
-                          reactableOutput(outputId = "standingsTable"), type = 8
-                          )
+                        fluidRow(
+                          ##### Season ----
+                          column(width = 1,
+                                 pickerInput(
+                                   inputId = "standingsSeason",
+                                   label = "Select season",
+                                   choices = seq(2003, get_current_season()),
+                                   selected = get_current_season()
+                                   # options = pickerOptions(
+                                   #   style = "background-color: #eec900;"
+                                   # )
+                                 )
+                          ),
+                          ##### Table Stat ----
+                          column(width = 2,
+                                 radioGroupButtons(
+                                   inputId = "standingsStat",
+                                   label = "Table Statistic",
+                                   choices = c("Total", "Game"),
+                                   status = "info"
+                                 )
+                          ) # end column
+                        ), # end fluidRow
+                        fluidRow(
+                          column(
+                            width = 6,
+                            withSpinner(
+                              gt_output(outputId = "standingsTableAFC"), type = 8
+                            )
+                          ), # end AFC column
+                          column(
+                            width = 6,
+                            withSpinner(
+                              gt_output(outputId = "standingsTableNFC"), type = 8
+                            )
+                          ) # end NFC column
+                        ), # end divsion standings row
+                        fluidRow(
+                          column(
+                            width = 6,
+                            withSpinner(
+                              gt_output(outputId = "standingsTableAFCplayoffs"), type = 8
+                            )
+                          ), # end AFC column
+                          column(
+                            width = 6,
+                            withSpinner(
+                              gt_output(outputId = "standingsTableNFCplayoffs"), type = 8
+                            )
+                          ) # end NFC column
+                        ) # end divsion standings row
                       ) # end fluidPage
-                    ), # end Player Offense Scrimmage tabItem
+                    ), # end Standings tabItem
                     ## Scores Tab #############################################
                     ## Team Tab ###############################################
                     ### Team Offense ==========================================
@@ -370,6 +452,8 @@ shinyUI(
                     ### Player Fantasy ========================================
                     #### Ranks ----
                     # Betting Tab  ############################################
+                    
+                    
                     # Prediction Tab  #########################################
                   ) # end tab Items
                 ) # end dashboard body
