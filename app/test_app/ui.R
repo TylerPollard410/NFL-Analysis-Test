@@ -129,7 +129,72 @@ shinyUI(
                     id = "navMenu",
                     ### Home Tab ----
                     navbarTab(tabName = "homeTab", text = "Home")
-                  ) # end navbarMenu
+                  )
+                  #   ### Data Tab
+                  #   navbarTab(tabName = "dataTab", text = "Data",
+                  #             navbarTab(tabName = "standingsTab", text = "Standing"), # end Standings
+                  #             navbarTab(tabName = "scoresTab", text = "Scores"), # end Scores
+                  #             navbarTab(tabName = "teamTab", text = "Team",
+                  #                       dropdownHeader("Offense"),
+                  #                       navbarTab(tabName = "teamOffenseOverviewTab", text = "Overview"),
+                  #                       navbarTab(tabName = "teamOffensePassingTab", text = "Passing"),
+                  #                       navbarTab(tabName = "teamOffenseRushingTab", text = "Rushing"),
+                  #                       navbarTab(tabName = "teamOffenseConversionsTab", text = "Conversions"),
+                  #                       navbarTab(tabName = "teamOffenseDriveAveragesTab", text = "Drive Averages"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Defense"),
+                  #                       navbarTab(tabName = "teamDefenseOverviewTab", text = "Overview"),
+                  #                       navbarTab(tabName = "teamDefensePassingTab", text = "Passing"),
+                  #                       navbarTab(tabName = "teamDefenseRushingTab", text = "Rushing"),
+                  #                       navbarTab(tabName = "teamDefenseConversionsTab", text = "Conversions"),
+                  #                       navbarTab(tabName = "teamDefenseDriveAveragesTab", text = "Drive Averages"),
+                  #                       navbarTab(tabName = "teamDefensePositionTab", text = "Against Position",
+                  #                                 navbarTab(tabName = "teamDefensePositionQBTab", text = "Against QB"),
+                  #                                 navbarTab(tabName = "teamDefensePositionRBTab", text = "Against RB"),
+                  #                                 navbarTab(tabName = "teamDefensePositionTETab", text = "Against TE"),
+                  #                                 navbarTab(tabName = "teamDefensePositionWRTab", text = "Against WR")
+                  #                       ),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Special Teams"),
+                  #                       navbarTab(tabName = "teamSpecialTeamsReturnsTab", text = "Kick/Punt Returns"),
+                  #                       navbarTab(tabName = "teamSpecialTeamsKickingTab", text = "Kicing"),
+                  #                       navbarTab(tabName = "teamSpecialTeamsPuntingTab", text = "Punting"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Scoring"),
+                  #                       navbarTab(tabName = "teamScoringForTab", text = "Scoring For"),
+                  #                       navbarTab(tabName = "teamScoringAgainstTab", text = "Scoring Against")
+                  #             ), # end Team
+                  #             navbarTab(tabName = "playerTab", text = "Player",
+                  #                       dropdownHeader("Offense"),
+                  #                       navbarTab(tabName = "playerOffenseScrimmageTab", text = "Scrimmage"),
+                  #                       navbarTab(tabName = "playerOffensePassingTab", text = "Passing"),
+                  #                       navbarTab(tabName = "playerOffenseRushingTab", text = "Rushing"),
+                  #                       navbarTab(tabName = "playerOffenseReceivingTab", text = "Receiving"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Defense"),
+                  #                       navbarTab(tabName = "playerDefenseOverviewTab", text = "Overview"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Special Teams"),
+                  #                       navbarTab(tabName = "playerSpecialTeamsReturnsTab", text = "Kick/Punt Returns"),
+                  #                       navbarTab(tabName = "playerSpecialTeamsKickingTab", text = "Kicking"),
+                  #                       navbarTab(tabName = "playerSpecialTeamsPuntingTab", text = "Punting"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Scoring"),
+                  #                       navbarTab(tabName = "playerScoringOverviewTab", text = "Overview"),
+                  #                       dropdownDivider(),
+                  #                       dropdownHeader("Fantasy"),
+                  #                       navbarTab(tabName = "playerFantasyRanksTab", text = "Ranks") # end Fantasy
+                  #             ) # end Player
+                  #   ), # end Data Tab
+                  #   ### Betting Tab
+                  #   navbarTab(tabName = "bettingTab", text = "Betting",
+                  #             navbarTab(tabName = "bettingGameTab", text = "Games"),
+                  #             navbarTab(tabName = "bettingPlayerPropsTab", text = "Player Props")
+                  #   ), # end Betting Tab
+                  #   
+                  #   ### Prediction Tab
+                  #   navbarTab(tabName = "predictionTab", text = "Prediction Models")
+                  # ) # end navbarMenu
                 ), # close header
                 scrollToTop = TRUE,
                 # Dashboard Sidebar =============
@@ -184,7 +249,7 @@ shinyUI(
                                           imageOutput("image"))
                           ),
                           withMathJax(),
-                          includeMarkdown("./_docs/Description.Rmd")
+                          includeMarkdown("../_docs/Description.Rmd")
                       ) # end box
                     ), # close Home tab Item 
                     # Data Tab ################################################

@@ -59,20 +59,20 @@ teamsData <- load_teams(current = FALSE)
 load(file = "./Model Fitting/Data/seasonStandings.RData")
 
 ## Current Season ----
-gameDataCurrent <- load_schedules(seasons = get_current_season()) |>
-  #filter(complete.cases(result)) |>
-  filter(game_type == "REG") |>
-  mutate(
-    home_team = clean_team_abbrs(home_team),
-    away_team = clean_team_abbrs(away_team)
-  )
-
-gameDataLongCurrent <- gameDataCurrent |>
-  clean_homeaway(invert = c("result", "spread_line"))
+# gameDataCurrent <- load_schedules(seasons = get_current_season()) |>
+#   #filter(complete.cases(result)) |>
+#   filter(game_type == "REG") |>
+#   mutate(
+#     home_team = clean_team_abbrs(home_team),
+#     away_team = clean_team_abbrs(away_team)
+#   )
+# 
+# gameDataLongCurrent <- gameDataCurrent |>
+#   clean_homeaway(invert = c("result", "spread_line"))
 
 
 ## Create Function
-calculateStandings <- function(season = 2024){
+calculateStandings <- function(game_data = NULL, season = 2024){
   if(!IsWhole(season)){
     stop("Please enter integer value between 2003 and 2024")
     #return(NULL)
@@ -82,13 +82,31 @@ calculateStandings <- function(season = 2024){
     stop("Please enter integer value between 2003 and 2024")
   }
   
-  gameDataCurrent <- load_schedules(seasons = season) |>
-    filter(complete.cases(result)) |>
-    filter(game_type == "REG") |>
-    mutate(
-      home_team = clean_team_abbrs(home_team),
-      away_team = clean_team_abbrs(away_team)
-    ) 
+  if(is.null(game_data)){
+    gameDataCurrent <- load_schedules(seasons = season) |>
+      filter(complete.cases(result)) |>
+      filter(game_type == "REG") |>
+      mutate(
+        home_team = clean_team_abbrs(home_team),
+        away_team = clean_team_abbrs(away_team)
+      ) 
+  }else{
+    gameDataCurrent <- game_data |>
+      filter(season == season) |>
+      filter(complete.cases(result)) |>
+      filter(game_type == "REG") |>
+      mutate(
+        home_team = clean_team_abbrs(home_team),
+        away_team = clean_team_abbrs(away_team)
+      ) 
+  }
+  # gameDataCurrent <- load_schedules(seasons = season) |>
+  #   filter(complete.cases(result)) |>
+  #   filter(game_type == "REG") |>
+  #   mutate(
+  #     home_team = clean_team_abbrs(home_team),
+  #     away_team = clean_team_abbrs(away_team)
+  #   ) 
   
   gameDataLongCurrent <- gameDataCurrent |>
     clean_homeaway(invert = c("result", "spread_line")) 
@@ -208,7 +226,10 @@ calculateStandings <- function(season = 2024){
 standingsSeason <- 2024
 standingsStat <- "Total"
 
-standingsCurrent <- calculateStandings(season = standingsSeason)
+standingsCurrent <- calculateStandings(
+  #game_data = gameDataCurrent,
+  season = standingsSeason
+)
 
 gameDataCurrent <- load_schedules(seasons = standingsSeason) |>
   filter(game_type == "REG") |>
@@ -353,13 +374,19 @@ standingsTableAFC <- standingsTableData |>
       columns = c("team_name", "W-L%", "PD")
     )
   ) |>
+  tab_style(
+    style = cell_borders(sides = "right", weight = "0.5px"),
+    locations = cells_body(
+      columns = c("GP")
+    )
+  ) |>
   cols_label(
     team = "",
     team_name = "Team"
   )
 standingsTableAFC
 
-### AFC Table ----
+### AFC Playoff Table ----
 conf_logo <- teamsData |> 
   filter(team_conf == "AFC") |>
   pull(team_conference_logo) |>
@@ -379,7 +406,7 @@ standingsTableAFCplayoffs <- standingsTableData |>
     "CON%",
     "DIV%"
   ) |>
-  arrange(seed, desc(`W-L%`)) |>
+  arrange(seed, desc(`W-L%`), desc(`CON%`), desc(`DIV%`)) |>
   gt() |>
   sub_missing(
     columns = "seed"
@@ -409,6 +436,12 @@ standingsTableAFCplayoffs <- standingsTableData |>
     style = cell_borders(sides = "right"),
     locations = cells_body(
       columns = c("team_name", "T")
+    )
+  ) |>
+  tab_style(
+    style = cell_borders(sides = "right", weight = "0.5px"),
+    locations = cells_body(
+      columns = c("GP")
     )
   ) |>
   tab_style(

@@ -4,10 +4,9 @@ username: tylerpollard410
 account: tylerpollard410
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
-appId: 13005668
-bundleId: 9244906
+appId: 13249603
+bundleId: 9325811
 url: https://tylerpollard410.shinyapps.io/NFL_Analysis/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: server2.R|Testing Scripts/Reading and Cleaning Data.R|ui2.R

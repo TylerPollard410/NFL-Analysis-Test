@@ -56,7 +56,7 @@ library(tidyverse)
 #teamsData <- load_teams(current = FALSE)
 
 ## Historical Season -----
-#load(file = "./Model Fitting/Data/seasonStandings.RData")
+#load(file = "./_data/seasonStandings.RData")
 
 ## Current Season ----
 # gameDataCurrent <- load_schedules(seasons = get_current_season()) |>

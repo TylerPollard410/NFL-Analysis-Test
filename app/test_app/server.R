@@ -28,11 +28,11 @@ playerKickingData <- load_player_stats(
 )
 
 # Load Historical Data ----
-load(file = "./_data/seasonStandings.RData")
+load(file = "../_data/seasonStandings.RData")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
-source("./scripts/Standings.R", local = TRUE)
+source("../scripts/Standings.R", local = TRUE)
 
 # Define server logic #########################################################
 shinyServer(function(input, output, session) {
@@ -53,7 +53,7 @@ shinyServer(function(input, output, session) {
   
   # Home Tab  ###############################################
   output$image <- renderImage({
-    filename <- normalizePath(file.path("./www/nfl_logo.jpeg"))
+    filename <- normalizePath(file.path("../www/nfl_logo.jpeg"))
     list(src = filename,
          width = "60%",
          height = "400px",
