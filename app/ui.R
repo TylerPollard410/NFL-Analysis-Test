@@ -30,9 +30,11 @@ library(reactablefmtr)
 library(smplot2)
 # library(cowplot)
 # library(GGally)
-# library(patchwork)
+library(patchwork)
 
 ## Modeling ----
+library(pracma)
+library(forecast)
 library(elo)
 library(MASS)
 library(bestNormalize)
