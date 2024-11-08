@@ -46,11 +46,6 @@ shinyServer(function(input, output, session) {
     )
   })
   
-  # Sidebar #################################################
-  observeEvent(input$menu_items,{
-    updateSidebar(id = "sidebar", session = session)
-  })
-  
   # Home Tab  ###############################################
   output$image <- renderImage({
     filename <- normalizePath(file.path("../www/nfl_logo.jpeg"))
@@ -479,10 +474,10 @@ shinyServer(function(input, output, session) {
   #### Scrimmage ----
   #### Passing ----
   output$playerOffensePassingTable <- renderReactable({
-    inputSeason <- seq(input$playerOffenseSeason[1], input$playerOffenseSeason[2])
-    inputGameType <- input$playerOffenseGameType
-    inputTeams <- input$playerOffenseTeam
-    inputStat <- input$playerOffenseStat
+    inputSeason <- seq(input$playerOffensePassingSeason[1], input$playerOffensePassingSeason[2])
+    inputGameType <- input$playerOffensePassingGameType
+    inputTeams <- input$playerOffensePassingTeam
+    inputStat <- input$playerOffensePassingStat
     
     playerOffensePassingTableBase <- playerOffenseData |>
       filter(season %in% inputSeason) |>
