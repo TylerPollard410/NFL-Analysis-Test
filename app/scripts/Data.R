@@ -158,7 +158,7 @@ teamsData <- load_teams(current = FALSE)
 
 ##  Game/Schedule Data
 gameData <- load_schedules(seasons = TRUE) |>
-  filter(season %in% seasonTrain) |>
+  filter(season >= 2002) |>
   mutate(
     home_team = clean_team_abbrs(home_team),
     away_team = clean_team_abbrs(away_team)
@@ -649,6 +649,8 @@ gameData |>
 seasonStandings <- data.frame()
 seasonStandingsConvergence <- data.frame()
 
+seasonTrain <- sort(unique(gameData$season))
+
 tic()
 for(i in seasonTrain){
   gameDataTemp <- gameData |>
@@ -846,13 +848,13 @@ tic()
 for(i in seasonTrain){
   gameDataSeason <- gameData |>
     filter(season == i) |>
-    filter(game_type == "REG")
+    #filter(game_type == "REG")
+    filter(complete.cases(result))
   seasonWeeks <- max(gameDataSeason$week)
   
   for(j in 1:seasonWeeks){
     gameDataTemp <- gameDataSeason |>
       filter(week %in% 1:j) |>
-      filter(complete.cases(result)) |>
       mutate(
         home_team = clean_team_abbrs(home_team),
         away_team = clean_team_abbrs(away_team)
@@ -964,7 +966,7 @@ for(i in seasonTrain){
   }
 }
 toc()
-save(seasonWeekStandings, file = "./Model Fitting/Data/seasonWeekStandings.RData")
+save(seasonWeekStandings, file = "./_data/seasonWeekStandings.RData")
 
 ##### Plot results ----
 seasonWeekStandingsMerge <- seasonWeekStandings |>

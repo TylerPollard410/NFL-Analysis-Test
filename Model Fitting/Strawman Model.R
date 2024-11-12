@@ -4,6 +4,7 @@ library(shinydashboard)
 library(bs4Dash)
 library(shinyWidgets)
 library(shinycssloaders)
+library(shinyjs)
 library(waiter)
 library(RColorBrewer)
 library(fresh)
@@ -25,9 +26,11 @@ library(reactablefmtr)
 library(smplot2)
 # library(cowplot)
 # library(GGally)
-# library(patchwork)
+library(patchwork)
 
 ## Modeling ----
+library(pracma)
+library(forecast)
 library(elo)
 library(MASS)
 library(bestNormalize)
@@ -51,6 +54,28 @@ library(nflverse)
 ## Tidyverse ----
 library(tidyverse)
 
+
+# Load Data ----
+## Teams Data 
+teamsData <- load_teams(current = FALSE)
+
+##  Game/Schedule Data
+gameData <- load_schedules(seasons = TRUE) |>
+  filter(season >= 2003) |>
+  mutate(
+    home_team = clean_team_abbrs(home_team),
+    away_team = clean_team_abbrs(away_team)
+  )
+
+gameDataLong <- gameData |>
+  clean_homeaway(invert = c("result", "spread_line")) 
+
+## Rosters
+rostersData <- load_rosters_weekly(seasons = TRUE) |>
+  filter(season >= 2003) 
+
+## Injuries
+injuryData <- load_injuries(seasons = TRUE)
 
 # Modelling -----
 iters <- 5000
