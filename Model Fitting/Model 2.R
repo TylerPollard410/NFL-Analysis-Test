@@ -486,30 +486,31 @@ sims <- (iters-burn)*chains
 
 fit1 <- brm(
   bf(mvbind(home_score, away_score) ~ 
-       (1|H|home_team) + (1|A|away_team) +
-       home_rest + away_rest +
-       home_SRS + away_SRS +
-       home_off_pass_epa_adj + away_def_pass_epa_adj +
-       home_off_rush_epa_adj + away_def_rush_epa_adj +
-       home_def_pass_epa_adj + away_off_pass_epa_adj +
-       home_def_rush_epa_adj + away_off_rush_epa_adj +
-       game_type +
-       div_game +
+       #(1|H|home_team) + (1|A|away_team) +
+       #home_rest + away_rest +
+       #home_MOV_mov + away_MOV_mov +
+       home_SRS_mov + away_SRS_mov +
+       # home_off_pass_epa_adj + away_def_pass_epa_adj +
+       # home_off_rush_epa_adj + away_def_rush_epa_adj +
+       # home_def_pass_epa_adj + away_off_pass_epa_adj +
+       # home_def_rush_epa_adj + away_off_rush_epa_adj +
+       # game_type +
+       # div_game +
        #roof +
        #surface +
-       temp2 +
-       wind2 +
-       (1|season) + (1|week)
-  ) +
-    set_rescor(rescor = TRUE),
+       # temp2 +
+       # wind2 +
+       (1|season) + (1|game_id)
+  ), #+
+    #set_rescor(rescor = FALSE),
   data = modelDataTrain,
-  family = brmsfamily(family = "gaussian"),
+  family = brmsfamily(family = "negbinomial"),
   save_pars = save_pars(all = TRUE),
   seed = 52,
   warmup = burn,
   iter = iters,
   chains = chains,
-  normalize = FALSE,
+  normalize = TRUE,
   control = list(adapt_delta = 0.95)
 )
 

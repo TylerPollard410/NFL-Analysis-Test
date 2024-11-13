@@ -56,7 +56,7 @@ library(tidyverse)
 ## Set universal params ---- 
 future::plan("multisession")
 saveFileExt <- "~/Desktop/NFL Analysis Data/"
-seasonTrain <- 2003:2023
+seasonTrain <- 2002:2023
 
 ## Data Dictionaries ----
 dataDictionaries <- list(
@@ -843,6 +843,7 @@ save(
 #### No prior ----
 seasonWeekStandings <- data.frame()
 seasonWeekStandingsConvergence <- data.frame()
+seasonTrain <- 2002:most_recent_season()
 
 tic()
 for(i in seasonTrain){
@@ -904,7 +905,7 @@ for(i in seasonTrain){
       mutate(OSRS = team_PPG - leaguePPGTemp) |>
       mutate(DSRS = SRS - OSRS)
     
-    max_iterations <- 100
+    max_iterations <- 200
     tolerance <- 0.001
     for (k in 1:max_iterations) {
       previous_SRS <- standingTemp$SRS
