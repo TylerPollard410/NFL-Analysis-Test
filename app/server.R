@@ -1,38 +1,42 @@
 # Read in Data ################################################################
-## Game Data ----
-gameData <- load_schedules(seasons = 2003:most_recent_season())
-
-## Play-by-play Data ----
-#playsData <- load_pbp(seasons = most_recent_season())
+allSeasons <- 2002:most_recent_season()
 
 ## Team Data ----
 teamsData <- load_teams(current = FALSE)
 
+## Game Data ----
+source(file = "./data-raw/gameData.R")
+
+source(file = "./data-raw/gameDataLong.R")
+
+## Play-by-play Data ----
+#playsData <- load_pbp(seasons = most_recent_season())
+
 ## Player Data ----
 ### Offense ----
 playerOffenseData <- load_player_stats(
-  seasons = 2003:most_recent_season(),
+  seasons = allSeasons,
   stat_type = "offense"
 )
 
 ### Defense ----
 playerDefenseData <- load_player_stats(
-  seasons = 2003:most_recent_season(),
+  seasons = allSeasons,
   stat_type = "defense"
 )
 
 ### Kicking ----
 playerKickingData <- load_player_stats(
-  seasons = 2003:most_recent_season(),
+  seasons = allSeasons,
   stat_type = "kicking"
 )
 
 # Load Historical Data ----
-load(file = "./_data/seasonStandings.RData")
+load(file = "./data/seasonStandings.rda")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
-source("./scripts/Standings.R", local = TRUE)
+source("./R/calculateStandings.R", local = TRUE)
 
 # Define server logic #########################################################
 shinyServer(function(input, output, session) {
@@ -68,14 +72,13 @@ shinyServer(function(input, output, session) {
     standingsStat <- input$standingsStat
     
     if(standingsSeason == get_current_season()){
-      standingsCurrent <- calculateStandings(season = standingsSeason)
+      standingsCurrent <- calculateStandings(season = standingsSeason,
+                                             game_data = gameData)
       
-      gameDataCurrent <- load_schedules(seasons = standingsSeason) |>
-        filter(game_type == "REG") |>
-        mutate(
-          home_team = clean_team_abbrs(home_team),
-          away_team = clean_team_abbrs(away_team)
-        )
+      gameDataCurrent <- gameData |>
+        filter(season == standingsSeason) |>
+        filter(game_type == "REG") 
+      
       standingCurrentNFLverse <- calculate_standings(
         nflverse_object = gameDataCurrent |> filter(!is.na(result)),
         tiebreaker_depth = 2

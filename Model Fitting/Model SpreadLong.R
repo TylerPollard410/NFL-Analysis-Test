@@ -266,15 +266,10 @@ epaGameDataLongLag <- epaGameDataLag |>
     team_SRS = lag(team_SRS),
     team_OSRS = lag(team_OSRS),
     team_DSRS = lag(team_DSRS),
-    # opponent_SRS = lag(opponent_SRS),
     team_off_pass_epa_adj = lag(team_off_pass_epa_adj),
     team_off_rush_epa_adj = lag(team_off_rush_epa_adj),
     team_def_pass_epa_adj = lag(team_def_pass_epa_adj),
     team_def_rush_epa_adj = lag(team_def_rush_epa_adj)
-    # opponent_off_pass_epa_adj = lag(opponent_off_pass_epa_adj),
-    # opponent_off_rush_epa_adj = lag(opponent_off_rush_epa_adj),
-    # opponent_def_pass_epa_adj = lag(opponent_def_pass_epa_adj),
-    # opponent_def_rush_epa_adj = lag(opponent_def_rush_epa_adj)
   ) |>
   ungroup()
 
@@ -308,15 +303,10 @@ epaGameDataLongLag <- epaGameDataLag |>
     team_SRS = lag(team_SRS),
     team_OSRS = lag(team_OSRS),
     team_DSRS = lag(team_DSRS),
-    # opponent_SRS = lag(opponent_SRS),
     team_off_pass_epa_adj = lag(team_off_pass_epa_adj),
     team_off_rush_epa_adj = lag(team_off_rush_epa_adj),
     team_def_pass_epa_adj = lag(team_def_pass_epa_adj),
     team_def_rush_epa_adj = lag(team_def_rush_epa_adj)
-    # opponent_off_pass_epa_adj = lag(opponent_off_pass_epa_adj),
-    # opponent_off_rush_epa_adj = lag(opponent_off_rush_epa_adj),
-    # opponent_def_pass_epa_adj = lag(opponent_def_pass_epa_adj),
-    # opponent_def_rush_epa_adj = lag(opponent_def_rush_epa_adj)
   ) |>
   mutate(
     team_MOV_mov = ifelse(is.na(team_MOV), lag(team_MOV), team_MOV),

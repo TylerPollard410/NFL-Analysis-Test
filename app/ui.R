@@ -186,7 +186,7 @@ shinyUI(
                                           imageOutput("image"))
                           ),
                           withMathJax(),
-                          includeMarkdown("./_docs/Description.Rmd")
+                          includeMarkdown("./docs/Description.Rmd")
                       ) # end box
                     ), # close Home tab Item 
                     # Data Tab ################################################
@@ -329,7 +329,9 @@ shinyUI(
                                )
                         ) # end column
                       ), # end fluidRow
-                      tabsetPanel(
+                      tabBox(
+                        type = "pills",
+                        width = 12,
                         tabPanel(
                           title = "Overview"
                         ),

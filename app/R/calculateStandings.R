@@ -52,43 +52,23 @@ library(nflverse)
 library(tidyverse)
 
 # Load Data ----
-## Team info ----
-#teamsData <- load_teams(current = FALSE)
-
-## Historical Season -----
-#load(file = "./_data/seasonStandings.RData")
-
-## Current Season ----
-# gameDataCurrent <- load_schedules(seasons = get_current_season()) |>
-#   #filter(complete.cases(result)) |>
-#   filter(game_type == "REG") |>
-#   mutate(
-#     home_team = clean_team_abbrs(home_team),
-#     away_team = clean_team_abbrs(away_team)
-#   ) 
-# 
-# gameDataLongCurrent <- gameDataCurrent |>
-#   clean_homeaway(invert = c("result", "spread_line")) 
-
+#source(file = "./data-raw/gameData.R")
 
 ## Create Function
-calculateStandings <- function(season = 2024){
-  if(!IsWhole(season)){
+calculateStandings <- function(seasons = 2024, game_data = NULL){
+  if(!IsWhole(seasons)){
     stop("Please enter integer value between 2003 and 2024")
     #return(NULL)
   }
   
-  if(season < 2003 | season > get_current_season()){
+  if(seasons < 2003 | seasons > get_current_season()){
     stop("Please enter integer value between 2003 and 2024")
   }
   
-  gameDataCurrent <- load_schedules(seasons = season) |>
+  gameDataCurrent <- game_data |>
+    filter(season == seasons) |>
     filter(complete.cases(result)) |>
-    filter(game_type == "REG") |>
-    mutate(
-      home_team = clean_team_abbrs(home_team),
-      away_team = clean_team_abbrs(away_team)
-    ) 
+    filter(game_type == "REG")
   
   gameDataLongCurrent <- gameDataCurrent |>
     clean_homeaway(invert = c("result", "spread_line")) 
@@ -203,21 +183,28 @@ calculateStandings <- function(season = 2024){
   
   return(standingCurrent)
 }
-#standingsCurrent <- calculateStandings(season = 2024)
 
-
-# # Get seeding ----
+# Make Table -----
+# standingsSeason <- as.numeric(2024)
+# standingsStat <- "Total"
+# 
+# standingsCurrent <- calculateStandings(season = standingsSeason, game_data = gameData)
+# 
+# gameDataCurrent <- gameData |>
+#   filter(season == standingsSeason) |>
+#   filter(game_type == "REG") 
+# 
 # standingCurrentNFLverse <- calculate_standings(
-#   nflverse_object = gameDataCurrent |> filter(!is.na(result))
+#   nflverse_object = gameDataCurrent |> filter(!is.na(result)),
+#   tiebreaker_depth = 2
 # )
 # 
-# # Make gt table ----
 # standingsTableData <- standingsCurrent |>
 #   left_join(
 #     standingCurrentNFLverse |>
 #       select(
-#         team, 
-#         div_rank, 
+#         team,
+#         div_rank,
 #         seed,
 #         div_pct,
 #         conf_pct,
@@ -240,24 +227,40 @@ calculateStandings <- function(season = 2024){
 #     conf_pct,
 #     div_pct,
 #     everything()
-#   ) |> 
+#   ) |>
 #   left_join(
 #     teamsData,
 #     by = join_by(team == team_abbr,team_name, team_conf, team_division)
-#   )
-# 
-# standingsTable <- standingsTableData |>
-#   filter(team_conf == "AFC") |>
+#   ) |>
 #   rename(
 #     "GP" = games_played,
 #     "W" = win,
 #     "L" = loss,
 #     "T" = tie,
 #     "W-L%" = win_loss_percent,
+#     "CON%" = conf_pct,
+#     "DIV%" = div_pct,
 #     "PF" = team_score,
 #     "PA" = opponent_score,
 #     "PD" = result
-#   ) |>
+#   )
+# 
+# standingsTableData <- standingsTableData |>
+#   rowwise() |>
+#   mutate(
+#     PF = ifelse(standingsStat == "Total", PF, round(PF/GP, 2)),
+#     PA = ifelse(standingsStat == "Total", PA, round(PA/GP, 2)),
+#     PD = ifelse(standingsStat == "Total", PD, round(PD/GP, 2)),
+#   )
+# 
+# conf_logo <- teamsData |> 
+#   filter(team_conf == "AFC") |>
+#   pull(team_conference_logo) |>
+#   unique()
+# 
+# ## gt table ----
+# standingsTableData |>
+#   filter(team_conf == "AFC") |>
 #   select(
 #     "team",
 #     "team_name",
@@ -279,16 +282,17 @@ calculateStandings <- function(season = 2024){
 #   ) |>
 #   group_by(team_division) |>
 #   arrange(team_division, div_rank) |>
-#   gt() |>
+#   gt(id = "one") |>
 #   cols_hide(
 #     columns = "div_rank"
 #   ) |>
 #   gt_nfl_logos(
-#     columns = "team"
+#     columns = "team",
+#     height = "25px"
 #   ) |>
 #   fmt_percent(
 #     columns = "W-L%",
-#     decimals = 2
+#     decimals = 1
 #   ) |>
 #   fmt_number(
 #     columns = c("MOV", "SOS", "SRS", "OSRS", "DSRS"),
@@ -299,9 +303,18 @@ calculateStandings <- function(season = 2024){
 #     method = "numeric",
 #     palette = c("red", "green")
 #   ) |>
+#   tab_header(
+#     title = div(style = "display: flex; align-items: center;",
+#                 img(src = conf_logo, style = "height: 25px;"),
+#                 strong(standingsSeason, style = "margin-left: 6px"),
+#                 strong("Standings", style = "margin-left: 4px")
+#     )
+#   ) |>
 #   tab_options(
 #     data_row.padding = 0,
-#     column_labels.font.weight = "bold"
+#     column_labels.font.weight = "bold",
+#     heading.title.font.size = "150%",
+#     table.font.size = "90%"
 #   ) |>
 #   tab_style(
 #     style = cell_borders(sides = "right"),
@@ -309,13 +322,32 @@ calculateStandings <- function(season = 2024){
 #       columns = c("team_name", "W-L%", "PD")
 #     )
 #   ) |>
+#   tab_style(
+#     style = cell_borders(sides = "right", weight = "0.5px"),
+#     locations = cells_body(
+#       columns = c("GP")
+#     )
+#   ) |>
 #   cols_label(
 #     team = "",
 #     team_name = "Team"
-#   )
+#   ) |> 
+#   opt_css(
+#     css = "
+#     #one .gt_stub {
+#     position: sticky;
+#     left: 0;
+#     }
+#     
+#     #one .gt_col_heading {
+#     position: sticky;
+#     top: 0;
+#     }
 # 
-# standingsTable
-
+#     thead th:first-child {
+#     left: 0;
+#     z-index: 2;
+#     }")
 
 
 
