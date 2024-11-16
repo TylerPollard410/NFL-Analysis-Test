@@ -203,10 +203,6 @@ shinyUI(
                                  label = "Select season",
                                  choices = seq(2003, get_current_season()),
                                  selected = get_current_season()
-                                 # options = pickerOptions(
-                                 #   container = "body",
-                                 #   style = "background-color: #eec900;"
-                                 # )
                                )
                         ),
                         ###### Table Stat ----
@@ -223,30 +219,22 @@ shinyUI(
                       fluidRow(
                         column(
                           width = 6,
-                          withSpinner(
-                            gt_output(outputId = "standingsTableAFC"), type = 8
-                          )
+                          standingsTableOutput("standingsTableAFC")
                         ), # end AFC column
                         column(
                           width = 6,
-                          withSpinner(
-                            gt_output(outputId = "standingsTableNFC"), type = 8
-                          )
+                          standingsTableOutput("standingsTableNFC")
                         ) # end NFC column
                       ), # end divsion standings row
                       ##### Playoffs Table ----
                       fluidRow(
                         column(
                           width = 6,
-                          withSpinner(
-                            gt_output(outputId = "standingsTableAFCplayoffs"), type = 8
-                          )
+                          standingsPlayoffsTableOutput("standingsPlayoffsTableAFC")
                         ), # end AFC column
                         column(
                           width = 6,
-                          withSpinner(
-                            gt_output(outputId = "standingsTableNFCplayoffs"), type = 8
-                          )
+                          standingsPlayoffsTableOutput("standingsPlayoffsTableNFC")
                         ) # end NFC column
                       ) # end playoff standings row
                       #) # end fluidPage
@@ -337,9 +325,7 @@ shinyUI(
                         ),
                         tabPanel(
                           title = "Passing",
-                          withSpinner(
-                            reactableOutput(outputId = "playerOffensePassingTable"), type = 8
-                          )
+                          playerOffensePassingTableOutput("playerOffensePassingTable")
                         ),
                         tabPanel(
                           title = "Rushing"
