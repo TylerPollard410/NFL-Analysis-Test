@@ -46,6 +46,8 @@ library(brms)
 library(performance)
 
 ## NFL Verse ----
+library(DBI)
+library(RSQLite)
 library(nflverse)
 
 ## Tidyverse ----
@@ -57,68 +59,95 @@ future::plan("multisession")
 saveFileExt <- "~/Desktop/NFL Analysis Data/"
 seasonTrain <- 2003:2023
 
-## Data Dictionaries ----
-dataDictionaries <- list(
-  ## Data Dictionary: Combine
-  combine = dictionary_combine,
-  
-  ## Data Dictionary: Contracts
-  contracts = dictionary_contracts,
-  
-  ## Data Dictionary: Depth Charts
-  depth_charts = dictionary_depth_charts,
-  
-  ## Data Dictionary: Draft Picks
-  draft_picks = dictionary_draft_picks,
-  
-  ## Data Dictionary: ESPN QBR
-  espn_qbr = dictionary_espn_qbr,
-  
-  ## Data Dictionary: Expected Fantasy Points
-  ff_opportunity = dictionary_ff_opportunity,
-  
-  ## Data Dictionary: Fantasy Player IDs
-  ff_playerids = dictionary_ff_playerids,
-  
-  ## Data Dictionary: Fantasy Football Rankings
-  ff_rankings = dictionary_ff_rankings,
-  
-  ## Data Dictionary: FTN Charting Data
-  ftn_charting = dictionary_ftn_charting,
-  
-  ## Data Dictionary: Injuries
-  injuries = dictionary_injuries,
-  
-  ## Data Dictionary: Next Gen Stats
-  nextgen_stats = dictionary_nextgen_stats,
-  
-  ## Data Dictionary: Participation
-  participation = dictionary_participation,
-  
-  ## Data Dictionary: Play by Play
-  pbp = dictionary_pbp,
-  
-  ## Data Dictionary: PFR Passing
-  pfr_passing = dictionary_pfr_passing,
-  
-  ## Data Dictionary: Player Stats
-  player_stats = dictionary_player_stats,
-  
-  ## Data Dictionary: Player Stats Defense
-  player_stats_def = dictionary_player_stats_def,
-  
-  ## Data Dictionary: Rosters
-  rosters = dictionary_rosters,
-  
-  ## Data Dictionary: Schedules
-  schedules = dictionary_schedules,
-  
-  ## Data Dictionary: Snap Counts
-  snap_counts = dictionary_snap_counts,
-  
-  ## Data Dictionary: Trades
-  trades = dictionary_trades
-)
+# pbp database -----
+update_db(dbdir = "~/Desktop/NFL Analysis Data")
+
+# Update 2024 
+update_db(dbdir = "~/Desktop/NFL Analysis Data", force_rebuild = 2024)
+
+# Connect to database
+pbpConnection <- DBI::dbConnect(RSQLite::SQLite(), "~/Desktop/NFL Analysis Data/pbp_db")
+pbpConnection
+
+# See present tables
+pbpDBtable <- DBI::dbListTables(pbpConnection)
+pbpDBtable
+
+# Function to see fields of data ----
+DBI::dbListFields(pbpConnection, pbpDBtable)
+
+tic()
+progressr::with_progress(pbp_db <- tbl(pbpConnection, pbpDBtable))
+tic()
+pbp_db |>
+  filter(season == 2024) |>
+  select(everything()) |>
+  collect()
+
+object.size(pbp_db)
+
+# ## Data Dictionaries ----
+# dataDictionaries <- list(
+#   ## Data Dictionary: Combine
+#   combine = dictionary_combine,
+#   
+#   ## Data Dictionary: Contracts
+#   contracts = dictionary_contracts,
+#   
+#   ## Data Dictionary: Depth Charts
+#   depth_charts = dictionary_depth_charts,
+#   
+#   ## Data Dictionary: Draft Picks
+#   draft_picks = dictionary_draft_picks,
+#   
+#   ## Data Dictionary: ESPN QBR
+#   espn_qbr = dictionary_espn_qbr,
+#   
+#   ## Data Dictionary: Expected Fantasy Points
+#   ff_opportunity = dictionary_ff_opportunity,
+#   
+#   ## Data Dictionary: Fantasy Player IDs
+#   ff_playerids = dictionary_ff_playerids,
+#   
+#   ## Data Dictionary: Fantasy Football Rankings
+#   ff_rankings = dictionary_ff_rankings,
+#   
+#   ## Data Dictionary: FTN Charting Data
+#   ftn_charting = dictionary_ftn_charting,
+#   
+#   ## Data Dictionary: Injuries
+#   injuries = dictionary_injuries,
+#   
+#   ## Data Dictionary: Next Gen Stats
+#   nextgen_stats = dictionary_nextgen_stats,
+#   
+#   ## Data Dictionary: Participation
+#   participation = dictionary_participation,
+#   
+#   ## Data Dictionary: Play by Play
+#   pbp = dictionary_pbp,
+#   
+#   ## Data Dictionary: PFR Passing
+#   pfr_passing = dictionary_pfr_passing,
+#   
+#   ## Data Dictionary: Player Stats
+#   player_stats = dictionary_player_stats,
+#   
+#   ## Data Dictionary: Player Stats Defense
+#   player_stats_def = dictionary_player_stats_def,
+#   
+#   ## Data Dictionary: Rosters
+#   rosters = dictionary_rosters,
+#   
+#   ## Data Dictionary: Schedules
+#   schedules = dictionary_schedules,
+#   
+#   ## Data Dictionary: Snap Counts
+#   snap_counts = dictionary_snap_counts,
+#   
+#   ## Data Dictionary: Trades
+#   trades = dictionary_trades
+# )
 
 ## nflverse data ----
 ##  Play By Play

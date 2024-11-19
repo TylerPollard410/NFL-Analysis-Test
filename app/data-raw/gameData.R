@@ -2,7 +2,9 @@
 library(nflverse)
 library(tidyverse)
 
+# Create game data -----
 allSeasons <- 2002:most_recent_season()
+
 gameData <- load_schedules(seasons = allSeasons) |>
   mutate(
     home_team = clean_team_abbrs(home_team),
@@ -10,8 +12,9 @@ gameData <- load_schedules(seasons = allSeasons) |>
   ) 
 
 # Betting Probs ----
-gameDataBetProbs <- gameData |>
+gameData <- gameData |>
   mutate(
+    season_type = ifelse(game_type == "REG", "REG", "POST"),
     home_spread_prob = ifelse(home_spread_odds < 0, 
                               abs(home_spread_odds)/(abs(home_spread_odds) + 100),
                               100/(home_spread_odds + 100)),
@@ -31,12 +34,17 @@ gameDataBetProbs <- gameData |>
                                  abs(away_moneyline)/(abs(away_moneyline) + 100),
                                  100/(away_moneyline + 100)),
     spreadCover = ifelse(result > spread_line, TRUE, 
-                   ifelse(result < spread_line, FALSE, NA)),
+                         ifelse(result < spread_line, FALSE, NA)),
     totalCover = ifelse(total > total_line, TRUE, 
-                         ifelse(total < total_line, FALSE, NA)),
+                        ifelse(total < total_line, FALSE, NA)),
     winner = ifelse(result > 0, home_team, 
-                    ifelse(result < 0, away_team, NA))
+                    ifelse(result < 0, away_team, NA)),
+    gamehour = as.numeric(str_extract(gametime, "[:digit:]+(?=:)")),
+    time_of_day = ifelse(gamehour < 15, "Day",
+                         ifelse(between(gamehour, 15, 18), "Evening", "Night"))
   ) |>
+  select(-gamehour) |>
+  relocate(season_type, .after = game_type) |>
   relocate(home_spread_prob, .after = home_spread_odds) |>
   relocate(away_spread_prob, .after = away_spread_odds) |>
   relocate(under_prob, .after = under_odds) |>
@@ -45,27 +53,9 @@ gameDataBetProbs <- gameData |>
   relocate(away_moneyline_prob, .after = away_moneyline) |>
   relocate(spreadCover, .after = spread_line) |>
   relocate(totalCover, .after = total_line) |>
-  relocate(winner, .after = result)
-  
+  relocate(winner, .after = result) |>
+  relocate(time_of_day, .after = gametime)
 
-# Record and Points ----
-gameDataLong <- gameDataBetProbs |>
-  clean_homeaway(invert = c("result", "spread_line"))
-
-gameDataLongPoints <- gameDataLong |>
-  group_by(season, team) |>
-  mutate(
-    team_GP = row_number(),
-    winner = ifelse(team == winner, TRUE, 
-                    ifelse(opponent == winner, FALSE, NA)),
-    team_W = cumsum(winner),
-    team_L = cumsum(!winner),
-    team_T = team_GP - team_W - team_L,
-    team_PF = cumsum(team_score),
-    team_PFG = team_PF/team_GP,
-    team_PA = cumsum(opponent_score),
-    team_PAG = team_PA/team_GP,
-  )
 
 
 

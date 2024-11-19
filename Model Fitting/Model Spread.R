@@ -129,7 +129,7 @@ unique(pbpData$play_type_nfl)
 
 ### Passing ----
 tic()
-epaPass <- pbpData |>
+epaPass <- pbp_db |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   filter(play_type == "pass") |> 
   group_by(game_id,season, week, posteam, home_team, away_team) |>

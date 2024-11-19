@@ -438,6 +438,78 @@ shinyServer(function(input, output, session) {
   ### Player Fantasy ========================================
   #### Ranks ----
   # Betting Tab  ############################################
+  ## Games ==================================================
+  futureGameIDs <- gameData |>
+    filter(!is.na(spread_line) & is.na(result)) |>
+    pull(game_id)
+  
+  futureGameData <- gameData |>
+    filter(game_id %in% futureGameIDs)
+  
+  futureGameDataLong <- gameDataLong |>
+    filter(game_id %in% futureGameIDs)
+  
+  futureGameDates <- unique(futureGameData |> select(week, gameday, weekday))
+  
+  lapply(futureGameIDs, function(x){
+    bettingGamesLinesTableServer(x, teamsData, futureGameDataLong, gameID = x)
+  })
+  
+  output$bettingGamesLinesUI <- renderUI({
+    #format(as_date(unique(futureGameData |> select(gameday, weekday))$gameday[1]), "%A, %B %d")
+    req(length(futureGameIDs) > 0)
+    bettingGamesLinesTagList <- tagList()
+    
+    for(i in 1:nrow(futureGameData)){
+      if(i == 1){
+        futureWeek1 <- h1("Week", futureGameData$week[i])
+        futureDate1 <- h3(format(as_date(futureGameData |>
+                                           select(gameday, weekday) |>
+                                           slice(i) |>
+                                           pull(gameday)),
+                                 "%A, %B %d"))
+        # futureGame1 <- div(bettingGamesLinesTableOutput(futureGameIDs[i]),
+        #                    style = "display: inline-flex; align-items: center; margin-right: 20px")
+        futureGame1 <- div(box(
+          bettingGamesLinesTableOutput(futureGameIDs[i]),
+          width = 12),
+          style = "display: inline-block; align-items: center;"
+        )
+      }else{
+        if(futureGameData$week[i] != futureGameData$week[i-1]){
+          futureWeek <- h1("Week", futureGameData$week[i])
+        }else{futureWeek <- NULL}
+        if(futureGameData$gameday[i] != futureGameData$gameday[i-1]){
+          futureDate <- h3(format(as_date(futureGameData |>
+                                            select(gameday, weekday) |>
+                                            slice(i) |>
+                                            pull(gameday)),
+                                  "%A, %B %d"))
+        }else{futureDate <- NULL}
+        bettingGamesLinesTagList <-tagList(
+          bettingGamesLinesTagList,
+          futureWeek,
+          futureDate,
+          # div(bettingGamesLinesTableOutput(futureGameIDs[i]), 
+          #     style = "display: inline-flex; align-items: center; margin-right: 20px")
+          div(box(
+            bettingGamesLinesTableOutput(futureGameIDs[i]),
+            width = 12),
+            style = "display: inline-block; align-items: center;"
+          )
+        )
+      }
+    }
+    bettingGamesLinesTagList <- tagList(
+      futureWeek1,
+      futureDate1,
+      futureGame1,
+      bettingGamesLinesTagList
+      #lapply(futureGameIDs, function(x){bettingGamesLinesTableOutput(x)})
+    )
+    bettingGamesLinesTagList
+  })
+  
   # Prediction Tab  #########################################
   
 }) # end server

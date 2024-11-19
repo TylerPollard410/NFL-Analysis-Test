@@ -107,6 +107,7 @@ standingsTableServer <- function(id,
                     strong("Standings", style = "margin-left: 4px; font-size: 25px")
         ),
         width = 12,
+        maximizable = TRUE,
         withSpinner(
           gt_output(NS(id, "standingsTable")), type = 8
         )

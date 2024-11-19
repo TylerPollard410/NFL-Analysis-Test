@@ -19,6 +19,9 @@ library(stringr)
 library(rvest)
 
 ## Tables ----
+library(DBI)
+library(RSQLite)
+library(data.table)
 library(htmltools)
 library(gt)
 library(gtsummary)
@@ -271,11 +274,13 @@ shinyUI(
                       fluidRow(
                         ##### Season ----
                         column(width = 3,
-                               sliderTextInput(
+                               noUiSliderInput(
                                  inputId = "playerOffenseSeason",
                                  label = "Select seasons",
-                                 choices = seq(2003, get_current_season()),
-                                 selected = c(get_current_season(),get_current_season())
+                                 min = 2003,
+                                 max = get_current_season(),
+                                 step = 1,
+                                 value = c(get_current_season(),get_current_season())
                                )
                         ),
                         ##### Game Type ----
@@ -334,7 +339,7 @@ shinyUI(
                           title = "Receiving"
                         )
                       )
-                    ) # end Player Offense tabItem
+                    ), # end Player Offense tabItem
                     #### Rushing ----
                     #### Receiving ----
                     #### Conversions ----
@@ -349,7 +354,15 @@ shinyUI(
                     ### Player Fantasy ========================================
                     #### Ranks ----
                     # Betting Tab  ############################################
-                    
+                    ## Games Tab ==============================================
+                    tabItem(
+                      tabName = "bettingGamesTab",
+                      h4("Betting Game Lines"),
+                      fluidRow(
+                        uiOutput(outputId = "bettingGamesLinesUI"),
+                      )
+                      
+                    )
                     
                     # Prediction Tab  #########################################
                   ) # end tab Items
