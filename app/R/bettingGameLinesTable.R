@@ -13,23 +13,28 @@ bettingGamesLinesTableServer <- function(id,
                                          gameID){
   
   lineData <- gameDataLong |>
-    filter(season == most_recent_season()) |>
-    group_by(team) |>
-    mutate(
-      team_W = ifelse(is.na(lag(team_W)), 0, lag(team_W)),
-      team_L = ifelse(is.na(lag(team_L)), 0, lag(team_L)),
-      team_T = ifelse(is.na(lag(team_T)), 0, lag(team_T))
-    ) |>
-    ungroup() |>
+    # filter(season == most_recent_season()) |>
+    # group_by(team) |>
+    # mutate(
+    #   team_W = ifelse(is.na(lag(team_W)), 0, lag(team_W)),
+    #   team_L = ifelse(is.na(lag(team_L)), 0, lag(team_L)),
+    #   team_T = ifelse(is.na(lag(team_T)), 0, lag(team_T))
+    # ) |>
+    # ungroup() |>
     filter(game_id == gameID) |>
     mutate(
       rowID = row_number(),
+      spread_line = -spread_line,
+      spread_line = ifelse(spread_line > 0, paste0("+", spread_line), spread_line),
       team_spread_odds = paste0("(", team_spread_odds, ")"),
-      total_line = ifelse(rowID == 1, paste0("over ", total_line), paste0("under ", total_line)),
+      total_line = ifelse(rowID == 1, paste0("o", total_line), paste0("u", total_line)),
       total_odds = ifelse(rowID == 1, paste0("(",over_odds,")"), paste0("(",under_odds,")")),
+      team_moneyline = ifelse(team_moneyline > 0, paste0("+", team_moneyline), team_moneyline),
       record = ifelse(team_T == 0, 
                       paste0("(", team_W, "-", team_L, ")"),
                       paste0("(", team_W, "-", team_L, "-", team_T, ")")),
+      location = str_to_sentence(location),
+      recordLocation = paste(record, location),
       gametime = ifelse(str_sub(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), 1, 1) == "0",
                         str_replace(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), "0", ""),
                         format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"))
@@ -45,8 +50,7 @@ bettingGamesLinesTableServer <- function(id,
       gametime,
       team,
       team_nick,
-      record,
-      location,
+      recordLocation,
       spread_line,
       team_spread_odds,
       total_line,
@@ -56,6 +60,7 @@ bettingGamesLinesTableServer <- function(id,
   
   moduleServer(id, function(input, output, session){
     
+    req(lineData)
     output$bettingGamesLinesTable <- render_gt({
       lineData |>
         select(-c(weekday, gameday, gametime)) |>
@@ -66,7 +71,7 @@ bettingGamesLinesTableServer <- function(id,
         ) |>
         gt_merge_stack(
           col1 = team_nick,
-          col2 = record,
+          col2 = recordLocation,
           font_size = c("16px", "14px"),
           font_weight = c("bold", "normal")
         ) |>
@@ -85,16 +90,9 @@ bettingGamesLinesTableServer <- function(id,
         tab_style(
           style = cell_borders(sides = "bottom", style = "hidden"),
           locations = cells_body(
-            columns = c(team, team_nick, location),
+            columns = c(team, team_nick),
             rows = 1
           )
-        ) |>
-        tab_style(
-          style = list(
-            cell_borders(sides = "right", weight = "0.5px"),
-            cell_text(v_align = "top",color = "grey")
-          ),
-          locations = cells_body(columns = c(location))
         ) |>
         tab_style(
           locations = cells_body(columns = c(team_moneyline)),
@@ -104,7 +102,7 @@ bettingGamesLinesTableServer <- function(id,
           table.border.top.style = "hidden"
         ) |>
         cols_width(
-          location ~ "100px"
+          team_nick ~ "100px"
         ) |>
         cols_align(
           columns = c(spread_line, total_line, team_moneyline),
@@ -113,43 +111,62 @@ bettingGamesLinesTableServer <- function(id,
         cols_label(
           team = "",
           team_nick = "",
-          location = "",
           spread_line = "Spread",
           total_line = "Total",
           team_moneyline = "Moneyline"
         )
-    }, width = pct(100)) # end renderGT
+    }) # end renderGT
+    
     
     output$bettingGamesLinesTableUI <- renderUI({
-      #fluidRow(
-      #box(
-      # title = div(style = "display: flex; align-items: center;",
-      #             strong(lineData$weekday[1]), ",",
-      #             strong(lineData$gameday[1]), #, style = "margin-left: 6px; font-size: 25px"),
-      #             strong(lineData$gametime[1]) #, style = "margin-left: 4px; font-size: 25px")
-      # ),
-      #width = 4,
-      gt_output(NS(id, "bettingGamesLinesTable"))
-      #)
-      #)
+      box(
+        title = div(
+          style = "display:flex; justify-content:space-between",
+          div(
+            #style = "flex:1; display:flex; justify-content:flex-start",
+            style = "display:inline-block; margin-right: 50px",
+            strong(lineData$gametime[1])
+          ),
+          div(
+            #style = "flex:1; display:inline-flex; justify-content:flex-end",
+            style = "display:inline-block; flex:1",
+            actionBttn(NS(id, "bettingGamesLinesTableBttn"), 
+                       label = "Full Matchup Comparison",
+                       style = "material-flat",
+                       color = "primary",
+                       size = "xs")
+          )
+        ),
+        width = 12,
+        div(
+          style = "margin-top:-20px; padding:-10px",
+          gt_output(NS(id, "bettingGamesLinesTable"))
+        )
+      )
     })
   }) # end module Server
 } # end bettingGameLinesTable Server
 
-
+# App Test ----
 # bettingGamesLinesTableApp <- function() {
 #   ui <- fluidPage(
-#     uiOutput(outputId = "bettingGamesLinesUI")
+#     fluidRow(
+#       column(12,
+#              style = "display:inline-flex; align:center",
+#              uiOutput(outputId = "bettingGamesLinesUI")
+#       #style = "margin-left:10%; margin-right:10%"
+#       )
+#     )
 #   )
 #   server <- function(input, output, session) {
 #     allSeasons <- 2002:most_recent_season()
-#     
+# 
 #     ## Team Data ----
 #     teamsData <- load_teams(current = FALSE)
-#     
+# 
 #     ## Game Data ----
 #     source(file = "./app/data-raw/gameData.R")
-#     
+# 
 #     source(file = "./app/data-raw/gameDataLong.R")
 #     
 #     futureGameIDs <- gameData |>
@@ -165,24 +182,24 @@ bettingGamesLinesTableServer <- function(id,
 #     futureGameDates <- unique(futureGameData |> select(week, gameday, weekday))
 #     
 #     lapply(futureGameIDs, function(x){
-#       bettingGamesLinesTableServer(x, teamsData, futureGameDataLong, gameID = x)
+#       bettingGamesLinesTableServer(x, teamsData, gameDataLong, gameID = x)
 #     })
 #     
 #     output$bettingGamesLinesUI <- renderUI({
-#       #format(as_date(unique(futureGameData |> select(gameday, weekday))$gameday[1]), "%A, %B %d")
 #       req(length(futureGameIDs) > 0)
 #       bettingGamesLinesTagList <- tagList()
 #       
 #       for(i in 1:nrow(futureGameData)){
 #         if(i == 1){
-#           futureWeek1 <- h1("Week", futureGameData$week[i])
-#           futureDate1 <- h3(format(as_date(futureGameData |>
-#                                              select(gameday, weekday) |>
-#                                              slice(i) |>
-#                                              pull(gameday)),
-#                                    "%A, %B %d"))
-#           futureGame1 <- div(bettingGamesLinesTableOutput(futureGameIDs[i]),
-#                              style = "display: inline-flex; align-items: center; margin-right: 20px")
+#           futureWeek <- h1("Week", futureGameData$week[i])
+#           futureDate <- h3(format(as_date(futureGameData |>
+#                                             select(gameday, weekday) |>
+#                                             slice(i) |>
+#                                             pull(gameday)),
+#                                   "%A, %B %d"))
+#           # futureGame1 <- div(bettingGamesLinesTableOutput(futureGameIDs[i]),
+#           #                    style = "display: inline-flex; align-items: center; margin-right: 20px")
+#           futureGame <- bettingGamesLinesTableOutput(futureGameIDs[i])
 #         }else{
 #           if(futureGameData$week[i] != futureGameData$week[i-1]){
 #             futureWeek <- h1("Week", futureGameData$week[i])
@@ -194,22 +211,17 @@ bettingGamesLinesTableServer <- function(id,
 #                                               pull(gameday)),
 #                                     "%A, %B %d"))
 #           }else{futureDate <- NULL}
-#           bettingGamesLinesTagList <-tagList(
-#             bettingGamesLinesTagList,
-#             futureWeek,
-#             futureDate,
-#             div(bettingGamesLinesTableOutput(futureGameIDs[i]), 
-#                 style = "display: inline-flex; align-items: center; margin-right: 20px")
-#           )
+#           futureGame <- bettingGamesLinesTableOutput(futureGameIDs[i])
 #         }
+#         bettingGamesLinesTagList <- tagList(
+#           bettingGamesLinesTagList,
+#           futureWeek,
+#           futureDate,
+#           div(futureGame,
+#               style = "display: inline-flex; align-items: center; margin-right: 20px")
+#         )
 #       }
-#       bettingGamesLinesTagList <- tagList(
-#         futureWeek1,
-#         futureDate1,
-#         futureGame1,
-#         bettingGamesLinesTagList
-#         #lapply(futureGameIDs, function(x){bettingGamesLinesTableOutput(x)})
-#       )
+#       #lapply(futureGameIDs, function(x){bettingGamesLinesTableOutput(x)})
 #       bettingGamesLinesTagList
 #     })
 #   }

@@ -57,9 +57,11 @@ library(tidyverse)
 ## Set universal params ---- 
 future::plan("multisession")
 saveFileExt <- "~/Desktop/NFL Analysis Data/"
-seasonTrain <- 2003:2023
+allSeasons <- 2002:2023
 
-# pbp database -----
+# pbp Data ----
+## Using DBI ----
+# pbp database
 update_db(dbdir = "~/Desktop/NFL Analysis Data")
 
 # Update 2024 
@@ -73,7 +75,7 @@ pbpConnection
 pbpDBtable <- DBI::dbListTables(pbpConnection)
 pbpDBtable
 
-# Function to see fields of data ----
+# Function to see fields of data 
 DBI::dbListFields(pbpConnection, pbpDBtable)
 
 tic()
@@ -85,6 +87,70 @@ pbp_db |>
   collect()
 
 object.size(pbp_db)
+
+## readRDS ----
+pbp_list <- list()
+url <- "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_"
+tic()
+for(i in 1:length(allSeasons)){
+  year <- as.character(allSeasons[i])
+  urlRead <- paste0(url, year, ".rds")
+  pbp_list[[year]] <- readRDS(url(urlRead))
+}
+toc()
+pbp_rds <- bind_rows(pbp_list)
+pbp2023 <- readRDS(url("https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_2023.rds"))
+
+## fst ----
+library(fst)
+for(i in allSeasons){
+  year <- as.character(i)
+  path <- paste0("~/Desktop/NFL Analysis Data/pbpData", i, ".fst")
+  write_fst(pbp_list_fst[[year]], path = path, compress = 100)
+}
+
+fst_file_sizes <- c()
+for(i in allSeasons){
+  file <- paste0("~/Desktop/NFL Analysis Data/pbpData", i, ".fst")
+  fileSize <- file.size(file)
+  fst_file_sizes <- c(fst_file_sizes, fileSize)
+}
+sum(fst_file_sizes)
+
+# pbp_list_fst <- list()
+# tic()
+# for(i in allSeasons){
+#   year <- as.character(i)
+#   path <- paste0("~/Desktop/NFL Analysis Data/pbpData", i, ".fst")
+#   pbp_list_fst[[year]] <- read_fst(path)
+# }
+# toc()
+
+# tic()
+# pbpData_fst <- bind_rows(pbp_list_fst)
+# toc()
+# str(pbp)
+
+pbpData_fst <- data.frame()
+tic()
+for(i in allSeasons){
+  year <- as.character(i)
+  path <- paste0("~/Desktop/NFL Analysis Data/pbpData", i, ".fst")
+  temp_pbp <- read_fst(path)
+  pbpData_fst <- rbind(pbpData_fst, temp_pbp)
+}
+toc()
+
+
+
+## nflverse ----
+## Take 121.972 seconds
+tic()
+progressr::with_progress(pbpData <- load_pbp(seasons = 2002:2023))
+toc()
+pbpData <- pbpData |> filter(season %in% seasonTrain)
+
+pbpID <- unique(pbpData$game_id)
 
 # ## Data Dictionaries ----
 # dataDictionaries <- list(
@@ -153,7 +219,7 @@ object.size(pbp_db)
 ##  Play By Play
 ## Take 121.972 seconds
 tic()
-pbpData <- load_pbp(seasons = TRUE) 
+progressr::with_progress(pbpData <- load_pbp(seasons = 2002:2023))
 toc()
 pbpData <- pbpData |> filter(season %in% seasonTrain)
 

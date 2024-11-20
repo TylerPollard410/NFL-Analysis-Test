@@ -19,18 +19,6 @@ playerOffenseData <- load_player_stats(
   stat_type = "offense"
 )
 
-### Defense ----
-playerDefenseData <- load_player_stats(
-  seasons = allSeasons,
-  stat_type = "defense"
-)
-
-### Kicking ----
-playerKickingData <- load_player_stats(
-  seasons = allSeasons,
-  stat_type = "kicking"
-)
-
 # Load Historical Data ----
 load(file = "./data/seasonStandings.rda")
 
@@ -163,10 +151,10 @@ shinyServer(function(input, output, session) {
   
   ### AFC Playoffs Table ----
   standingsPlayoffsTableServer("standingsPlayoffsTableAFC",
-                       standingsSeason,
-                       teamsData,
-                       standingsTableData,
-                       conference = "AFC")
+                               standingsSeason,
+                               teamsData,
+                               standingsTableData,
+                               conference = "AFC")
   
   ### NFC Playoffs Table ----
   standingsPlayoffsTableServer("standingsPlayoffsTableNFC",
@@ -220,210 +208,6 @@ shinyServer(function(input, output, session) {
                                   playerOffenseTeam,
                                   playerOffenseStat,
                                   teamsData)
-  # output$playerOffensePassingTable <- renderReactable({
-  #   inputSeason <- seq(input$playerOffenseSeason[1], input$playerOffenseSeason[2])
-  #   inputGameType <- input$playerOffenseGameType
-  #   inputTeams <- input$playerOffenseTeam
-  #   inputStat <- input$playerOffenseStat
-  #   
-  #   playerOffensePassingTableBase <- playerOffenseData |>
-  #     filter(season %in% inputSeason) |>
-  #     filter(season_type %in% inputGameType) |>
-  #     filter(recent_team %in% inputTeams) |>
-  #     rename(team_abbr = recent_team) |>
-  #     filter(attempts > 0) |>
-  #     select(
-  #       player_display_name,
-  #       team_abbr,
-  #       position,
-  #       completions,
-  #       attempts,
-  #       passing_yards,
-  #       passing_tds,
-  #       passing_first_downs,
-  #       interceptions,
-  #       sacks,
-  #       sack_yards,
-  #       sack_fumbles,
-  #       sack_fumbles_lost
-  #     ) |>
-  #     group_by(
-  #       player_display_name, team_abbr, position
-  #     ) |>
-  #     mutate(
-  #       a = (sum(completions)/sum(attempts) - 0.3)*5,
-  #       a2 = ifelse(a < 0, 0,
-  #                   ifelse(a > 2.375, 2.375, a)),
-  #       b = (sum(passing_yards)/sum(attempts) - 3)*0.25,
-  #       b2 = ifelse(b < 0, 0,
-  #                   ifelse(b > 2.375, 2.375, b)),
-  #       c = (sum(passing_tds)/sum(attempts))*20,
-  #       c2 = ifelse(c < 0, 0,
-  #                   ifelse(c > 2.375, 2.375, c)),
-  #       d = 2.375 - (sum(interceptions)/sum(attempts))*25,
-  #       d2 = ifelse(d < 0, 0,
-  #                   ifelse(d > 2.375, 2.375, d)),
-  #       passer_rating = ((a2+b2+c2+d2)/6)*100
-  #     ) |>
-  #     select(
-  #       -c(a,a2,b,b2,c,c2,d,d2)
-  #     ) %>%
-  #     {if(inputStat == "Total"){
-  #       summarise(.,
-  #                 across(-c(passing_yards, passer_rating), ~round(sum(.x, na.rm = TRUE),2)),
-  #                 passing_yards = sum(passing_yards, na.rm = TRUE),
-  #                 games_played = n(),
-  #                 passing_yards_game = round(passing_yards/games_played, 2),
-  #                 passer_rating = round(mean(passer_rating, na.rm = TRUE), 2)
-  #       )
-  #     }else{
-  #       summarise(.,
-  #                 across(-c(passing_yards, passer_rating), ~round(mean(.x, na.rm = TRUE),2)),
-  #                 passing_yards = sum(passing_yards, na.rm = TRUE),
-  #                 games_played = n(),
-  #                 passing_yards_game = round(passing_yards/games_played, 2),
-  #                 passer_rating = round(mean(passer_rating, na.rm = TRUE), 2)
-  #       )
-  #     }
-  #     } |>
-  #     ungroup() |>
-  #     mutate(
-  #       completion_percentage = round(completions/attempts, 4)
-  #     ) |>
-  #     select(
-  #       player_display_name,
-  #       team_abbr,
-  #       position,
-  #       games_played,
-  #       completions,
-  #       attempts,
-  #       completion_percentage,
-  #       passing_yards,
-  #       passing_yards_game,
-  #       everything()
-  #     ) |>
-  #     arrange(desc(passing_yards))
-  #   
-  #   playerOffensePassingTableReactData <- playerOffensePassingTableBase |>
-  #     left_join(teamsData |> select(team_abbr, team_logo_espn),
-  #               by = join_by(team_abbr)) |>
-  #     select(team_logo_espn, everything())
-  #   
-  #   playerOffensePassingTableReact <- reactable(
-  #     data = playerOffensePassingTableReactData,
-  #     theme = espn(),
-  #     highlight = TRUE,
-  #     compact = TRUE,
-  #     pagination = FALSE,
-  #     wrap = FALSE,
-  #     outlined = TRUE,
-  #     showSortable = FALSE,
-  #     defaultColDef = colDef(vAlign = "center", 
-  #                            minWidth = 60,
-  #                            headerStyle = list(fontSize = "14px")
-  #     ),
-  #     defaultSortOrder = "desc",
-  #     defaultSorted = c("passing_yards"),
-  #     columns = list(
-  #       ##### Team Logo 
-  #       team_logo_espn = colDef(
-  #         name = "Player",
-  #         minWidth = 150,
-  #         sortable = FALSE,
-  #         #cell = embed_img()
-  #         cell = function(value, index){
-  #           player_name <- playerOffensePassingTableReactData$player_display_name[index]
-  #           logo <- img(src = value, style = "height: 20px;")
-  #           team <- playerOffensePassingTableReactData$team_abbr[index]
-  #           div(style = "display: flex; align-items: center;",
-  #               logo,
-  #               span(player_name, style = "margin-left: 4px"), 
-  #               span(",", style = "margin-right: 4px"),
-  #               span(team, style = "font-size: 10px; color: grey")
-  #           )
-  #         },
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Player 
-  #       player_display_name = colDef(
-  #         show = FALSE
-  #       ),
-  #       ##### Team Abbr 
-  #       team_abbr = colDef(
-  #         show = FALSE
-  #       ),
-  #       ##### Position
-  #       position = colDef(
-  #         name = "POS",
-  #         align = "center",
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Games Played 
-  #       games_played = colDef(
-  #         name = "GP",
-  #         minWidth = 40
-  #       ),
-  #       ##### Completions
-  #       completions = colDef(
-  #         name = "CMP"
-  #       ),
-  #       ##### Attempts
-  #       attempts = colDef(
-  #         name = "ATT"
-  #       ),
-  #       ##### Completion Percentage
-  #       completion_percentage = colDef(
-  #         name = "CMP%",
-  #         format = colFormat(percent = TRUE, digits = 2),
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Passing Yards
-  #       passing_yards = colDef(
-  #         name = "YDS"
-  #       ),
-  #       ##### Passing Yards
-  #       passing_yards_game = colDef(
-  #         name = "YDS/G",
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Passing Touchdowns
-  #       passing_tds = colDef(
-  #         name = "TD"
-  #       ),
-  #       ##### Passing First Downs
-  #       passing_first_downs = colDef(
-  #         name = "FD",
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Interceptions
-  #       interceptions = colDef(
-  #         name = "INT"
-  #       ),
-  #       ##### Sacks
-  #       sacks = colDef(
-  #         name = "SCK"
-  #       ),
-  #       ##### Sack Yards Lost 
-  #       sack_yards = colDef(
-  #         name = "SYL"
-  #       ),
-  #       ##### Sack Fumbles 
-  #       sack_fumbles = colDef(
-  #         name = "SFM"
-  #       ),
-  #       ##### Sack Fumbles Lost
-  #       sack_fumbles_lost = colDef(
-  #         name = "SFL",
-  #         style = list(borderRight = "1px solid black")
-  #       ),
-  #       ##### Passer Rating
-  #       passer_rating = colDef(
-  #         name = "RTG"
-  #       )
-  #     )
-  #   )
-  #   return(playerOffensePassingTableReact)
-  # })
   #### Rushing ----
   #### Receiving ----
   #### Conversions ----
@@ -451,63 +235,41 @@ shinyServer(function(input, output, session) {
   
   futureGameDates <- unique(futureGameData |> select(week, gameday, weekday))
   
-  lapply(futureGameIDs, function(x){
-    bettingGamesLinesTableServer(x, teamsData, futureGameDataLong, gameID = x)
+  # lapply(futureGameIDs, function(x){
+  #   bettingGamesLinesTableServer(x, teamsData, gameDataLong, gameID = x)
+  # })
+  
+  bettingGamesLinesServer("bettingGamesLines",
+                          futureGameIDs, 
+                          futureGameData,
+                          teamsData,
+                          gameDataLong)
+  #outputOptions(output, "bettingGamesLines-bettingGamesLinesUI", suspendWhenHidden = FALSE)
+  
+  
+  ## Player Props ----
+  AllInputs1 <- reactive({
+    x <- reactiveValuesToList(input)
+    data.frame(
+      #names = names(x)
+      values = unlist(x, use.names = TRUE)
+    )
   })
   
-  output$bettingGamesLinesUI <- renderUI({
-    #format(as_date(unique(futureGameData |> select(gameday, weekday))$gameday[1]), "%A, %B %d")
-    req(length(futureGameIDs) > 0)
-    bettingGamesLinesTagList <- tagList()
-    
-    for(i in 1:nrow(futureGameData)){
-      if(i == 1){
-        futureWeek1 <- h1("Week", futureGameData$week[i])
-        futureDate1 <- h3(format(as_date(futureGameData |>
-                                           select(gameday, weekday) |>
-                                           slice(i) |>
-                                           pull(gameday)),
-                                 "%A, %B %d"))
-        # futureGame1 <- div(bettingGamesLinesTableOutput(futureGameIDs[i]),
-        #                    style = "display: inline-flex; align-items: center; margin-right: 20px")
-        futureGame1 <- div(box(
-          bettingGamesLinesTableOutput(futureGameIDs[i]),
-          width = 12),
-          style = "display: inline-block; align-items: center;"
-        )
-      }else{
-        if(futureGameData$week[i] != futureGameData$week[i-1]){
-          futureWeek <- h1("Week", futureGameData$week[i])
-        }else{futureWeek <- NULL}
-        if(futureGameData$gameday[i] != futureGameData$gameday[i-1]){
-          futureDate <- h3(format(as_date(futureGameData |>
-                                            select(gameday, weekday) |>
-                                            slice(i) |>
-                                            pull(gameday)),
-                                  "%A, %B %d"))
-        }else{futureDate <- NULL}
-        bettingGamesLinesTagList <-tagList(
-          bettingGamesLinesTagList,
-          futureWeek,
-          futureDate,
-          # div(bettingGamesLinesTableOutput(futureGameIDs[i]), 
-          #     style = "display: inline-flex; align-items: center; margin-right: 20px")
-          div(box(
-            bettingGamesLinesTableOutput(futureGameIDs[i]),
-            width = 12),
-            style = "display: inline-block; align-items: center;"
-          )
-        )
-      }
-    }
-    bettingGamesLinesTagList <- tagList(
-      futureWeek1,
-      futureDate1,
-      futureGame1,
-      bettingGamesLinesTagList
-      #lapply(futureGameIDs, function(x){bettingGamesLinesTableOutput(x)})
+  output$show_inputs1 <- renderTable({
+    AllInputs1()
+  })
+  
+  AllInputs2 <- reactive({
+    x <- reactiveValuesToList(input)
+    data.frame(
+      names = names(x)
+      #values = unlist(x, use.names = TRUE)
     )
-    bettingGamesLinesTagList
+  })
+  
+  output$show_inputs2 <- renderTable({
+    AllInputs2()
   })
   
   # Prediction Tab  #########################################

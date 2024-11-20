@@ -78,7 +78,8 @@ my_theme <- create_theme(
     primary = "purple", info = "#eec900"
   )
 )
-tags$style(".buttoncolor.bttn-primary{background-color: #6399b8")
+tags$style(".buttoncolor.bttn-primary{background-color: #6399b8};")
+#"#6399b8"
 
 # Define UI for application that draws a histogram
 shinyUI(
@@ -359,9 +360,21 @@ shinyUI(
                       tabName = "bettingGamesTab",
                       h4("Betting Game Lines"),
                       fluidRow(
-                        uiOutput(outputId = "bettingGamesLinesUI"),
+                        align = "center",
+                        withSpinner(bettingGamesLinesUI("bettingGamesLines"),
+                                    type = 8)
                       )
-                      
+                    ),
+                    
+                    ## Player Props =========================================
+                    tabItem(
+                      tabName = "bettingPlayerPropsTab",
+                      fluidRow(
+                        tableOutput('show_inputs1'),
+                        tableOutput('show_inputs2'),
+                        tableOutput('show_outputs1'),
+                        tableOutput('show_outputs2')
+                      )
                     )
                     
                     # Prediction Tab  #########################################

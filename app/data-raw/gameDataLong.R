@@ -17,6 +17,12 @@ gameDataLong <- gameData |>
     team_PA = cumsum(opponent_score),
     team_PAG = team_PA/team_GP,
   ) |>
+  mutate(
+    team_W = ifelse(is.na(lag(team_W)), 0, lag(team_W)),
+    team_L = ifelse(is.na(lag(team_L)), 0, lag(team_L)),
+    team_T = ifelse(is.na(lag(team_T)), 0, lag(team_T))
+  ) |>
+  ungroup() |>
   group_by(game_id) |>
   mutate(locationID = row_number(), .after = location) |>
   ungroup()
