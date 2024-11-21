@@ -10,7 +10,7 @@ source(file = "./data-raw/gameData.R")
 source(file = "./data-raw/gameDataLong.R")
 
 ## Play-by-play Data ----
-#playsData <- load_pbp(seasons = most_recent_season())
+pbpData <- load_pbp(seasons = 2002:most_recent_season())
 
 ## Player Data ----
 ### Offense ----

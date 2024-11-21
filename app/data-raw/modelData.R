@@ -1,4 +1,5 @@
 ## Create Game Data for App
+library(DBI)
 library(nflverse)
 library(tidyverse)
 
@@ -10,11 +11,24 @@ progressr::with_progress(pbpData <- load_pbp(seasons = allSeasons))
 tictoc::toc()
 object.size(pbpData)
 
+my_con <- dbConnect(RPostgres::Postgres(),
+                    dbname = "NFLdata",
+                    user = "postgre",
+                    password = "NFLpass1234",
+                    host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
+
+pbpData <- tbl(my_con, "pbp_data")
+currentWeek <- get_current_week()
+
+pbp_db <- DBI::dbConnect(RSQLite::SQLite(), "~/Desktop/NFL Analysis Data/pbp_db") |>
+  tbl("nflfastR_pbp")
+
 pbpDataSnippet <- pbpData |>
   filter(season == 2024) |>
-  filter(week == (get_current_week() - 1)) |>
+  filter(week == (currentWeek - 2)) |>
   filter(home_team == "BAL") |>
-  filter(posteam == "BAL")
+  filter(posteam == "BAL") |>
+  collect()
 
 colnames(pbpDataSnippet)
 
@@ -23,7 +37,7 @@ gameData <- load_schedules(seasons = allSeasons) |>
   mutate(
     home_team = clean_team_abbrs(home_team),
     away_team = clean_team_abbrs(away_team)
-  ) 
+  )
 
 # Betting Probs ----
 gameData <- gameData |>
@@ -93,6 +107,7 @@ gameDataLong <- gameData |>
 ## pbpData take 10.881 seconds
 ## pbp_db takes 6.027 seconds
 #tic()
+system.time(
 epaPass <- pbp_db |>
   filter(season %in% allSeasons) |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
@@ -117,6 +132,7 @@ epaPass <- pbp_db |>
   ) |>
   ungroup() |>
   collect()
+)
 #toc()
 
 ## Rushing ----
