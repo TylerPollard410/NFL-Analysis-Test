@@ -81,6 +81,7 @@ my_theme <- create_theme(
 tags$style(".buttoncolor.bttn-primary{background-color: #6399b8};")
 #"#6399b8"
 
+
 # Define UI for application that draws a histogram
 shinyUI(
   dashboardPage(dark = NULL, 
@@ -178,6 +179,7 @@ shinyUI(
                 controlbar = dashboardControlbar(),
                 # Dashboard Body ================
                 body = dashboardBody(
+                  
                   useShinyjs(),
                   tabItems(
                     # Home Tab  ###############################################
@@ -271,6 +273,7 @@ shinyUI(
                       tabName = "playerOffenseTab",
                       h2("Offensive Player Data"),
                       tags$style(HTML(".vscomp-dropbox-container  {z-index:99999 !important;}")),
+                      
                       #### Inputs ----
                       fluidRow(
                         ##### Season ----
@@ -281,9 +284,21 @@ shinyUI(
                                  min = 2003,
                                  max = get_current_season(),
                                  step = 1,
-                                 value = c(get_current_season(),get_current_season())
+                                 value = c(get_current_season(),get_current_season()),
+                                 limit = 5,
+                                 behaviour = "drag",
+                                 format = wNumbFormat(decimals = 0)
                                )
+                               # sliderInput(
+                               #   inputId = "playerOffenseSeason",
+                               #   label = "Select seasons",
+                               #   min = 2003,
+                               #   max = get_current_season(),
+                               #   step = 1,
+                               #   value = c(get_current_season(),get_current_season())
+                               # ),
                         ),
+                        
                         ##### Game Type ----
                         column(width = 2,
                                prettyCheckboxGroup(

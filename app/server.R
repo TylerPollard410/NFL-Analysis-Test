@@ -10,17 +10,25 @@ source(file = "./data-raw/gameData.R")
 source(file = "./data-raw/gameDataLong.R")
 
 ## Play-by-play Data ----
-pbpData <- load_pbp(seasons = 2002:most_recent_season())
+#pbpData <- load_pbp(seasons = 2002:most_recent_season())
 
 ## Player Data ----
 ### Offense ----
-playerOffenseData <- load_player_stats(
-  seasons = allSeasons,
-  stat_type = "offense"
-)
+# playerOffenseData <- load_player_stats(
+#   seasons = allSeasons,
+#   stat_type = "offense"
+# )
+
+my_con <- dbConnect(RPostgres::Postgres(),
+                    dbname = "NFLdata",
+                    user = "postgre",
+                    password = "NFLpass1234",
+                    host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
+
+playerOffenseData <- tbl(my_con, "playerOffenseData")
 
 # Load Historical Data ----
-load(file = "./data/seasonStandings.rda")
+#load(file = "./data/seasonStandings.rda")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
