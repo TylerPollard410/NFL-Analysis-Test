@@ -57,12 +57,12 @@ library(tidyverse)
 ## Create Function
 calculateStandings <- function(seasons = 2024, game_data = NULL){
   if(!IsWhole(seasons)){
-    stop("Please enter integer value between 2003 and 2024")
+    stop("Please enter integer value between 2006 and 2024")
     #return(NULL)
   }
   
-  if(seasons < 2003 | seasons > get_current_season()){
-    stop("Please enter integer value between 2003 and 2024")
+  if(seasons < 2006 | seasons > get_current_season()){
+    stop("Please enter integer value between 2006 and 2024")
   }
   
   gameDataCurrent <- game_data |>

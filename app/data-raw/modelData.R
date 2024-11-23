@@ -11,7 +11,7 @@ progressr::with_progress(pbpData <- load_pbp(seasons = allSeasons))
 tictoc::toc()
 object.size(pbpData)
 
-my_con <- dbConnect(RPostgres::Postgres(),
+con <- dbConnect(RPostgres::Postgres(),
                     dbname = "NFLdata",
                     user = "postgre",
                     password = "NFLpass1234",

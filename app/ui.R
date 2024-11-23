@@ -207,7 +207,7 @@ shinyUI(
                                virtualSelectInput(
                                  inputId = "standingsSeason",
                                  label = "Select season",
-                                 choices = seq(2003, get_current_season()),
+                                 choices = seq(2006, get_current_season()),
                                  selected = get_current_season()
                                )
                         ),
@@ -281,7 +281,7 @@ shinyUI(
                                noUiSliderInput(
                                  inputId = "playerOffenseSeason",
                                  label = "Select seasons",
-                                 min = 2003,
+                                 min = 2006,
                                  max = get_current_season(),
                                  step = 1,
                                  value = c(get_current_season(),get_current_season()),

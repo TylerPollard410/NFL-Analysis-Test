@@ -53,7 +53,7 @@ library(nflverse)
 library(tidyverse)
 
 # Load nflverse data ----
-allSeasons <- 2002:most_recent_season()
+allSeasons <- 2006:most_recent_season()
 
 ##  NFL Team Graphics, Colors, and Logos
 teamsData <- load_teams(current = FALSE)
@@ -197,7 +197,7 @@ for(i in allSeasons){
   }
 }
 toc()
-save(seasonWeekStandings, file = "./data/seasonWeekStandings.rda")
+save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 
 ##### Plot results ----
 seasonWeekStandingsMerge <- seasonWeekStandings |>

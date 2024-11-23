@@ -3,7 +3,7 @@ library(nflverse)
 library(tidyverse)
 
 # Create game data -----
-allSeasons <- 2002:most_recent_season()
+allSeasons <- 2006:most_recent_season()
 
 gameData <- load_schedules(seasons = allSeasons) |>
   mutate(
@@ -55,6 +55,7 @@ gameData <- gameData |>
   relocate(totalCover, .after = total_line) |>
   relocate(winner, .after = result) |>
   relocate(time_of_day, .after = gametime)
+
 
 
 
