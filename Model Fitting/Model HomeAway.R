@@ -40,6 +40,8 @@ library(nflverse)
 ## Tidyverse
 library(tidyverse)
 
+source("./app/data-raw/gameData.R")
+source("./app/data-raw/gameDataLong.R")
 
 seasonsMod <- 2021:2024
 gameDataMod <- gameData |> filter(season %in% seasonsMod)
@@ -207,6 +209,22 @@ epaData3 <- gameDataLongMod |>
       ),
     by = join_by(game_id, team)
   ) |>
+  left_join(
+    seasonWeekStandings |>
+      select(
+        season,
+        week,
+        team,
+        PFG = team_PPG,
+        PAG = opp_PPG,
+        MOV,
+        SOS,
+        SRS,
+        OSRS,
+        DSRS
+      ),
+    by = join_by(season, week, team)
+  ) |>
   select(
     game_id,
     season,
@@ -216,6 +234,7 @@ epaData3 <- gameDataLongMod |>
     team, team_score,
     opponent, opponent_score,
     result, spread_line, total,
+    PFG, PAG,
     #off_plays,
     off_epa, off_epa_adj,
     #off_pass_plays,
@@ -228,6 +247,11 @@ epaData3 <- gameDataLongMod |>
     def_pass_epa, def_pass_epa_adj,
     #def_rush_plays,
     def_rush_epa, def_rush_epa_adj,
+    MOV,
+    SOS,
+    SRS,
+    OSRS,
+    DSRS,
     team_rest, opponent_rest,
     div_game, roof, surface, temp, wind
   )
@@ -253,16 +277,33 @@ epaSeasonAvgs <- epaData3 |>
     #def_rush_plays = sum(def_rush_plays),
     avg_def_rush_epa_adj = mean(def_rush_epa_adj)
   ) |>
-  ungroup() |>
-  mutate(
-    season_new = season + 1
-  )
-  # left_join(
-  #   seasonWeekStandings |> 
-  #     select(season, week, team, MOV, SOS, SRS, OSRS, DSRS) |> 
-  #     filter(week == max(week))
-  # ) |>
-  # arrange(desc(SRS))
+  ungroup() |> 
+  left_join(
+    seasonWeekStandings |>
+      group_by(season) |>
+      filter(week == max(week)) |>
+      ungroup() |>
+      select(
+        season,
+        team,
+        avg_PFG = team_PPG,
+        avg_PAG = opp_PPG,
+        avg_MOV = MOV, 
+        avg_SOS = SOS,
+        avg_SRS = SRS, 
+        avg_OSRS = OSRS, 
+        avg_DSRS = DSRS
+      ),
+    by = join_by(season, team)
+  ) |>
+  mutate(season_new = season + 1, .after = season) |>
+  relocate(avg_PFG, .after = PF) |>
+  relocate(avg_PAG, .after = PA)
+
+# srsSeasonAvgs <- seasonWeekStandings |>
+#   group_by(season) |>
+#   filter(week == max(week))
+
 
 epaData4 <- epaData3 |>
   group_by(season, team) |>
@@ -273,12 +314,19 @@ epaData4 <- epaData3 |>
     cummean_def_epa_adj = lag(cummean(def_epa_adj)),
     cummean_def_pass_epa_adj = lag(cummean(def_pass_epa_adj)),
     cummean_def_rush_epa_adj = lag(cummean(def_rush_epa_adj)),
+    PFG = lag(PFG),
+    PAG = lag(PAG),
+    MOV = lag(MOV),
+    SOS = lag(SOS),
+    SRS = lag(SRS),
+    OSRS = lag(OSRS),
+    DSRS = lag(DSRS)
   ) |>
-  ungroup()
+  ungroup() 
 
 epaData5 <- epaData4 |>
   left_join(
-    epaSeasonAvgs |> select(-c(season,PF,PA,PD)),
+    epaSeasonAvgs |> select(-c(season,PF, PA, PD)),
     by = join_by(team, season == season_new)
   ) |>
   mutate(
@@ -287,7 +335,14 @@ epaData5 <- epaData4 |>
     cummean_off_rush_epa_adj = ifelse(is.na(cummean_off_rush_epa_adj), avg_off_rush_epa_adj, cummean_off_rush_epa_adj),
     cummean_def_epa_adj = ifelse(is.na(cummean_def_epa_adj), avg_def_epa_adj, cummean_def_epa_adj),
     cummean_def_pass_epa_adj = ifelse(is.na(cummean_def_pass_epa_adj), avg_def_pass_epa_adj, cummean_def_pass_epa_adj),
-    cummean_def_rush_epa_adj = ifelse(is.na(cummean_def_rush_epa_adj), avg_def_rush_epa_adj, cummean_def_rush_epa_adj)
+    cummean_def_rush_epa_adj = ifelse(is.na(cummean_def_rush_epa_adj), avg_def_rush_epa_adj, cummean_def_rush_epa_adj),
+    PFG = ifelse(is.na(PFG), 0, PFG),
+    PAG = ifelse(is.na(PAG), 0, PAG),
+    MOV = ifelse(is.na(MOV), 0, MOV),
+    SOS = ifelse(is.na(SOS), 0, SOS),
+    SRS = ifelse(is.na(SRS), 0, SRS),
+    OSRS = ifelse(is.na(OSRS), 0, OSRS),
+    DSRS = ifelse(is.na(DSRS), 0, DSRS)
   ) |>
   select(-contains("avg"))
 
@@ -318,6 +373,18 @@ modelData <- gameDataMod |>
     under_prob, over_prob,
     home_moneyline, away_moneyline,
     home_moneyline_prob, away_moneyline_prob
+  ) |>
+  left_join(
+    epaData5 |> 
+      select(game_id, team, contains("epa_adj")) |>
+      rename_with(.cols = contains("epa_adj"), ~paste0("home_", .x)),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    epaData5 |> 
+      select(game_id, team, contains("epa_adj")) |>
+      rename_with(.cols = contains("epa_adj"), ~paste0("away_", .x)),
+    by = join_by(game_id, away_team == team)
   ) |>
   left_join(
     epaData5 |> 
