@@ -1,5 +1,14 @@
 # Read in Data ################################################################
-allSeasons <- 2002:most_recent_season()
+## Amazon RDS connection ----
+plan("multisession")
+
+con <- dbConnect(RPostgres::Postgres(),
+                 dbname = "NFLdata",
+                 user = "postgre",
+                 password = "NFLpass1234",
+                 host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
+
+allSeasons <- 2006:most_recent_season()
 
 ## Team Data ----
 teamsData <- load_teams(current = FALSE)
@@ -14,21 +23,11 @@ source(file = "./data-raw/gameDataLong.R")
 
 ## Player Data ----
 ### Offense ----
-playerOffenseData <- load_player_stats(
-  seasons = allSeasons,
-  stat_type = "offense"
-)
-
-con <- dbConnect(RPostgres::Postgres(),
-                 dbname = "NFLdata",
-                 user = "postgre",
-                 password = "NFLpass1234",
-                 host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
-
 playerOffenseData <- tbl(con, "playerOffenseData")
 
 # Load Historical Data ----
-load(file = "./data/seasonStandings.rda")
+#load(file = "./data/seasonStandings.rda")
+seasonStandings <- tbl(con, "seasonStandings")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
@@ -70,77 +69,16 @@ shinyServer(function(input, output, session) {
     input$standingsStat
   })
   standingsTableData <- reactive({
-    
-    if(standingsSeason() == get_current_season()){
-      standingsCurrent <- calculateStandings(season = get_current_season(),
-                                             game_data = gameData)
-      
-      gameDataCurrent <- gameData |>
-        filter(season == get_current_season()) |>
-        filter(game_type == "REG") 
-      
-      standingCurrentNFLverse <- calculate_standings(
-        nflverse_object = gameDataCurrent |> filter(!is.na(result)),
-        tiebreaker_depth = 2
-      )
-      
-      standingsTableData <- standingsCurrent |>
-        left_join(
-          standingCurrentNFLverse |>
-            select(
-              team,
-              div_rank,
-              seed,
-              div_pct,
-              conf_pct,
-              sov,
-              sos),
-          by = join_by(team)
-        ) |>
-        select(
-          team,
-          team_name,
-          team_conf,
-          team_division,
-          div_rank,
-          seed,
-          games_played,
-          win,
-          loss,
-          tie,
-          win_loss_percent,
-          conf_pct,
-          div_pct,
-          everything()
-        ) |>
-        left_join(
-          teamsData,
-          by = join_by(team == team_abbr,team_name, team_conf, team_division)
-        ) |>
-        rename(
-          "GP" = games_played,
-          "W" = win,
-          "L" = loss,
-          "T" = tie,
-          "W-L%" = win_loss_percent,
-          "CON%" = conf_pct,
-          "DIV%" = div_pct,
-          "PF" = team_score,
-          "PA" = opponent_score,
-          "PD" = result
-        )
-    }else{
-      standingsTableData <- seasonStandings |>
-        filter(season == standingsSeason())
-    }
-    
-    standingsTableData |>
-      rowwise() |>
+    Season <- standingsSeason()
+    Stat <- standingsStat()
+    seasonStandings |>
+      filter(season == Season) |>
       mutate(
-        PF = ifelse(standingsStat() == "Total", PF, round(PF/GP, 2)),
-        PA = ifelse(standingsStat() == "Total", PA, round(PA/GP, 2)),
-        PD = ifelse(standingsStat() == "Total", PD, round(PD/GP, 2)),
-      )
+        PF = ifelse(Stat == "Total", PF, round(PF/GP, 2)),
+        PA = ifelse(Stat == "Total", PA, round(PA/GP, 2)),
+        PD = ifelse(Stat == "Total", PD, round(PD/GP, 2)),
+      ) |> 
+      collect()
   })
   
   ### AFC Table ----

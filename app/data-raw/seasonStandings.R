@@ -1,3 +1,6 @@
+# Libraries ----
+library(DescTools)
+
 ## NFL Verse ----
 library(nflverse)
 
@@ -5,20 +8,20 @@ library(nflverse)
 library(tidyverse)
 
 # Load nflverse data ----
-allSeasons <- 2006:most_recent_season()
-
-##  NFL Team Graphics, Colors, and Logos
-teamsData <- load_teams(current = FALSE)
-
-##  Game/Schedule Data
-gameData <- load_schedules(seasons = allSeasons) |>
-  mutate(
-    home_team = clean_team_abbrs(home_team),
-    away_team = clean_team_abbrs(away_team)
-  )
-
-gameDataLong <- gameData |>
-  clean_homeaway(invert = c("result", "spread_line"))
+# allSeasons <- 2006:most_recent_season()
+# 
+# ##  NFL Team Graphics, Colors, and Logos
+# teamsData <- load_teams(current = FALSE)
+# 
+# ##  Game/Schedule Data
+# gameData <- load_schedules(seasons = allSeasons) |>
+#   mutate(
+#     home_team = clean_team_abbrs(home_team),
+#     away_team = clean_team_abbrs(away_team)
+#   )
+# 
+# gameDataLong <- gameData |>
+#   clean_homeaway(invert = c("result", "spread_line"))
 
 
 # Standings Table ----
@@ -205,10 +208,26 @@ seasonStandings <- seasonStandings |>
     "PA" = opponent_score,
     "PD" = result
   )
+
+# Save to data folder ----
 save(
   seasonStandings,
   file = "./app/data/seasonStandings.rda"
 )
+
+# Remove supp Vars ----
+rm(gameDataTemp,
+   gameDataLongTemp,
+   seasonStandingsConvergence,
+   seasonStandingsNFLverse,
+   standingTemp,
+   i, k,
+   leaguePPGTemp,
+   max_iterations,
+   previous_DSRS,
+   previous_OSRS, 
+   previous_SRS,
+   tolerance)
 
 # ### By Season and Week ----
 # #### No prior ----

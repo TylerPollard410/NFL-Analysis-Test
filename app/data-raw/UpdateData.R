@@ -1,8 +1,14 @@
 ## Updata database with current data
-
+# Libraries ----
+## Database 
 library(future)
 library(DBI)
 library(RPostgres)
+
+## seasonStandings
+library(DescTools)
+
+## nflverse
 library(nflverse)
 library(tidyverse)
 
@@ -26,8 +32,18 @@ gameIDs <- load_schedules(seasons = allSeasons) |>
   filter(!is.na(result)) |>
   pull(game_id)
 
-
 # Load/Updata Data ----
+## gameData -------------------------------
+source("./app/data-raw/gameData.R")
+
+### Initial 
+dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
+
+## gameDataLong -------------------------------
+source("./app/data-raw/gameDataLong.R")
+
+dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
+
 ## pbpData ------------------------------
 ### Initial
 #source("./app/data-raw/pbpData.R")
@@ -35,8 +51,19 @@ gameIDs <- load_schedules(seasons = allSeasons) |>
 #dbWriteTable(con, name = "pbpData", value = pbpData)
 
 ### Update
+gameIDsCurrent <- tbl(con, "pbpData") |>
+  filter(season == 2024) |>
+  distinct(game_id) |>
+  pull(game_id)
+
+gameIDsUpdate <- gameData |>
+  filter(season == 2024) |>
+  filter(!is.na(result)) |>
+  filter(!(game_id %in% gameIDsCurrent)) |>
+  pull(game_id)
+
 pbpDataUpdate <- load_pbp(seasons = most_recent_season()) |>
-  filter(!(game_id %in% gameIDs))
+  filter(game_id %in% gameIDsUpdate)
 
 if(nrow(pbpDataUpdate) > 0){
   dbAppendTable(con, "pbpData", pbpDataUpdate)
@@ -44,17 +71,15 @@ if(nrow(pbpDataUpdate) > 0){
   print("No play-by-play data to update")
 }
 
-rm(pbpDataUpdate)
+pbpData_tbl <- tbl(con, "pbpData")
 
-## gameData -------------------------------
-source("./app/data-raw/gameData.R")
+pbpDataUpdateRows <- pbpData_tbl |>
+  pull(game_id) |>
+  length()
 
-dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
+pbpDataUpdateCols <- pbpData_tbl$lazy_query$vars
 
-## gameDataLong -------------------------------
-source("./app/data-raw/gameDataLong.R")
-
-dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
+rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 
 ## playerOffenseData ---------------------------
@@ -63,12 +88,13 @@ source("./app/data-raw/playerOffenseData.R")
 dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
 
-##
+## seasonStandings ------------------------------
+### Initial
+source("./app/data-raw/seasonStandings.R")
 
+dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 
-
-
-
+dbListTables(con)
 
 
 

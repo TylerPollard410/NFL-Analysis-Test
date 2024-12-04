@@ -13,6 +13,7 @@ library(waiter)
 library(RColorBrewer)
 library(fresh)
 library(markdown)
+library(future)
 
 ## Data Manipulation
 library(stringr)

@@ -27,6 +27,7 @@ library(DescTools)
 library(car)
 library(bayesplot)
 library(BayesFactor)
+library(cmdstanr)
 library(rstanarm)
 library(tidybayes)
 library(loo)
@@ -240,17 +241,17 @@ epaSeasonAvgs <- epaData3 |>
     PA = sum(opponent_score),
     PD = PF - PA,
     #off_plays = sum(off_plays),
-    avg_off_epa = mean(off_epa),
+    avg_off_epa_adj = mean(off_epa_adj),
     #off_pass_plays = sum(off_pass_plays),
-    avg_off_pass_epa = mean(off_pass_epa),
+    avg_off_pass_epa_adj = mean(off_pass_epa_adj),
     #off_rush_plays = sum(off_rush_plays),
-    avg_off_rush_epa = mean(off_rush_epa),
+    avg_off_rush_epa_adj = mean(off_rush_epa_adj),
     #def_plays = sum(def_plays),
-    avg_def_epa = mean(def_epa),
+    avg_def_epa_adj = mean(def_epa_adj),
     #def_pass_plays = sum(def_pass_plays),
-    avg_def_pass_epa = mean(def_pass_epa),
+    avg_def_pass_epa_adj = mean(def_pass_epa_adj),
     #def_rush_plays = sum(def_rush_plays),
-    avg_def_rush_epa = mean(def_rush_epa)
+    avg_def_rush_epa_adj = mean(def_rush_epa_adj)
   ) |>
   ungroup() |>
   mutate(
@@ -266,12 +267,12 @@ epaSeasonAvgs <- epaData3 |>
 epaData4 <- epaData3 |>
   group_by(season, team) |>
   mutate(
-    cummean_off_epa = lag(cummean(off_epa)),
-    cummean_off_pass_epa = lag(cummean(off_pass_epa)),
-    cummean_off_rush_epa = lag(cummean(off_rush_epa)),
-    cummean_def_epa = lag(cummean(def_epa)),
-    cummean_def_pass_epa = lag(cummean(def_pass_epa)),
-    cummean_def_rush_epa = lag(cummean(def_rush_epa)),
+    cummean_off_epa_adj = lag(cummean(off_epa_adj)),
+    cummean_off_pass_epa_adj = lag(cummean(off_pass_epa_adj)),
+    cummean_off_rush_epa_adj = lag(cummean(off_rush_epa_adj)),
+    cummean_def_epa_adj = lag(cummean(def_epa_adj)),
+    cummean_def_pass_epa_adj = lag(cummean(def_pass_epa_adj)),
+    cummean_def_rush_epa_adj = lag(cummean(def_rush_epa_adj)),
   ) |>
   ungroup()
 
@@ -281,12 +282,12 @@ epaData5 <- epaData4 |>
     by = join_by(team, season == season_new)
   ) |>
   mutate(
-    cummean_off_epa = ifelse(is.na(cummean_off_epa), avg_off_epa, cummean_off_epa),
-    cummean_off_pass_epa = ifelse(is.na(cummean_off_pass_epa), avg_off_pass_epa, cummean_off_pass_epa),
-    cummean_off_rush_epa = ifelse(is.na(cummean_off_rush_epa), avg_off_rush_epa, cummean_off_rush_epa),
-    cummean_def_epa = ifelse(is.na(cummean_def_epa), avg_def_epa, cummean_def_epa),
-    cummean_def_pass_epa = ifelse(is.na(cummean_def_pass_epa), avg_def_pass_epa, cummean_def_pass_epa),
-    cummean_def_rush_epa = ifelse(is.na(cummean_def_rush_epa), avg_def_rush_epa, cummean_def_rush_epa)
+    cummean_off_epa_adj = ifelse(is.na(cummean_off_epa_adj), avg_off_epa_adj, cummean_off_epa_adj),
+    cummean_off_pass_epa_adj = ifelse(is.na(cummean_off_pass_epa_adj), avg_off_pass_epa_adj, cummean_off_pass_epa_adj),
+    cummean_off_rush_epa_adj = ifelse(is.na(cummean_off_rush_epa_adj), avg_off_rush_epa_adj, cummean_off_rush_epa_adj),
+    cummean_def_epa_adj = ifelse(is.na(cummean_def_epa_adj), avg_def_epa_adj, cummean_def_epa_adj),
+    cummean_def_pass_epa_adj = ifelse(is.na(cummean_def_pass_epa_adj), avg_def_pass_epa_adj, cummean_def_pass_epa_adj),
+    cummean_def_rush_epa_adj = ifelse(is.na(cummean_def_rush_epa_adj), avg_def_rush_epa_adj, cummean_def_rush_epa_adj)
   ) |>
   select(-contains("avg"))
 
@@ -320,24 +321,24 @@ modelData <- gameDataMod |>
   ) |>
   left_join(
     epaData5 |> 
-      select(game_id, team, contains("epa")) |>
-      rename_with(.cols = contains("epa"), ~paste0("home_", .x)),
+      select(game_id, team, contains("epa_adj")) |>
+      rename_with(.cols = contains("epa_adj"), ~paste0("home_", .x)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
     epaData5 |> 
-      select(game_id, team, contains("epa")) |>
-      rename_with(.cols = contains("epa"), ~paste0("away_", .x)),
+      select(game_id, team, contains("epa_adj")) |>
+      rename_with(.cols = contains("epa_adj"), ~paste0("away_", .x)),
     by = join_by(game_id, away_team == team)
   )
 
   
 trainingData <- modelData |>
   mutate(
-    home_pass_epa_diff = home_off_pass_epa + away_def_pass_epa,
-    home_rush_epa_diff = home_off_rush_epa + away_def_rush_epa,
-    away_pass_epa_diff = away_off_pass_epa + home_def_pass_epa,
-    away_rush_epa_diff = away_off_rush_epa + home_def_rush_epa
+    home_pass_epa_adj_diff = home_off_pass_epa_adj + away_def_pass_epa_adj,
+    home_rush_epa_adj_diff = home_off_rush_epa_adj + away_def_rush_epa_adj,
+    away_pass_epa_adj_diff = away_off_pass_epa_adj + home_def_pass_epa_adj,
+    away_rush_epa_adj_diff = away_off_rush_epa_adj + home_def_rush_epa_adj
   ) |> 
   select(
     -contains("off"),
@@ -346,10 +347,10 @@ trainingData <- modelData |>
 
 testData <- modelData |>
   mutate(
-    home_pass_epa_diff = home_cummean_off_pass_epa + away_cummean_def_pass_epa,
-    home_rush_epa_diff = home_cummean_off_rush_epa + away_cummean_def_rush_epa,
-    away_pass_epa_diff = away_cummean_off_pass_epa + home_cummean_def_pass_epa,
-    away_rush_epa_diff = away_cummean_off_rush_epa + home_cummean_def_rush_epa
+    home_pass_epa_adj_diff = home_cummean_off_pass_epa_adj + away_cummean_def_pass_epa_adj,
+    home_rush_epa_adj_diff = home_cummean_off_rush_epa_adj + away_cummean_def_rush_epa_adj,
+    away_pass_epa_adj_diff = away_cummean_off_pass_epa_adj + home_cummean_def_pass_epa_adj,
+    away_rush_epa_adj_diff = away_cummean_off_rush_epa_adj + home_cummean_def_rush_epa_adj
   ) |> 
   select(
     -contains("off"),
@@ -410,10 +411,10 @@ sims <- (iters-burn)*chains
 
 Fit <- brm(
   bf(mvbind(home_score, away_score) ~ 
-       home_pass_epa_diff +
-       home_rush_epa_diff +
-       away_pass_epa_diff +
-       away_rush_epa_diff +
+       home_pass_epa_adj_diff +
+       home_rush_epa_adj_diff +
+       away_pass_epa_adj_diff +
+       away_rush_epa_adj_diff +
        home_rest +
        away_rest +
        location +
@@ -787,11 +788,13 @@ fixedEffs <- list()
 FitR2s <- data.frame()
 predMetricsHAs <- data.frame()
 PredsAll <- matrix(nrow = 4000)
+predMetricsAll <- data.frame()
 predMetricsComb <- data.frame()
 spreadSuccessComb <- data.frame()
 
 head(modelWeeks, n = length(modelWeeks)-1)
 modelWeeks2 <- 2:11
+library(cmdstanr)
 ## FOR LOOP ----
 tic()
 for(i in modelWeeks2){
@@ -843,10 +846,10 @@ sims <- (iters-burn)*chains
 
 Fit <- brm(
   bf(mvbind(home_score, away_score) ~ 
-       home_pass_epa_diff +
-       home_rush_epa_diff +
-       away_pass_epa_diff +
-       away_rush_epa_diff +
+       home_pass_epa_adj_diff +
+       home_rush_epa_adj_diff +
+       away_pass_epa_adj_diff +
+       away_rush_epa_adj_diff +
        home_rest +
        away_rest +
        location +
@@ -865,6 +868,11 @@ Fit <- brm(
   iter = iters,
   chains = chains,
   normalize = TRUE,
+  backend = "cmdstanr",
+  # prior = c(
+  #   set_prior("normal(0, 10)", class = "b"),  # Coefficients
+  #   set_prior("normal(20, 10)", class = "Intercept")
+  # ),
   control = list(adapt_delta = 0.95)
 )
 
@@ -1118,6 +1126,14 @@ PredsAll
 predMetricsComb
 spreadSuccessComb
 
+save(fixedEffs,
+     FitR2s,
+     predMetricsHAs,
+     PredsAll,
+     predMetricsComb,
+     spreadSuccessComb,
+     file = "./Model Fitting/Data/Non Adj EPA Performance.RData")
+
 
 
 #### Fit ----
@@ -1329,4 +1345,8 @@ ggplot(data = PPDdf2, aes(x = Index)) +
   theme_bw()
 
 
+
+install.packages("cm")
+library(cmdstanr)
+cmdstanr::install_cmdstan()
 
