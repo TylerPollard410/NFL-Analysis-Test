@@ -60,7 +60,39 @@ bettingGamesLinesTableServer <- function(id,
   
   moduleServer(id, function(input, output, session){
     
-    req(lineData)
+    output$bettingGamesLinesTableUI <- renderUI({
+      box(
+        title = div(
+          style = "display:flex; justify-content:space-between",
+          div(
+            #style = "flex:1; display:flex; justify-content:flex-start",
+            style = "display:inline-block; margin-right: 50px",
+            strong(lineData$gametime[1])
+          ),
+          div(
+            #style = "flex:1; display:inline-flex; justify-content:flex-end",
+            style = "display:inline-block; flex:1",
+            actionBttn(NS(id, "bettingGamesLinesTableBttn"), 
+                       label = "Full Matchup Comparison",
+                       style = "material-flat",
+                       color = "primary",
+                       size = "xs")
+          )
+        ),
+        width = 12,
+        #div(
+          #style = "margin-top:-20px; padding:-10px",
+          uiOutput(NS(id, "tablePlaceholder"))
+        #)
+      )
+    })
+    
+    output$tablePlaceholder <- renderUI({
+      withSpinner(
+        gt_output(NS(id, "bettingGamesLinesTable")), type = 8
+      )
+    })
+    
     output$bettingGamesLinesTable <- render_gt({
       lineData |>
         select(-c(weekday, gameday, gametime)) |>

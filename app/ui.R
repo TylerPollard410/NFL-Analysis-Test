@@ -37,24 +37,24 @@ library(smplot2)
 library(patchwork)
 
 ## Modeling ----
-library(pracma)
-library(forecast)
-library(elo)
-library(MASS)
-library(bestNormalize)
-library(tictoc)
-library(caret)
-library(splines)
-library(mgcv)
-library(DescTools)
-library(car)
-library(bayesplot)
-library(BayesFactor)
-library(rstanarm)
-library(tidybayes)
-library(loo)
-library(brms)
-library(performance)
+# library(pracma)
+# library(forecast)
+# library(elo)
+# library(MASS)
+# library(bestNormalize)
+# library(tictoc)
+# library(caret)
+# library(splines)
+# library(mgcv)
+# library(DescTools)
+# library(car)
+# library(bayesplot)
+# library(BayesFactor)
+# library(rstanarm)
+# library(tidybayes)
+# library(loo)
+# library(brms)
+# library(performance)
 
 ## NFL Verse ----
 library(nflverse)
@@ -63,7 +63,7 @@ library(nflverse)
 library(tidyverse)
 
 # Input Filters ----
-teamsDataInput <- load_teams(current = TRUE) |>
+teamsDataPickerInput <- load_teams(current = TRUE) |>
   select(team_abbr, team_name, team_conf, team_division) |>
   arrange(team_division, team_name) |>
   as.data.frame()
@@ -319,13 +319,13 @@ shinyUI(
                                  inputId = "playerOffenseTeam",
                                  label = "Select team to analyze", 
                                  choices = prepare_choices(
-                                   .data = teamsDataInput,
+                                   .data = teamsDataPickerInput,
                                    label = team_name,
                                    value = team_abbr,
                                    group_by = team_division
                                  ),
                                  multiple = TRUE,
-                                 selected = teamsDataInput$team_abbr,
+                                 selected = teamsDataPickerInput$team_abbr,
                                  showSelectedOptionsFirst = TRUE
                                )
                         ),

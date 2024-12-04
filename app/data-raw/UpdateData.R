@@ -1,4 +1,8 @@
-## Updata database with current data
+## Update database with current data and R objects
+# Last Update: 
+
+
+
 # Libraries ----
 ## Database 
 library(future)
@@ -79,6 +83,7 @@ pbpDataUpdateRows <- pbpData_tbl |>
 
 pbpDataUpdateCols <- pbpData_tbl$lazy_query$vars
 
+dbListTables(con)
 rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 
@@ -87,6 +92,8 @@ source("./app/data-raw/playerOffenseData.R")
 
 dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
+dbListTables(con)
+rm(playerOffenseData)
 
 ## seasonStandings ------------------------------
 ### Initial
@@ -95,9 +102,16 @@ source("./app/data-raw/seasonStandings.R")
 dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 
 dbListTables(con)
+rm(seasonStandings)
 
+## seasonWeekStandings ------------------------------
+### Initial
+source("./app/data-raw/seasonWeekStandings.R")
 
+dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
 
+dbListTables(con)
+rm(seasonWeekStandings)
 
 
 

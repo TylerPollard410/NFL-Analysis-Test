@@ -2,7 +2,7 @@
 
 # UI ----
 standingsPlayoffsTableOutput <- function(id){
-  uiOutput(NS(id, "standingsPlayoffsTableUI"))
+  withSpinner(uiOutput(NS(id, "standingsPlayoffsTableUI")), type = 8)
 }
 
 
@@ -14,11 +14,30 @@ standingsPlayoffsTableServer <- function(id,
                                  conference){
   moduleServer(id, function(input, output, session){
     
-    conf_logo <- reactive({
-      teamsData |> 
-        filter(team_conf == conference) |>
-        pull(team_conference_logo) |>
-        unique()
+    output$standingsPlayoffsTableUI <- renderUI({
+      conf_logo <- teamsData |> 
+          filter(team_conf == conference) |>
+          pull(team_conference_logo) |>
+          unique()
+      
+      box(
+        title = div(style = "display: flex; align-items: center;",
+                    img(src = conf_logo, style = "height: 25px;"),
+                    strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
+                    strong("Playoff Standings", style = "margin-left: 4px; font-size: 25px")
+        ),
+        width = 12,
+        status = "primary",
+        #withSpinner(
+          gt_output(NS(id, "tablePlaceholder"))#, type = 8
+        #)
+      )
+    })
+    
+    output$tablePlaceholder <- renderUI({
+      withSpinner(
+        gt_output(NS(id, "standingsPlayoffsTable")), type = 8
+      )
     })
     
     output$standingsPlayoffsTable <- render_gt({
@@ -88,19 +107,5 @@ standingsPlayoffsTableServer <- function(id,
           team_name = "Team"
         )
     }) # end renderGT
-    
-    output$standingsPlayoffsTableUI <- renderUI({
-      box(
-        title = div(style = "display: flex; align-items: center;",
-                    img(src = conf_logo(), style = "height: 25px;"),
-                    strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
-                    strong("Playoff Standings", style = "margin-left: 4px; font-size: 25px")
-        ),
-        width = 12,
-        withSpinner(
-          gt_output(NS(id, "standingsPlayoffsTable")), type = 8
-        )
-      )
-    })
   }) # end module Server
 } # end standingsTableServer

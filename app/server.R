@@ -31,7 +31,7 @@ seasonStandings <- tbl(con, "seasonStandings")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
-source("./R/calculateStandings.R", local = TRUE)
+# source("./R/calculateStandings.R", local = TRUE)
 
 # Define server logic #########################################################
 shinyServer(function(input, output, session) {
