@@ -70,20 +70,15 @@ shinyServer(function(input, output, session) {
   })
   standingsTableData <- reactive({
     Season <- standingsSeason()
-    Stat <- standingsStat()
     seasonStandings |>
       filter(season == Season) |>
-      mutate(
-        PF = ifelse(Stat == "Total", PF, round(PF/GP, 2)),
-        PA = ifelse(Stat == "Total", PA, round(PA/GP, 2)),
-        PD = ifelse(Stat == "Total", PD, round(PD/GP, 2)),
-      ) |> 
       collect()
   })
   
   ### AFC Table ----
   standingsTableServer("standingsTableAFC",
                        standingsSeason,
+                       standingsStat,
                        teamsData,
                        standingsTableData,
                        conference = "AFC")
@@ -91,6 +86,7 @@ shinyServer(function(input, output, session) {
   ### NFC Table ----
   standingsTableServer("standingsTableNFC",
                        standingsSeason,
+                       standingsStat,
                        teamsData,
                        standingsTableData,
                        conference = "NFC")

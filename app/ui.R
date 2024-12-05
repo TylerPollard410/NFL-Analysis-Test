@@ -21,7 +21,7 @@ library(rvest)
 
 ## Tables ----
 library(DBI)
-library(RSQLite)
+library(RPostgres)
 library(data.table)
 library(htmltools)
 library(gt)
@@ -39,6 +39,7 @@ library(patchwork)
 ## Modeling ----
 # library(pracma)
 # library(forecast)
+# library(timetk)
 # library(elo)
 # library(MASS)
 # library(bestNormalize)
