@@ -16,6 +16,7 @@ library(patchwork)
 ## Modeling
 library(pracma)
 library(forecast)
+library(timetk)
 library(elo)
 library(MASS)
 library(bestNormalize)
@@ -75,10 +76,26 @@ teamSeasonStats <- calculate_stats(
   season_type = "REG+POST"
 )
 
+pbpDataModBAL <- pbpDataMod |>
+  filter(posteam == "BAL")
+
+pbpDataModBAL |>
+  select(play_type, play, contains("qb"), -contains("hit"),
+         penalty, penalty_team,
+         ep, epa, vegas_wp, vegas_wpa, wp, wpa) |>
+  view()
+
+pbpDataMod |>
+  #filter(season == 2021, week == 1, posteam == "ARI") |>
+  select(play_type, play, contains("qb"), -contains("hit"),
+         penalty, penalty_team,
+         ep, epa, vegas_wp, vegas_wpa, wp, wpa) |>
+  view()
+
 epaPlay <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
-  filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   filter(play == 1) |> 
+  filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id,season, week, posteam, home_team, away_team) |>
   mutate(
     scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2
@@ -104,7 +121,7 @@ epaPlay <- pbpDataMod |>
 epaPass <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
-  filter(play_type == "pass") |> 
+  filter(qb_dropback == 1) |> 
   group_by(game_id,season, week, posteam, home_team, away_team) |>
   mutate(
     scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2
@@ -130,7 +147,7 @@ epaPass <- pbpDataMod |>
 epaRush <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
-  filter(play_type == "run") |> 
+  filter(qb_dropback == 0 & play_type == "run") |> 
   group_by(game_id,season, week, posteam, home_team, away_team) |>
   mutate(
     scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2

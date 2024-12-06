@@ -2,7 +2,13 @@
 
 # UI ----
 standingsTableOutput <- function(id){
-  withSpinner(uiOutput(NS(id, "standingsTableUI")), type = 8)
+  tagList(
+    #withSpinner(uiOutput(NS(id, "standingsTableUI")), type = 8)
+    uiOutput(NS(id, "standingsTableTitle")),
+    withSpinner(
+      reactableOutput(NS(id, "standingsTable")), type = 8
+    )
+  )
 }
 
 
@@ -15,35 +21,55 @@ standingsTableServer <- function(id,
                                  conference){
   moduleServer(id, function(input, output, session){
     
-    output$standingsTableUI <- renderUI({
-      conf_logo <- teamsData |> 
+    # output$standingsTableUI <- renderUI({
+    #   conf_logo <- teamsData |>
+    #     filter(team_conf == conference) |>
+    #     pull(team_conference_logo) |>
+    #     unique()
+    # 
+    #   box(
+    #     title = div(style = "display: flex; align-items: center;",
+    #                 img(src = conf_logo, style = "height: 25px;"),
+    #                 strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
+    #                 strong("Standings", style = "margin-left: 4px; font-size: 25px")
+    #     ),
+    #     width = 12,
+    #     status = "primary",
+    #     maximizable = TRUE,
+    #     #withSpinner(
+    #     uiOutput(NS(id, "tablePlaceholder"))#, type = 8
+    #     #)
+    #   )
+    # })
+    # 
+    # output$tablePlaceholder <- renderUI({
+    #   withSpinner(
+    #     reactableOutput(NS(id, "standingsTable")), type = 8
+    #   )
+    # })
+    
+    output$standingsTableTitle <- renderUI({
+      conf_logo <- teamsData |>
         filter(team_conf == conference) |>
         pull(team_conference_logo) |>
         unique()
       
-      box(
-        title = div(style = "display: flex; align-items: center;",
-                    img(src = conf_logo, style = "height: 25px;"),
-                    strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
-                    strong("Standings", style = "margin-left: 4px; font-size: 25px")
-        ),
-        width = 12,
-        status = "primary",
-        maximizable = TRUE,
-        #withSpinner(
-        uiOutput(NS(id, "tablePlaceholder"))#, type = 8
-        #)
+      title <- div(style = "display: flex; align-items: center;",
+                   img(src = conf_logo, style = "height: 25px;"),
+                   strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
+                   strong("Standings", style = "margin-left: 4px; font-size: 25px")
       )
-    })
-    
-    output$tablePlaceholder <- renderUI({
-      withSpinner(
-        reactableOutput(NS(id, "standingsTable")), type = 8
-      )
+      title
     })
     
     output$standingsTable <- renderReactable({
+      conf_logo <- teamsData |>
+        filter(team_conf == conference) |>
+        pull(team_conference_logo) |>
+        unique()
       Stat <- standingsStat()
+      Season <- standingsSeason()
+      
       standingsTableDataReact <- standingsTableData() |>
         filter(team_conf == conference) |>
         select(
@@ -73,122 +99,265 @@ standingsTableServer <- function(id,
         ungroup() |>
         select(-div_rank)
       
+      ## Reactable ----
+      ## Total ----
       if(Stat == "Total"){
-        standingsTableDataReact <- standingsTableDataReact |>
-          select(-c(team_PPG, opp_PPG))
-      }else{
-        standingsTableDataReact <- standingsTableDataReact |>
-          select(-c(PF, PA))
-      }
-      
-      standingsTableReact <- reactable(
-        data = standingsTableDataReact,
-        theme = espn(
-          centered = TRUE, 
-          header_font_size = 14,
-          font_size = 14
+        standingsTableReact <- reactable(
+          data = standingsTableDataReact |> select(-c(team_PPG, opp_PPG)),
+          theme = espn(
+            centered = TRUE, 
+            header_font_size = 14,
+            font_size = 14
           ),
-        highlight = TRUE,
-        compact = TRUE,
-        pagination = FALSE,
-        wrap = FALSE,
-        outlined = TRUE,
-        sortable = FALSE,
-        showSortable = FALSE,
-        #defaultSorted = "team_division",
-        rowStyle = group_border_sort("team_division"),
-        defaultColDef = colDef(vAlign = "center",
-                               minWidth = 30
-                               #headerStyle = list(fontSize = "14px")
-        ),
-        columns = list(
-          ### Team Division
-          team_division = colDef(
-            name = "",
-            minWidth = 75,
-            style = group_merge_sort("team_division")
+          highlight = TRUE,
+          compact = TRUE,
+          pagination = FALSE,
+          wrap = FALSE,
+          outlined = TRUE,
+          sortable = FALSE,
+          showSortable = FALSE,
+          fullWidth = TRUE,
+          defaultSorted = "team_division",
+          rowStyle = group_border_sort(columns = "team_division", 
+                                       border_color = "black", 
+                                       border_width = "1.5px",
+                                       border_style = "solid"),
+          defaultColDef = colDef(vAlign = "center",
+                                 minWidth = 50
+                                 #headerStyle = list(fontSize = "14px")
           ),
-          ### Team Logo
-          team_logo_espn = colDef(
-            name = "",
-            #maxWidth = 25,
-            style = background_img()
-            # cell = function(value, index){
-            #   #player_name <- standingsTableDataReact$player_display_name[index]
-            #   logo <- img(src = value, style = "height: 20px;")
-            #   #team <- standingsTableDataReact$team_abbr[index]
-            #   div(style = "display: flex; align-items: center;",
-            #       logo,
-            #       span(player_name, style = "margin-left: 4px"),
-            #       span(",", style = "margin-right: 4px"),
-            #       span(team, style = "font-size: 10px; color: grey")
-            #   )
-            # },
-            # style = list(borderRight = "1px solid black")
+          columnGroups = list(
+            colGroup(name = "Record",
+                     columns = c("GP", "W", "L", "T", "W-L%")),
+            colGroup(name = "Points",
+                     columns = c("PF", "PA", "PD")),
+            colGroup(name = "Performance",
+                     columns = c("MOV", "SOS", "SRS", "OSRS", "DSRS"))
           ),
-          ### Team Name
-          team_name = colDef(
-            name = "Team",
-            sticky = "left",
-            minWidth = 125,
-            style = list(borderRight = "1px solid black")
-          ),
-          ### Games Played
-          GP = colDef(
-            name = "GP",
-            #maxWidth = 50,
-            #align = "center",
-            style = list(borderRight = "1px solid black")
-          ),
-          ### Win Loss
-          `W-L%` = colDef(
-            minWidth = 50,
-            format = colFormat(percent = TRUE, digits = 2)
-          ),
-          ### PF
-          team_PPG = colDef(
-            name = "PF",
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          ### PA
-          opp_PPG = colDef(
-            name = "PA",
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          ### PD
-          PD = colDef(
-            minWidth = 40
-          ),
-          MOV = colDef(
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          SOS = colDef(
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          SRS = colDef(
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          OSRS = colDef(
-            minWidth = 40,
-            format = colFormat(digits = 2)
-          ),
-          DSRS = colDef(
-            minWidth = 40,
-            format = colFormat(digits = 2)
+          columns = list(
+            ### Team Division ----
+            team_division = colDef(
+              name = "",
+              minWidth = 80, 
+              style = group_merge_sort("team_division"), 
+              #style = cell_style(font_color = "red")
+            ),
+            ### Team Logo ----
+            team_logo_espn = colDef(
+              name = "",
+              sticky = "left",
+              maxWidth = 25,
+              style = background_img()
+            ),
+            ### Team Name ----
+            team_name = colDef(
+              name = "Team",
+              minWidth = 175,
+              style = list(borderRight = "1px solid black")
+            ),
+            ### Games Played ----
+            GP = colDef(
+              name = "GP",
+              minWidth = 30,
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### Win ----
+            W = colDef(
+              minWidth = 30
+            ),
+            ### Loss ----
+            L = colDef(
+              minWidth = 30
+            ),
+            ### Tie ----
+            `T` = colDef(
+              minWidth = 30
+            ),
+            ### Win Loss Perc ----
+            `W-L%` = colDef(
+              minWidth = 75,
+              format = colFormat(percent = TRUE, digits = 2),
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### PF ----
+            ### PA ----
+            ### PD ----
+            PD = colDef(
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### MOV ----
+            MOV = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### SOS ----
+            SOS = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### SRS ----
+            SRS = colDef(
+              format = colFormat(digits = 2),
+              style = color_scales(
+                data = standingsTableData(),
+                colors = c("red","pink", "whitesmoke", "palegreen", "green"),
+                bias = 1,
+                brighten_text = FALSE
+              )
+            ),
+            ### OSRS ----
+            OSRS = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### DSRS ----
+            DSRS = colDef(
+              format = colFormat(digits = 2)
+            )
           )
         )
-      )
+      }else{
+        ## Game ----
+        standingsTableReact <- reactable(
+          data = standingsTableDataReact |> select(-c(PF, PA)),
+          theme = espn(
+            centered = TRUE, 
+            header_font_size = 14,
+            font_size = 14
+          ),
+          highlight = TRUE,
+          compact = TRUE,
+          pagination = FALSE,
+          wrap = FALSE,
+          outlined = TRUE,
+          sortable = FALSE,
+          showSortable = FALSE,
+          fullWidth = TRUE,
+          defaultSorted = "team_division",
+          rowStyle = group_border_sort(columns = "team_division", 
+                                       border_color = "black", 
+                                       border_width = "1.5px",
+                                       border_style = "solid"),
+          defaultColDef = colDef(vAlign = "center",
+                                 minWidth = 50
+                                 #headerStyle = list(fontSize = "14px")
+          ),
+          columnGroups = list(
+            colGroup(name = "Record",
+                     columns = c("GP", "W", "L", "T", "W-L%")),
+            colGroup(name = "Points",
+                     columns = c("team_PPG", "opp_PPG", "PD")),
+            colGroup(name = "Performance",
+                     columns = c("MOV", "SOS", "SRS", "OSRS", "DSRS"))
+          ),
+          columns = list(
+            ### Team Division ----
+            team_division = colDef(
+              name = "",
+              minWidth = 80, 
+              style = group_merge_sort("team_division"), 
+              #style = cell_style(font_color = "red")
+            ),
+            ### Team Logo ----
+            team_logo_espn = colDef(
+              name = "",
+              sticky = "left",
+              maxWidth = 25,
+              style = background_img()
+            ),
+            ### Team Name ----
+            team_name = colDef(
+              name = "Team",
+              minWidth = 175,
+              style = list(borderRight = "1px solid black")
+            ),
+            ### Games Played ----
+            GP = colDef(
+              name = "GP",
+              minWidth = 30,
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### Win ----
+            W = colDef(
+              minWidth = 30
+            ),
+            ### Loss ----
+            L = colDef(
+              minWidth = 30
+            ),
+            ### Tie ----
+            `T` = colDef(
+              minWidth = 30
+            ),
+            ### Win Loss Perc ----
+            `W-L%` = colDef(
+              minWidth = 75,
+              format = colFormat(percent = TRUE, digits = 2),
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### PF ----
+            team_PPG = colDef(
+              name = "PF",
+              format = colFormat(digits = 2)
+            ),
+            ### PA ----
+            opp_PPG = colDef(
+              name = "PA",
+              format = colFormat(digits = 2)
+            ), 
+            ### PD ----
+            PD = colDef(
+              align = "center",
+              style = list(borderRight = "1px solid #d3d3d3")
+            ),
+            ### MOV ----
+            MOV = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### SOS ----
+            SOS = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### SRS ----
+            SRS = colDef(
+              format = colFormat(digits = 2),
+              style = color_scales(
+                data = standingsTableData(),
+                colors = c("red","pink", "whitesmoke", "palegreen", "green"),
+                bias = 1
+              )
+            ),
+            ### OSRS ----
+            OSRS = colDef(
+              format = colFormat(digits = 2)
+            ),
+            ### DSRS ----
+            DSRS = colDef(
+              format = colFormat(digits = 2)
+            )
+          )
+        )
+      }
+      
+      # ## Title ----
+      # standingsTableReact <- standingsTableReact |>
+      #   add_title(
+      #     title = div(style = "display: flex; align-items: center;",
+      #                 img(src = conf_logo, style = "height: 25px;"),
+      #                 strong(Season, style = "margin-left: 6px; font-size: 25px"),
+      #                 strong("Standings", style = "margin-left: 4px; font-size: 25px")
+      #     )
+      #     
+      #   )
+      
       return(standingsTableReact)
     })
   }) # end module Server
 } # end standingsTableServer
 
-# # Test table output ----
+# Test table output ----
 # plan("multisession")
 # con <- dbConnect(RPostgres::Postgres(),
 #                  dbname = "NFLdata",
@@ -212,30 +381,6 @@ standingsTableServer <- function(id,
 #   pull(team_conference_logo) |>
 #   unique()
 # 
-# # if(Stat == "Total"){
-# #   standingsTableData <- seasonStandings |>
-# #     filter(season == Season) |>
-# #     mutate(
-# #       # PF = ifelse(Stat == "Total", PF, round(PF/GP, 2)),
-# #       # PA = ifelse(Stat == "Total", PA, round(PA/GP, 2)),
-# #       # PD = ifelse(Stat == "Total", PD, round(PD/GP, 2))
-# #       PF = ifelse(Stat == "Total", PF, round(team_PPG, 2)),
-# #       PA = ifelse(Stat == "Total", PA, round(opp_PPG, 2)),
-# #       PD = ifelse(Stat == "Total", PD, round(MOV, 2))
-# #     ) |> 
-# #     collect()
-# # }
-# # standingsTableData <- seasonStandings |>
-# #     filter(season == Season) |>
-# #     mutate(
-# #       # PF = ifelse(Stat == "Total", PF, round(PF/GP, 2)),
-# #       # PA = ifelse(Stat == "Total", PA, round(PA/GP, 2)),
-# #       # PD = ifelse(Stat == "Total", PD, round(PD/GP, 2))
-# #       PF = ifelse(Stat == "Total", PF, round(team_PPG, 2)),
-# #       PA = ifelse(Stat == "Total", PA, round(opp_PPG, 2)),
-# #       PD = ifelse(Stat == "Total", PD, round(MOV, 2))
-# #     ) |> 
-# #     collect()
 # 
 # standingsTableData <- seasonStandings |>
 #   filter(season == Season) |>
@@ -390,7 +535,7 @@ standingsTableServer <- function(id,
 # # App Test ----
 # standingsTableApp <- function() {
 #   
-#   # Load Libraries ----
+#   # Load Libraries
 #   library(shiny)
 #   library(shinydashboard)
 #   library(bs4Dash)
@@ -407,7 +552,7 @@ standingsTableServer <- function(id,
 #   library(stringr)
 #   library(rvest)
 #   
-#   ## Tables ----
+#   ## Tables
 #   library(DBI)
 #   library(RPostgres)
 #   library(data.table)
@@ -418,13 +563,13 @@ standingsTableServer <- function(id,
 #   library(reactable)
 #   library(reactablefmtr)
 #   
-#   ## Plotting ----
+#   ## Plotting
 #   library(smplot2)
 #   # library(cowplot)
 #   # library(GGally)
 #   library(patchwork)
 #   
-#   ## Modeling ----
+#   ## Modeling
 #   # library(pracma)
 #   # library(forecast)
 #   # library(elo)
@@ -444,10 +589,10 @@ standingsTableServer <- function(id,
 #   # library(brms)
 #   # library(performance)
 #   
-#   ## NFL Verse ----
+#   ## NFL Verse
 #   library(nflverse)
 #   
-#   ## Tidyverse ----
+#   ## Tidyverse
 #   library(tidyverse)
 #   
 #   
@@ -460,8 +605,8 @@ standingsTableServer <- function(id,
 #     h2("Offensive Player Data"),
 #     tags$style(HTML(".vscomp-dropbox-container  {z-index:99999 !important;}")),
 #     fluidRow(
-#       ##### Inputs ----
-#       ###### Season ----
+#       ##### Inputs
+#       ###### Season
 #       column(width = 1,
 #              virtualSelectInput(
 #                inputId = "standingsSeason",
@@ -470,7 +615,7 @@ standingsTableServer <- function(id,
 #                selected = get_current_season()
 #              )
 #       ),
-#       ###### Table Stat ----
+#       ###### Table Stat
 #       column(width = 2,
 #              radioGroupButtons(
 #                inputId = "standingsStat",
@@ -480,7 +625,7 @@ standingsTableServer <- function(id,
 #              )
 #       ) # end column
 #     ), # end fluidRow
-#     ##### Season Table ----
+#     ##### Season Table
 #     fluidRow(
 #       column(
 #         width = 6,
@@ -491,7 +636,7 @@ standingsTableServer <- function(id,
 #         standingsTableOutput("standingsTableNFC")
 #       ) # end NFC column
 #     ), # end divsion standings row
-#     ##### Playoffs Table ----
+#     ##### Playoffs Table
 #     fluidRow(
 #       column(
 #         width = 6,
@@ -505,8 +650,8 @@ standingsTableServer <- function(id,
 #   )
 #   
 #   
-#   # Server functions -----
-#   ## Amazon RDS connection ----
+#   # Server functions
+#   ## Amazon RDS connection
 #   plan("multisession")
 #   
 #   con <- dbConnect(RPostgres::Postgres(),
@@ -517,20 +662,20 @@ standingsTableServer <- function(id,
 #   
 #   allSeasons <- 2006:most_recent_season()
 #   
-#   ## Team Data ----
+#   ## Team Data
 #   teamsData <- load_teams(current = FALSE)
 #   
-#   ## Game Data ----
+#   ## Game Data
 #   source(file = "./app/data-raw/gameData.R")
 #   
 #   source(file = "./app/data-raw/gameDataLong.R")
 #   
-#   ## Standings ----
+#   ## Standings
 #   seasonStandings <- tbl(con, "seasonStandings")
 #   
 #   # Server ----
 #   server <- function(input, output, session) {
-#     ### Table Data ----
+#     ### Table Data
 #     standingsSeason <- reactive({
 #       as.numeric(input$standingsSeason)
 #     })
@@ -553,28 +698,28 @@ standingsTableServer <- function(id,
 #         collect()
 #     })
 #     
-#     ### AFC Table ----
+#     ### AFC Table
 #     standingsTableServer("standingsTableAFC",
 #                          standingsSeason,
 #                          teamsData,
 #                          standingsTableData,
 #                          conference = "AFC")
 #     
-#     ### NFC Table ----
+#     ### NFC Table
 #     standingsTableServer("standingsTableNFC",
 #                          standingsSeason,
 #                          teamsData,
 #                          standingsTableData,
 #                          conference = "NFC")
 #     
-#     ### AFC Playoffs Table ----
+#     ### AFC Playoffs Table
 #     standingsPlayoffsTableServer("standingsPlayoffsTableAFC",
 #                                  standingsSeason,
 #                                  teamsData,
 #                                  standingsTableData,
 #                                  conference = "AFC")
 #     
-#     ### NFC Playoffs Table ----
+#     ### NFC Playoffs Table
 #     standingsPlayoffsTableServer("standingsPlayoffsTableNFC",
 #                                  standingsSeason,
 #                                  teamsData,
@@ -591,19 +736,16 @@ standingsTableServer <- function(id,
 # 
 # 
 
-#################################################
 
-
-
-# ## Create Standings Tables ----
+# GT ----
 # 
-# # UI ----
+## UI ----
 # standingsTableOutput <- function(id){
 #   withSpinner(uiOutput(NS(id, "standingsTableUI")), type = 8)
 # }
 # 
 # 
-# # Server ----
+# ## Server ----
 # standingsTableServer <- function(id,
 #                                  standingsSeason,
 #                                  teamsData,
@@ -717,10 +859,10 @@ standingsTableServer <- function(id,
 # } # end standingsTableServer
 
 
-# # App Test ----
+# ## App Test ----
 # standingsTableApp <- function() {
 # 
-#   # Load Libraries ----
+#   # Load Libraries 
 #   library(shiny)
 #   library(shinydashboard)
 #   library(bs4Dash)
@@ -736,7 +878,7 @@ standingsTableServer <- function(id,
 #   library(stringr)
 #   library(rvest)
 # 
-#   ## Tables ----
+#   ## Tables 
 #   library(DBI)
 #   library(RPostgres)
 #   library(data.table)
@@ -747,13 +889,13 @@ standingsTableServer <- function(id,
 #   library(reactable)
 #   library(reactablefmtr)
 # 
-#   ## Plotting ----
+#   ## Plotting 
 #   library(smplot2)
 #   # library(cowplot)
 #   # library(GGally)
 #   library(patchwork)
 # 
-#   ## Modeling ----
+#   ## Modeling 
 #   library(pracma)
 #   library(forecast)
 #   library(elo)
@@ -773,10 +915,10 @@ standingsTableServer <- function(id,
 #   library(brms)
 #   library(performance)
 # 
-#   ## NFL Verse ----
+#   ## NFL Verse 
 #   library(nflverse)
 # 
-#   ## Tidyverse ----
+#   ## Tidyverse 
 #   library(tidyverse)
 # 
 # 
@@ -789,8 +931,8 @@ standingsTableServer <- function(id,
 #     h2("Offensive Player Data"),
 #     tags$style(HTML(".vscomp-dropbox-container  {z-index:99999 !important;}")),
 #     fluidRow(
-#       ##### Inputs ----
-#       ###### Season ----
+#       ##### Inputs 
+#       ###### Season 
 #       column(width = 1,
 #              virtualSelectInput(
 #                inputId = "standingsSeason",
@@ -799,7 +941,7 @@ standingsTableServer <- function(id,
 #                selected = get_current_season()
 #              )
 #       ),
-#       ###### Table Stat ----
+#       ###### Table Stat 
 #       column(width = 2,
 #              radioGroupButtons(
 #                inputId = "standingsStat",
@@ -809,7 +951,7 @@ standingsTableServer <- function(id,
 #              )
 #       ) # end column
 #     ), # end fluidRow
-#     ##### Season Table ----
+#     ##### Season Table 
 #     fluidRow(
 #       column(
 #         width = 6,
@@ -820,7 +962,7 @@ standingsTableServer <- function(id,
 #         standingsTableOutput("standingsTableNFC")
 #       ) # end NFC column
 #     ), # end divsion standings row
-#     ##### Playoffs Table ----
+#     ##### Playoffs Table 
 #     fluidRow(
 #       column(
 #         width = 6,
@@ -834,8 +976,8 @@ standingsTableServer <- function(id,
 #   )
 # 
 # 
-#   # Server functions -----
-#   ## Amazon RDS connection ----
+#   # Server functions -
+#   ## Amazon RDS connection 
 #   plan("multisession")
 #   
 #   con <- dbConnect(RPostgres::Postgres(),
@@ -846,20 +988,20 @@ standingsTableServer <- function(id,
 #   
 #   allSeasons <- 2006:most_recent_season()
 #   
-#   ## Team Data ----
+#   ## Team Data 
 #   teamsData <- load_teams(current = FALSE)
 #   
-#   ## Game Data ----
+#   ## Game Data 
 #   source(file = "./app/data-raw/gameData.R")
 #   
 #   source(file = "./app/data-raw/gameDataLong.R")
 #   
-#   ## Standings ----
+#   ## Standings 
 #   seasonStandings <- tbl(con, "seasonStandings")
 # 
-#   # Server ----
+#   # Server 
 #   server <- function(input, output, session) {
-#     ### Table Data ----
+#     ### Table Data 
 #     standingsSeason <- reactive({
 #       as.numeric(input$standingsSeason)
 #     })
@@ -879,28 +1021,28 @@ standingsTableServer <- function(id,
 #         collect()
 #     })
 #     
-#     ### AFC Table ----
+#     ### AFC Table 
 #     standingsTableServer("standingsTableAFC",
 #                          standingsSeason,
 #                          teamsData,
 #                          standingsTableData,
 #                          conference = "AFC")
 #     
-#     ### NFC Table ----
+#     ### NFC Table 
 #     standingsTableServer("standingsTableNFC",
 #                          standingsSeason,
 #                          teamsData,
 #                          standingsTableData,
 #                          conference = "NFC")
 #     
-#     ### AFC Playoffs Table ----
+#     ### AFC Playoffs Table 
 #     standingsPlayoffsTableServer("standingsPlayoffsTableAFC",
 #                                  standingsSeason,
 #                                  teamsData,
 #                                  standingsTableData,
 #                                  conference = "AFC")
 #     
-#     ### NFC Playoffs Table ----
+#     ### NFC Playoffs Table 
 #     standingsPlayoffsTableServer("standingsPlayoffsTableNFC",
 #                                  standingsSeason,
 #                                  teamsData,
