@@ -113,6 +113,7 @@ dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, ove
 dbListTables(con)
 rm(seasonWeekStandings)
 
+dbDisconnect(con)
 
 
 

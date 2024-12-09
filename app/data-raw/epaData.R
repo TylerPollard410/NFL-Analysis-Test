@@ -14,6 +14,7 @@ library(smplot2)
 library(patchwork)
 
 ## Modeling
+library(zoo)
 library(pracma)
 library(forecast)
 library(timetk)
@@ -44,7 +45,7 @@ library(tidyverse)
 source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
 
-seasonsMod <- 2021:2024
+seasonsMod <- 2006:2024
 gameDataMod <- gameData |> filter(season %in% seasonsMod)
 gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod)
 pbpDataMod <- load_pbp(seasons = seasonsMod)
@@ -59,8 +60,40 @@ con <- dbConnect(RPostgres::Postgres(),
 dbListTables(con)
 dbDisconnect(con)
 
+pbpDataMod2 <- pbpDataMod |> filter(game_id != "2024_14_GB_DET")
+pbpDataMod <- pbpDataMod2
 
 # EPA ========
+## Use this section to check for anomolies ----
+pbpDictionary <- dictionary_pbp
+
+playData <- pbpDataMod |>
+  select(play_id, game_id, season, week, posteam, defteam,home_team, away_team,
+         play_type, play_type_nfl, play, 
+         pass, pass_attempt, rush, rush_attempt,special,
+         qb_dropback, qb_scramble,
+         penalty, penalty_team, penalty_type,
+         yards_gained, ydstogo, 
+         interception, fumble, fumble_lost, epa, wpa, desc)
+
+playData |>
+  filter(
+    #play == 1, pass == 0, rush == 0, special == 0, penalty == 0
+    #fumble == 1 | interception == 1 
+    #pass != pass_attempt
+    #rush != rush_attempt
+    #qb_scramble == 1, fumble == 1
+    pass == 1
+    #play_deleted == 1
+  ) |>
+  view()
+
+playData |>
+  filter(play_id == 1369, game_id == "2011_02_STL_NYG") |>
+  view()
+
+
+## Make off and def ----
 epaOffData <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
   filter(play == 1) |> 
@@ -101,62 +134,12 @@ epaData <- epaOffData |>
       select(game_id, opponent, contains("off")) |>
       rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
     by = join_by(game_id, team == opponent)
-  ) |>
-  left_join(
-    seasonWeekStandings |>
-      select(
-        season,
-        week,
-        team,
-        PFG = team_PPG,
-        PAG = opp_PPG,
-        MOV,
-        SOS,
-        SRS,
-        OSRS,
-        DSRS
-      ),
-    by = join_by(season, week, team)
-  )
+  )# |>
 
-srsAvgs <- seasonWeekStandings |>
-  group_by(season) |>
-  filter(week == max(week)) |>
-  ungroup() |>
-  select(
-    season,
-    team,
-    avg_PFG = team_PPG,
-    avg_PAG = opp_PPG,
-    avg_MOV = MOV, 
-    avg_SOS = SOS,
-    avg_SRS = SRS, 
-    avg_OSRS = OSRS, 
-    avg_DSRS = DSRS
-  ) |>
-  mutate(
-    season = season + 1
-  ) |>
-  mutate(week = 1, .after = season)
-
-# left_join(
-#   gameDataLongMod |> 
-#     select(game_id, gameday, weekday, gametime, time_of_day,
-#            team, location, locationID),
-#   by = join_by(game_id, team)
-# ) |>
-# select(-home_team, -away_team) |>
-# relocate(gameday, weekday, gametime, time_of_day, location, locationID,
-#          .after = week)
-
-
-tsDataLong <- gameDataLongMod |>
+epaTimeData <- gameDataLongMod |>
   left_join(
     epaData |> select(-home_team, -away_team)
   ) |> 
-  # left_join(
-  #   srsAvgs
-  # ) |>
   filter(!is.na(spread_line)) |>
   select(-c(
     old_game_id,
@@ -175,74 +158,264 @@ tsDataLong <- gameDataLongMod |>
   )) |>
   mutate(
     gameday = as_date(gameday)
-  ) 
+  ) |>
+  select(game_id, season, week, gameday, team, contains("mean"))
 
-write_csv(tsDataLong, file = "~/Desktop/tsDataLong.csv")
+## Average season EPA ----
+# epaMetric <- "def_epa_mean"
+# 
+# epaAvgs <- epaTimeData |> 
+#   group_by(season, team) |>
+#   summarise(
+#     seasonAvg = mean(!!sym(epaMetric), na.rm = TRUE)
+#   ) |>
+#   ungroup() |>
+#   group_by(team) |>
+#   mutate(seasonAvglag = lag(seasonAvg, n = 1, default = 0)) |>
+#   ungroup()
 
-# Plot times series ----
-tsDataLong |>
-  filter(team == "WAS") |>
-  group_by(season) |>
-  plot_time_series(
-    .date_var = gameday,
-    .value = SRS,
-    #.color_var = team,
-    .facet_nrow = 1,
-    .facet_ncol = 4,
-    .facet_scales = "free_x"
-  )
+epaMetrics <- str_subset(colnames(epaTimeData), "epa")
 
-tsDataLong |>
-  filter(team == "WAS") |>
-  group_by(season) |>
-  plot_time_series(
-    .date_var = gameday,
-    .value = off_epa_mean,
-    #.color_var = team,
-    .facet_nrow = 1,
-    .facet_ncol = 4,
-    .facet_scales = "free_x"
-  )
-
-tsDataLong |>
-  filter(team == "WAS") |>
-  group_by(season) |>
-  plot_time_series(
-    .date_var = gameday,
-    .value = def_epa_mean,
-    #.color_var = team,
-    .facet_nrow = 1,
-    .facet_ncol = 4,
-    .facet_scales = "free_x"
-  )
-
-tsFeaturesOffEpaSum <- tsDataLong |>
-  group_by(team) |>
-  tk_tsfeatures(
-    .date_var = gameday,
-    .value = off_epa_sum
-  )
-
-
-featureData <- tsDataLong |>
-  mutate(order = row_number()) |>
-  group_by(team) |>
-  tk_augment_slidify(
-    .value = contains("epa"),
-    .f = ~ mean(.x, na.rm = TRUE),
-    .period = 5,
-    .align = "right",
-    .names = "auto"  #~paste0("roll_", .x)
-  ) %>%
-  tk_augment_lags(
-    .value = c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS),
-    .lags = 1,
-    .names = "auto" #~paste0("lag_", .x)
-  ) %>%
+epaAvgs <- epaTimeData |> 
+  group_by(season, team) |>
+  summarise(
+    across(contains("epa"),
+           ~mean(.x, na.rm = TRUE),
+           .names = "{.col}Avg"
+    )
+    #seasonAvg = mean(!!sym(epaMetric), na.rm = TRUE)
+  ) |>
   ungroup() |>
-  arrange(order) |>
-  select(-order) |>
-  relocate(team, .after = opponent_score)
+  group_by(team) |>
+  mutate(
+    across(contains("Avg"),
+           ~lag(.x, n = 1, default = 0),
+           .names = "{.col}Lag"
+    )
+    #seasonAvglag = lag(seasonAvg, n = 1, default = 0)
+  ) |>
+  ungroup()
+  # select(
+  #   season, team,
+  #   contains("off_epa_mean"),
+  #   contains("off_pass_epa_mean"),
+  #   contains("off_rush_epa_mean"),
+  #   contains("off_penalty_epa_mean"),
+  #   contains("def_epa_mean"),
+  #   contains("def_pass_epa_mean"),
+  #   contains("def_rush_epa_mean"),
+  #   contains("def_penalty_epa_mean")
+  # )
+
+epaTimeDataPlot <- epaTimeData |>
+  left_join(epaAvgs)
+
+## Plot times series ----
+plotTeam <- "BAL"
+epaPlotMetric <- "off_epa_mean"
+
+epaTimeDataPlot |>
+  group_by(season) |>
+  filter(team == plotTeam) |>
+  plot_time_series(
+    .date_var = week, #gameday
+    .value = !!sym(epaPlotMetric),
+    .color_var = team,
+    .interactive = FALSE,
+    .facet_nrow = 4,
+    .facet_ncol = 5,
+    .facet_scales = "free_x",
+    .legend_show = FALSE,
+    .smooth = TRUE,
+    .title = paste(plotTeam, epaPlotMetric)
+  ) +
+  geom_line(aes(x = week, y = get(paste0(epaPlotMetric, "Avg"))), color = "red", linewidth = 1) +
+  geom_line(aes(x = week, y = get(paste0(epaPlotMetric, "AvgLag"))), color = "green") +
+  scale_x_continuous(breaks = 0:22)
+
+
+# Feature Engineer ----
+## The first 6 weeks are highly noisy bc SRS and other related metrics
+## are calculated fresh with the beginning of each season
+epaData2 <- epaData |>
+  select(
+    game_id, season, week, team, opponent,
+    contains("mean")
+  ) |>
+  group_by(season, team) |>
+  mutate(
+    across(contains("mean"),
+           ~lag(.x, n = 1),
+           .names = "{.col}Lag"
+           )
+  ) |>
+  ungroup() |>
+  left_join(
+    epaAvgs |> select(season, team, contains("meanAvgLag"))
+  ) |>
+  group_by(season, team) |>
+  mutate(
+    off_epa_meanLag = ifelse(is.na(off_epa_meanLag), off_epa_meanAvgLag, off_epa_meanLag),
+    off_pass_epa_meanLag = ifelse(is.na(off_pass_epa_meanLag), off_pass_epa_meanAvgLag, off_pass_epa_meanLag),
+    off_rush_epa_meanLag = ifelse(is.na(off_rush_epa_meanLag), off_rush_epa_meanAvgLag, off_rush_epa_meanLag),
+    off_penalty_epa_meanLag = ifelse(is.na(off_penalty_epa_meanLag), off_penalty_epa_meanAvgLag, off_penalty_epa_meanLag),
+    def_epa_meanLag = ifelse(is.na(def_epa_meanLag), def_epa_meanAvgLag, def_epa_meanLag),
+    def_pass_epa_meanLag = ifelse(is.na(def_pass_epa_meanLag), def_pass_epa_meanAvgLag, def_pass_epa_meanLag),
+    def_rush_epa_meanLag = ifelse(is.na(def_rush_epa_meanLag), def_rush_epa_meanAvgLag, def_rush_epa_meanLag),
+    def_penalty_epa_meanLag = ifelse(is.na(def_penalty_epa_meanLag), def_penalty_epa_meanAvgLag, def_penalty_epa_meanLag)
+  )
+
+epaData3 <- epaData2 |>
+  mutate(
+    across(contains("meanLag"),
+           .fns = list(
+             ewma2 = ~movavg(.x, n = 2, type = "e"),
+             ewma3 = ~movavg(.x, n = 3, type = "e"),
+             ewma4 = ~movavg(.x, n = 4, type = "e"),
+             ewma5 = ~movavg(.x, n = 5, type = "e"),
+             ewma6 = ~movavg(.x, n = 6, type = "e"),
+             rwma2 = ~movavg(.x, n = 2, type = "r"),
+             rwma3 = ~movavg(.x, n = 3, type = "r"),
+             rwma4 = ~movavg(.x, n = 4, type = "r"),
+             rwma5 = ~movavg(.x, n = 5, type = "r"),
+             rwma6 = ~movavg(.x, n = 6, type = "r")
+           ),
+           .names = "{.col}_{.fn}"
+           ),
+    .keep = "unused"
+  ) |>
+  select(
+    -contains("AvgLag")
+  ) |>
+  rename_with(~str_remove(.x, "Lag"), everything()) |>
+  # mutate(
+  #   across(contains("ewma"),
+  #          .fns = list(
+  #            #Diff = ~(!!sym(str_split_i(colnames(.x), "_ewma", i = 1)) - .x)
+  #            Diff = ~(!!(str_split_i(names(~.x), "_ewma", i = 1)))
+  #            ),
+  #          .names = "{.col}_{.fn}"
+  #   )
+  # ) 
+  ungroup()
+
+epaDataPlot <- epaData3 |>
+  select(game_id, season, week, team, opponent, contains("off_epa"), contains("def_epa")) |>
+  filter(team == "BAL") |>
+  pivot_longer(
+    cols = contains("ma"), names_to = "Variable", values_to = "epa"
+  ) |>
+  mutate(
+    Feature = str_split_i(Variable, "_mean_", i = 2),
+    Window = str_split_i(Feature, "ma", i = 2),
+    Feature = str_remove(Feature, "[:digit:]")
+  ) |>
+  mutate(
+    Diff = off_epa_mean - epa, .after = epa
+  )
+
+epaData4 <- epaData2 |>
+  group_by(season, team) |>
+  tk_augment_slidify(
+    .value = contains("meanLag"),
+    .period = c(1:10),
+    .f = mean,
+    .partial = TRUE, 
+    .align = "right"
+  ) |>
+  select(
+    -contains("AvgLag"),
+    -ends_with("Lag")
+  ) |>
+  rename_with(~str_remove(.x, "Lag"), everything()) |>
+  ungroup()
+
+offEpaData <- epaData4 |>
+  select(game_id, season, week, team, opponent, contains("off_epa")) |>
+  filter(team == "BAL") |>
+  pivot_longer(
+    cols = contains("roll"), names_to = "Variable", values_to = "epa"
+  ) |>
+  mutate(
+    Feature = str_split_i(Variable, "_mean_", i = 2),
+    Window = str_split_i(Feature, "_", i = 2),
+    Feature = str_split_i(Feature, "_", i = 1)
+  ) |>
+  mutate(
+    Diff = off_epa_mean - epa, .after = epa
+  )
+
+
+
+
+
+
+
+
+
+ggplot(data = offEpaData) +
+  geom_line(aes(x = week, y = off_epa_mean)) +
+  geom_line(aes(x = week, y = epa, color = Window)) +#, linetype = Window)) +
+  scale_x_continuous(breaks = 0:22) +
+  facet_wrap(vars(season), nrow = 5, ncol = 4)
+
+## PLot ----
+smoothTeam <- "BAL"
+
+## MAE ----
+MAEsmoothsTeam <- epaData3 |>
+  #filter(season >= 2021) |> to test various season subsets
+  summarise(
+    across(contains("ewma"),
+           ~mean(abs(.x), na.rm = TRUE))
+  )
+
+MAEsmoothsTeamLong <- MAEsmoothsTeam |> 
+  group_by(team) |>
+  pivot_longer(-team, names_to = "Method", values_to = "MAE") |>
+  mutate(
+    Window = str_extract(Method, "[:digit:]"),
+    Method2 = str_split_i(Method, "[:digit:]", i = 1)
+  )
+
+### Plot ----
+ggplot(data = MAEsmoothsTeamLong) +
+  geom_density(aes(x = MAE, color = Method2, linetype = Window))
+
+## Avergae over team ----
+MAEsmooths <- MAEsmoothsTeam |>
+  ungroup() |> 
+  select(-team) |>
+  summarise(
+    across(everything(), mean)
+  )
+
+MAEsmooths |> 
+  pivot_longer(everything(), names_to = "Method", values_to = "MAE") |>
+  arrange(MAE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
