@@ -134,7 +134,7 @@ epaData <- epaOffData |>
       select(game_id, opponent, contains("off")) |>
       rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
     by = join_by(game_id, team == opponent)
-  )# |>
+  )
 
 epaTimeData <- gameDataLongMod |>
   left_join(
