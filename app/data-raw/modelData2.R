@@ -76,6 +76,8 @@ pbpPlayTypes <- pbpDataMod |>
     pass_attempt,
     rush,
     rush_attempt,
+    special_teams_play,
+    special,
     penalty,
     qb_dropback,
     qb_kneel,
@@ -85,8 +87,9 @@ pbpPlayTypes <- pbpDataMod |>
   ) |>
   distinct()
 
-pbpPlayTypesView <- pbpPlayTypes |>
-  filter(pass == 0, rush == 0, penalty == 1)
+# pbpPlayTypesView <- pbpPlayTypes |>
+#   filter(play == 1, pass == 1)
+#   filter(play == 1, pass == 0, rush == 0, penalty == 1)
 
 
 ## EPA ----
@@ -108,9 +111,12 @@ epaOffData <- pbpDataMod |>
     off_rush_plays = sum(rush == 1),
     off_rush_epa_sum = sum(epa[rush == 1], na.rm = TRUE),
     off_rush_epa_mean = mean(epa[rush == 1], na.rm = TRUE),
-    off_penalty_plays = sum(pass == 0 & rush == 0 & penalty == 1, na.rm = TRUE),
-    off_penalty_epa_sum = sum(epa[pass == 0 & rush == 0 & penalty == 1], na.rm = TRUE),
-    off_penalty_epa_mean = mean(epa[pass == 0 & rush == 0 & penalty == 1], na.rm = TRUE)
+    off_penalty_plays = sum(pass == 0 & rush == 0 & special == 0 & penalty == 1, na.rm = TRUE),
+    off_penalty_epa_sum = sum(epa[pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
+    off_penalty_epa_mean = mean(epa[pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
+    off_special_plays = sum(special == 1 & penalty == 1, na.rm = TRUE),
+    off_special_epa_sum = sum(epa[special == 1 & penalty == 0], na.rm = TRUE),
+    off_special_epa_mean = mean(epa[special == 1 & penalty == 0], na.rm = TRUE),
   ) |>
   mutate(
     across(contains("off"), ~ifelse(is.nan(.x), 0, .x))
@@ -307,331 +313,64 @@ modData <- gameDataMod |>
     wind = ifelse(is.na(wind), 0, wind)
   )
 
-rm(epaAvgs, epaData, epaData2, epaData3, epaOffData, srsData, seasonWeekStandings)
-
-# Previous Data ----
-histModelData <- modData |> filter(season <= 2023)
-modelData <- modData |> filter(season == 2024) |> filter(complete.cases(result))
-
-# Fit historical ----
-iters <- 3000
-burn <- 1000
-chains <- 2
-sims <- (iters-burn)*chains
+rm(list = ls()[ls() != "modData"])
 
 
-Fit <- brm(
-  bf(mvbind(home_score, away_score) ~ 
-       home_SRS + away_SRS +
-       home_epa_cum + away_epa_cum +
-       home_epa_roll + away_epa_roll +
-       home_penalty_epa_cum + away_penalty_epa_cum +
-       home_rest +
-       away_rest +
-       location +
-       div_game +
-       roof +
-       temp +
-       wind +
-       #surface +
-       # (1 | gr(home_team, id = "H")) +
-       # (1 | gr(away_team, id = "A")) +
-       (1 | mm(home_team, away_team))# + 
-       #(1 | season)
-  ),
-  data = histModelData,
-  family = brmsfamily(family = "negbinomial"),
-  save_pars = save_pars(all = TRUE),
-  seed = 52,
-  warmup = burn,
-  iter = iters,
-  chains = chains,
-  normalize = TRUE,
-  control = list(adapt_delta = 0.95),
-  backend = "cmdstan"
-)
-
-fit <- 1
-assign(paste0("fit", fit), Fit)
-
-#fitFormulas <- list()
-# for(i in 1:fit){
-#   fitFormulas[[paste0("Fit",i)]] <- get(paste0("fit", i))
-# }
-fitFormulas[[paste0("Fit",fit)]] <- get(paste0("fit", fit))
-
-## Diagnostics ----
-# prior_summary(Fit)
-# posterior_summary(Fit)
-# launch_shinystan(Fit)
-print(Fit, digits = 4)
-fixedEff <- fixef(Fit)
-fixedEff2 <- data.frame(fixedEff) |>
-  mutate(
-    p_val = dnorm(Estimate/Est.Error)
-  ) |>
-  mutate(
-    across(everything(), function(x){round(x, 4)})
-  ) |>
-  mutate(
-    Sig = ifelse(p_val < 0.01, "***",
-                 ifelse(p_val < 0.05, "**",
-                        ifelse(p_val < 0.1, "*", "")))
-  )
-fixedEff2
-ranef(Fit)
-
-FitR2 <- bayes_R2(Fit) |>
-  bind_cols(Fit = paste0("Fit", fit)) |>
-  select(Fit, everything())
-FitR2
-
-## PPC Plot ----
-homePPC <- pp_check(Fit, resp = "homescore", ndraws = 100) + 
-  labs(title = paste0("Fit", fit, " Home PPC")) +
-  theme_bw()
-
-awayPPC <- pp_check(Fit, resp = "awayscore", ndraws = 100) + 
-  labs(title = paste0("Fit", fit, " Away PPC")) +
-  theme_bw()
-
-homePPC
-awayPPC
-
-#### Home Score ----
-## Fitted
-homefinalFit <- posterior_predict(Fit, resp = "homescore")
-homefinalFitMean <- colMeans(homefinalFit)
-homefinalFitMed <- apply(homefinalFit, 2, function(x){quantile(x, 0.5)})
-homefinalFitLCB <- apply(homefinalFit, 2, function(x){quantile(x, 0.025)})
-homefinalFitUCB <- apply(homefinalFit, 2, function(x){quantile(x, 0.975)})
-
-## Prediction on new data
-homefinalPreds <- posterior_predict(Fit,
-                                    resp = "homescore",
-                                    newdata = modelData,
-                                    allow_new_levels = TRUE,
-                                    re_formula = NULL
-)
-homefinalPredsMean <- colMeans(homefinalPreds)
-homefinalPredsMed <- apply(homefinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
-homefinalPredsLCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
-homefinalPredsUCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
-
-#### Away Score ----
-## Fitted
-awayfinalFit <- posterior_predict(Fit, resp = "awayscore")
-awayfinalFitMean <- colMeans(awayfinalFit)
-awayfinalFitMed <- apply(awayfinalFit, 2, function(x){quantile(x, 0.5)})
-awayfinalFitLCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.025)})
-awayfinalFitUCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.975)})
-
-## Prediction on new data
-awayfinalPreds <- posterior_predict(Fit,
-                                    resp = "awayscore",
-                                    newdata = modelData,
-                                    allow_new_levels = TRUE,
-                                    re_formula = NULL
-)
-awayfinalPredsMean <- colMeans(awayfinalPreds)
-awayfinalPredsMed <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
-awayfinalPredsLCB <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
-awayfinalPredsUCB <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
-
-
-predMetricsHA <- tibble(
-  Fit = paste0("Fit", fit),
-  home_MAE_fit = mean(abs(homefinalFitMean - histModelData$home_score)),
-  home_COV_fit = mean(homefinalFitLCB < histModelData$home_score &  histModelData$home_score < homefinalFitUCB),
-  away_MAE_fit = mean(abs(awayfinalFitMean - histModelData$away_score)),
-  away_COV_fit = mean(awayfinalFitLCB < histModelData$away_score &  histModelData$away_score < awayfinalFitUCB),
-  home_MAE_pred = mean(abs(homefinalPredsMean - modelData$home_score), na.rm = TRUE),
-  home_MAD_pred = mean(abs(homefinalPredsMed - modelData$home_score), na.rm = TRUE),
-  home_COV_pred = mean(homefinalPredsLCB < modelData$home_score & modelData$home_score < homefinalPredsUCB),
-  away_MAE_pred = mean(abs(awayfinalPredsMean - modelData$away_score), na.rm = TRUE),
-  away_MAD_pred = mean(abs(awayfinalPredsMed - modelData$away_score), na.rm = TRUE),
-  away_COV_pred = mean(awayfinalPredsLCB < modelData$away_score & modelData$away_score < awayfinalPredsUCB, na.rm = TRUE)
-)
-predMetricsHA
-
-
-#### Spread ----
-Fitted <- homefinalFit - awayfinalFit
-#Fitted <- posterior_predict(Fit)
-FittedMean <- colMeans(Fitted)
-FittedMed <- apply(Fitted, 2, function(x){quantile(x, 0.5)})
-FittedLCB <- apply(Fitted, 2, function(x){quantile(x, 0.025)})
-FittedUCB <- apply(Fitted, 2, function(x){quantile(x, 0.975)})
-
-# Prediction
-Preds <- homefinalPreds - awayfinalPreds
-# Preds <- posterior_predict(Fit, 
-#                            newdata = modelDataTestNA,
-#                            allow_new_levels = TRUE, 
-#                            re_formula = NULL
-# )
-PredsMean <- colMeans(Preds)
-PredsMed <- apply(Preds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
-PredsLCB <- apply(Preds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
-PredsUCB <- apply(Preds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
-
-spreadTrain <- histModelData$result
-spreadTest <- modelData$result
-predMetrics <- tibble(
-  Fit = paste0("Fit", fit),
-  MAE_fit = mean(abs(FittedMean - spreadTrain)),
-  MAD_fit = mean(abs(FittedMed - spreadTrain)),
-  COV_fit = mean(FittedLCB < spreadTrain & spreadTrain < FittedUCB),
-  MAE_pred = mean(abs(PredsMean - spreadTest), na.rm = TRUE),
-  MAD_pred = mean(abs(PredsMed - spreadTest), na.rm = TRUE),
-  COV_pred = mean(PredsLCB < spreadTest & spreadTest < PredsUCB)
-)
-predMetrics
-
-### Prob Errors ----
-#### Fit ----
-spreadLineTrain <- histModelData$spread_line
-#spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
-
-FittedProbs <- matrix(, nrow = sims, ncol = length(spreadLineTrain))
-for(j in 1:length(spreadLineTrain)){
-  fitted <- Fitted[, j]
-  probs <- fitted > spreadLineTrain[j]
-  FittedProbs[, j] <- probs
-}
-FittedBet <- colMeans(FittedProbs)
-FittedBetLogical <- FittedBet > 0.5
-FittedResultLogical <- spreadTrain > spreadLineTrain
-FittedResultProb <- mean(FittedBetLogical == FittedResultLogical, na.rm = TRUE)
-FittedResultProb
-
-spreadDataTrain <- histModelData |>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, spread_line, spreadCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
-  mutate(
-    spreadFit = FittedMean,
-    coverBet = ifelse(spreadFit > spread_line, TRUE, FALSE),
-    coverSuccess = coverBet == spreadCover,
-    spreadCoverProb = FittedBet,
-    spreadCoverBet = ifelse(spreadCoverProb > home_spread_prob, TRUE, 
-                            ifelse(1 - spreadCoverProb > away_spread_prob, FALSE, NA)),
-    spreadCoverSuccess = spreadCoverBet == spreadCover
-  )
-
-spreadSuccessTrain <- spreadDataTrain |>
-  summarise(
-    spreadProbTrain = mean(coverSuccess, na.rm = TRUE),
-    spreadOddsProbTrain = mean(spreadCoverSuccess, na.rm = TRUE)
-  )
-spreadSuccessTrain
-
-#### Pred ----
-spreadLineTest <- modelData$spread_line
-#spreadTest <- as.numeric(spreadTestScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
-
-PredsProbs <- matrix(, nrow = sims, ncol = length(spreadLineTest))
-for(j in 1:length(spreadLineTest)){
-  fitted <- Preds[, j]
-  probs <- fitted > spreadLineTest[j]
-  PredsProbs[, j] <- probs
-}
-PredsBet <- colMeans(PredsProbs)
-PredsBetLogical <- PredsBet > 0.5
-PredsResultLogical <- spreadTest > spreadLineTest
-PredsResultProb <- mean(PredsBetLogical == PredsResultLogical, na.rm = TRUE)
-PredsResultProb
-
-spreadDataTest <- modelData |>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, spread_line,spreadCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
-  mutate(
-    spreadPred = PredsMean,
-    coverBet = ifelse(spreadPred > spread_line, TRUE, FALSE),
-    coverSuccess = coverBet == spreadCover,
-    spreadCoverProb = PredsBet,
-    spreadCoverBet = ifelse(spreadCoverProb > home_spread_prob, TRUE, 
-                            ifelse(1 - spreadCoverProb > away_spread_prob, FALSE, NA)),
-    spreadCoverSuccess = spreadCoverBet == spreadCover
-  )
-
-spreadSuccessTest <- spreadDataTest |>
-  summarise(
-    spreadProbTest = mean(coverSuccess, na.rm = TRUE),
-    spreadOddsProbTest = mean(spreadCoverSuccess, na.rm = TRUE)
-  )
-spreadSuccessTest
-
-
-
-
-
-
-
-modelDataTrain <- trainingData |>
-  filter(complete.cases(result)) |>
-  filter(season >= 2024) |>
-  filter(week <= 8) |>
-  mutate(
-    across(where(is.numeric) & !c(home_score, away_score,
-                                  season, week,
-                                  winner, 
-                                  result, spread_line, spreadCover,
-                                  home_spread_odds, away_spread_odds,
-                                  home_spread_prob, away_spread_prob,
-                                  total, total_line, totalCover,
-                                  under_odds, over_odds,
-                                  under_prob, over_prob,
-                                  home_moneyline, away_moneyline,
-                                  home_moneyline_prob, away_moneyline_prob),
-           function(x){scale(x)})
-  )
-
-modelDataTest <- testData |>
-  filter(complete.cases(result)) |>
-  filter(season >= 2024) |>
-  filter(week == 9) |>
-  mutate(
-    across(where(is.numeric) & !c(home_score, away_score,
-                                  season, week,
-                                  winner, 
-                                  result, spread_line, spreadCover,
-                                  home_spread_odds, away_spread_odds,
-                                  home_spread_prob, away_spread_prob,
-                                  total, total_line, totalCover,
-                                  under_odds, over_odds,
-                                  under_prob, over_prob,
-                                  home_moneyline, away_moneyline,
-                                  home_moneyline_prob, away_moneyline_prob),
-           function(x){scale(x,
-                             center = attr(modelDataTrain |> pull(x), "scaled:center"),
-                             scale = attr(modelDataTrain |> pull(x), "scaled:scale"))})
-  )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Compare to nflverse ----
+# fastRstatsWeek <- calculate_stats(
+#   seasons = 2021:2024, summary_level = "week", stat_type = "team", season_type = "REG+POST"
+#   )
+# fastRstatsWeek2 <- gameDataLongMod |>
+#   select(game_id, season, week, season_type, team, opponent, result, total) |>
+#   left_join(
+#     fastRstatsWeek |> select(-season_type),
+#     by = join_by(season, week, team, opponent == opponent_team)
+#   ) |>
+#   filter(!is.na(result))
+# 
+# modDataLong <- modData |>
+#   clean_homeaway(invert = "result")
+# 
+# ## Passing ----
+# fastRepa <- fastRstatsWeek2 |>
+#   select(game_id, season, week, team, opponent,
+#          attempts, passing_epa,
+#          carries, rushing_epa) |>
+#   mutate(
+#     passing_epa_mean = passing_epa/attempts,
+#     rushing_epa_mean = rushing_epa/carries
+#   ) |>
+#   arrange(game_id)
+# 
+# epaDataComp <- epaData |>
+#   select(game_id, season, week, team, opponent, 
+#          off_plays, off_epa_mean, 
+#          off_pass_plays, off_pass_epa_sum, off_pass_epa_mean,
+#          off_rush_plays, off_rush_epa_sum, off_rush_epa_mean) |>
+#   left_join(
+#     fastRepa
+#   )|>
+#   ungroup()
+# 
+# epaDataCompSum <- epaDataComp |>
+#   select(-c(game_id, week, opponent)) |>
+#   group_by(season, team) |>
+#   summarise(
+#     across(everything(), ~round(mean(.x), 2))
+#   ) |>
+#   ungroup()
+# 
+# epa2024means <- epaDataCompSum |>
+#   filter(season == 2024) |>
+#   select(
+#     team,
+#     off_epa_mean,
+#     off_pass_epa_mean,
+#     passing_epa_mean,
+#     off_rush_epa_mean,
+#     rushing_epa_mean
+#     ) |>
+#   arrange(desc(off_epa_mean))
 
 
 
