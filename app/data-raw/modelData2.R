@@ -90,33 +90,112 @@ pbpPlayTypes <- pbpDataMod |>
 # pbpPlayTypesView <- pbpPlayTypes |>
 #   filter(play == 1, pass == 1)
 #   filter(play == 1, pass == 0, rush == 0, penalty == 1)
-
+# pbpDataMod |>
+#   group_by(game_id, posteam) |>
+#   mutate(
+#     home_epa_diff = total_home_epa - lag(total_home_epa, default = 0),
+#     away_epa_diff = total_away_epa - lag(total_away_epa, default = 0)
+#   ) |>
+#   #filter(special == 1) |>
+#   select(game_id, season, week, home_team, away_team, posteam, defteam, play_type, play, pass, rush, penalty, special,
+#          qb_scramble,
+#          td_prob, fg_prob, opp_td_prob, opp_fg_prob,
+#          field_goal_attempt, field_goal_result, kick_distance, #extra_point_attempt, extra_point_result,
+#          ep, epa, wp, wpa, vegas_wp, vegas_wpa, total_home_epa, total_away_epa, home_epa_diff, away_epa_diff,
+#          posteam_score, defteam_score, posteam_score_post, defteam_score_post,
+#          penalty_type, desc) |>
+#   ungroup() |>
+#   view()
 
 ## EPA ----
+### Penalty Structure 1 ----
+# epaOffData <- pbpDataMod |>
+#   filter(season %in% seasonsMod) |>
+#   #filter(play == 1) |> 
+#   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
+#   group_by(game_id, season, week, posteam, home_team, away_team) |>
+#   mutate(
+#     scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2
+#   ) |>
+#   summarise(
+#     # Total EPA
+#     # off_plays = sum(play == 1),
+#     # off_epa_sum = sum(epa[play == 1], na.rm = TRUE),
+#     # off_epa_mean = mean(epa[play == 1], na.rm = TRUE),
+#     off_plays = n(),
+#     off_epa_sum = sum(epa, na.rm = TRUE),
+#     off_epa_mean = mean(epa, na.rm = TRUE),
+#     # Passing EPA
+#     off_pass_plays = sum(play == 1 & pass == 1),
+#     off_pass_epa_sum = sum(epa[play == 1 & pass == 1], na.rm = TRUE),
+#     off_pass_epa_mean = mean(epa[play == 1 & pass == 1], na.rm = TRUE),
+#     # Rushing EPA
+#     off_rush_plays = sum(play == 1 & rush == 1),
+#     off_rush_epa_sum = sum(epa[play == 1 & rush == 1], na.rm = TRUE),
+#     off_rush_epa_mean = mean(epa[play == 1 & rush == 1], na.rm = TRUE),
+#     # Pre Snap Penalty EPA
+#     off_penalty_plays = sum(play == 1 & pass == 0 & rush == 0 & special == 0 & penalty == 1, na.rm = TRUE),
+#     off_penalty_epa_sum = sum(epa[play == 1 & pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
+#     off_penalty_epa_mean = mean(epa[play == 1 & pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
+#     # Kicker EPA
+#     off_kick_plays = sum(play_type %in% c("field_goal"), na.rm = TRUE),
+#     off_kick_epa_sum = sum(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+#     off_kick_epa_mean = mean(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+#     # Special Teams EPA
+#     off_special_plays = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
+#     off_special_epa_sum = sum(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+#     off_special_epa_mean = mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+#   ) |>
+#   mutate(
+#     across(contains("off"), ~ifelse(is.nan(.x), 0, .x))
+#   ) |>
+#   ungroup() |>
+#   group_by(game_id) |>
+#   mutate(
+#     opponent = rev(posteam), .after = posteam
+#   ) |>
+#   rename(
+#     team = posteam
+#   ) |>
+#   ungroup()
+
+### Penalty Sturcture 2 ----
 epaOffData <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
-  filter(play == 1) |> 
+  #filter(play == 1) |> 
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
   mutate(
     scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2
   ) |>
   summarise(
-    off_plays = n(),
-    off_epa_sum = sum(epa, na.rm = TRUE),
-    off_epa_mean = mean(epa, na.rm = TRUE),
-    off_pass_plays = sum(pass == 1),
-    off_pass_epa_sum = sum(epa[pass == 1], na.rm = TRUE),
-    off_pass_epa_mean = mean(epa[pass == 1], na.rm = TRUE),
-    off_rush_plays = sum(rush == 1),
-    off_rush_epa_sum = sum(epa[rush == 1], na.rm = TRUE),
-    off_rush_epa_mean = mean(epa[rush == 1], na.rm = TRUE),
-    off_penalty_plays = sum(pass == 0 & rush == 0 & special == 0 & penalty == 1, na.rm = TRUE),
-    off_penalty_epa_sum = sum(epa[pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
-    off_penalty_epa_mean = mean(epa[pass == 0 & rush == 0 & special == 0 & penalty == 1], na.rm = TRUE),
-    off_special_plays = sum(special == 1 & penalty == 1, na.rm = TRUE),
-    off_special_epa_sum = sum(epa[special == 1 & penalty == 0], na.rm = TRUE),
-    off_special_epa_mean = mean(epa[special == 1 & penalty == 0], na.rm = TRUE),
+    # Total EPA
+    # off_plays = sum(play == 1),
+    # off_epa_sum = sum(epa[play == 1], na.rm = TRUE),
+    # off_epa_mean = mean(epa[play == 1], na.rm = TRUE),
+    off_plays = sum(play == 1 | play_type == "field_goal", na.rm = TRUE),
+    off_epa_sum = sum(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    off_epa_mean = mean(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    # Passing EPA
+    off_pass_plays = sum(play == 1 & pass == 1 & penalty == 0, na.rm = TRUE),
+    off_pass_epa_sum = sum(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
+    off_pass_epa_mean = mean(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
+    # Rushing EPA
+    off_rush_plays = sum(play == 1 & rush == 1 & penalty == 0, na.rm = TRUE),
+    off_rush_epa_sum = sum(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
+    off_rush_epa_mean = mean(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
+    # Pre Snap Penalty EPA
+    off_penalty_plays = sum(play == 1 & penalty == 1, na.rm = TRUE),
+    off_penalty_epa_sum = sum(epa[play == 1 & penalty == 1], na.rm = TRUE),
+    off_penalty_epa_mean = mean(epa[play == 1 & penalty == 1], na.rm = TRUE),
+    # Kicker EPA
+    off_kick_plays = sum(play_type %in% c("field_goal"), na.rm = TRUE),
+    off_kick_epa_sum = sum(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+    off_kick_epa_mean = mean(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+    # Special Teams EPA
+    off_special_plays = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
+    off_special_epa_sum = sum(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+    off_special_epa_mean = mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
   ) |>
   mutate(
     across(contains("off"), ~ifelse(is.nan(.x), 0, .x))
@@ -128,7 +207,17 @@ epaOffData <- pbpDataMod |>
   ) |>
   rename(
     team = posteam
-  )
+  ) |>
+  ungroup()
+
+# epaOffData |> filter(season == 2024) |> group_by(team) |> 
+#   summarise(
+#     across(contains("epa"),
+#            ~mean(.x, na.rm = TRUE))
+#   ) |> 
+#   select(team, contains("mean")) |>
+#   arrange(desc(off_epa_mean)) |>
+#   view()
 
 epaData <- epaOffData |>
   left_join(
@@ -138,10 +227,12 @@ epaData <- epaOffData |>
     by = join_by(game_id, team == opponent)
   )
 
+#epaData |> filter(season == 2024) |> view()
+
 epaAvgs <- epaData |> 
   group_by(season, team) |>
   summarise(
-    across(contains("epa_mean"),
+    across(c(contains("plays"), contains("epa_mean")),
            ~mean(.x, na.rm = TRUE),
            .names = "{.col}"
     )
@@ -149,20 +240,22 @@ epaAvgs <- epaData |>
   ungroup() |>
   group_by(team) |>
   mutate(
-    across(contains("mean"),
+    across(c(contains("plays"), contains("epa_mean")),
            ~lag(.x, n = 1, default = 0),
            .names = "{.col}"
     )
   ) |>
   ungroup()
 
+#epaAvgs |> filter(season == 2024) |> arrange(desc(off_epa_mean)) |> view()
+
 epaData2 <- gameDataLongMod |>
   left_join(
-    epaData |> select(game_id, team, opponent, contains("mean"))
+    epaData |> select(game_id, team, opponent, contains("plays"), contains("mean"))
   ) |>
   group_by(season, team) |>
   mutate(
-    across(contains("mean"),
+    across(c(contains("plays"), contains("epa_mean")),
            ~lag(.x, n = 1, default = NA),
            .names = "{.col}")
   ) |>
@@ -174,7 +267,7 @@ epaData2 <- gameDataLongMod |>
 
 epaData3 <- epaData2 |>
   mutate(
-    across(contains("mean"),
+    across(c(contains("plays"), contains("mean")),
            ~ifelse(is.na(.x), epaAvgs |> filter(season == season, team == team) |> pull(.x), .x))
   ) |>
   mutate(
@@ -186,17 +279,18 @@ epaData3 <- epaData2 |>
   group_by(season, team) |>
   tk_augment_slidify(
     .value = contains("mean"),
-    .period = 4,
+    .period = 5,
     .f = mean,
     .partial = TRUE,
     .align = "right"
   ) |>
   mutate(
-    across(c(contains("mean"), -contains("roll")),
+    across(c(contains("plays"), contains("mean"), -contains("roll")),
            ~cummean(.x),
            .names = "{.col}_cum")
   ) |>
   ungroup() |>
+  rename_with(~str_remove(.x, "(?<=roll).+"), contains("roll")) |>
   arrange(row) |>
   select(-c(
     row,
@@ -283,30 +377,35 @@ modData <- gameDataMod |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
+  rename_with(~str_remove(.x, "_mean"), contains("mean")) |>
   mutate(
-    home_epa_cum = home_off_epa_mean_cum + away_def_epa_mean_cum,
-    home_epa_roll = home_off_epa_mean_roll_4 + away_def_epa_mean_roll_4,
-    home_pass_epa_cum = home_off_pass_epa_mean_cum + away_def_pass_epa_mean_cum,
-    home_pass_epa_roll = home_off_pass_epa_mean_roll_4 + away_def_pass_epa_mean_roll_4,
-    home_rush_epa_cum = home_off_rush_epa_mean_cum + away_def_rush_epa_mean_cum,
-    home_rush_epa_roll = home_off_rush_epa_mean_roll_4 + away_def_rush_epa_mean_roll_4,
-    home_penalty_epa_cum = home_off_penalty_epa_mean_cum + away_def_penalty_epa_mean_cum,
-    home_penalty_epa_roll = home_off_penalty_epa_mean_roll_4 + away_def_penalty_epa_mean_roll_4,
-    away_epa_cum = away_off_epa_mean_cum + home_def_epa_mean_cum,
-    away_epa_roll = away_off_epa_mean_roll_4 + home_def_epa_mean_roll_4,
-    away_pass_epa_cum = away_off_pass_epa_mean_cum + home_def_pass_epa_mean_cum,
-    away_pass_epa_roll = away_off_pass_epa_mean_roll_4 + home_def_pass_epa_mean_roll_4,
-    away_rush_epa_cum = away_off_rush_epa_mean_cum + home_def_rush_epa_mean_cum,
-    away_rush_epa_roll = away_off_rush_epa_mean_roll_4 + home_def_rush_epa_mean_roll_4,
-    away_penalty_epa_cum = away_off_penalty_epa_mean_cum + home_def_penalty_epa_mean_cum,
-    away_penalty_epa_roll = away_off_penalty_epa_mean_roll_4 + home_def_penalty_epa_mean_roll_4
-    # PFG = home_PFG - away_PAG,
-    # PAG = away_PFG - home_PAG,
-    # MOV = home_MOV - away_MOV,
-    # SOS = home_SOS - away_SOS,
-    # SRS = home_SRS - away_SRS,
-    # OSRS = home_OSRS - away_DSRS,
-    # DSRS = away_DSRS - home_DSRS
+    home_net_epa_cum = home_off_epa_cum - home_def_epa_cum,
+    home_net_epa_roll = home_off_epa_roll - home_def_epa_roll,
+    home_epa_cum = home_off_epa_cum + away_def_epa_cum,
+    home_epa_roll = home_off_epa_roll + away_def_epa_roll,
+    home_pass_epa_cum = home_off_pass_epa_cum + away_def_pass_epa_cum,
+    home_pass_epa_roll = home_off_pass_epa_roll + away_def_pass_epa_roll,
+    home_rush_epa_cum = home_off_rush_epa_cum + away_def_rush_epa_cum,
+    home_rush_epa_roll = home_off_rush_epa_roll + away_def_rush_epa_roll,
+    home_penalty_epa_cum = home_off_penalty_epa_cum + away_def_penalty_epa_cum,
+    home_penalty_epa_roll = home_off_penalty_epa_roll + away_def_penalty_epa_roll,
+    away_net_epa_cum = away_off_epa_cum - away_def_epa_cum,
+    away_net_epa_roll = away_off_epa_roll - away_def_epa_roll,
+    away_epa_cum = away_off_epa_cum + home_def_epa_cum,
+    away_epa_roll = away_off_epa_roll + home_def_epa_roll,
+    away_pass_epa_cum = away_off_pass_epa_cum + home_def_pass_epa_cum,
+    away_pass_epa_roll = away_off_pass_epa_roll + home_def_pass_epa_roll,
+    away_rush_epa_cum = away_off_rush_epa_cum + home_def_rush_epa_cum,
+    away_rush_epa_roll = away_off_rush_epa_roll + home_def_rush_epa_roll,
+    away_penalty_epa_cum = away_off_penalty_epa_cum + home_def_penalty_epa_cum,
+    away_penalty_epa_roll = away_off_penalty_epa_roll + home_def_penalty_epa_roll,
+    PFG_net = home_PFG - away_PAG,
+    PAG_net = away_PFG - home_PAG,
+    MOV_net = home_MOV - away_MOV,
+    SOS_net = home_SOS - away_SOS,
+    SRS_net = home_SRS - away_SRS,
+    OSRS_net = home_OSRS - away_DSRS,
+    DSRS_net = away_DSRS - home_DSRS
   ) |>
   mutate(
     temp = ifelse(is.na(temp), 70, temp),

@@ -80,8 +80,7 @@ modData2 <- modData2 |>
     temp,
     wind,
     contains("home"),
-    contains("away"),
-    -contains("special")
+    contains("away")
   ) |>
   mutate(
     across(where(is.character),
@@ -92,9 +91,10 @@ modelData1 <- modData2 |> filter(season == 2024) |> filter(complete.cases(result
 
 preProcValues <- preProcess(histModelData1 |> 
                               select(-home_score, -away_score,
-                                     -result, -total
+                                     -result, -total,
+                                     -season, -week
                                      #-spread_line, -total_line
-                                     ),
+                              ),
                             method = c("center", "scale"))
 histModelData <- predict(preProcValues, histModelData1)
 modelData <- predict(preProcValues, modelData1)
@@ -106,11 +106,11 @@ modelData <- predict(preProcValues, modelData1)
 # Formula: home_score ~ 0 + Intercept + home_PFG + away_PAG + home_SRS + away_SRS + home_off_pass_epa_mean_cum + home_off_rush_epa_mean_cum + away_def_pass_epa_mean_cum + away_def_rush_epa_mean_cum + home_rest + away_rest + location + roof + temp + wind + (1 | H | home_team) + (1 | A | away_team) 
 # away_score ~ 0 + Intercept + away_PFG + home_PAG + home_SRS + away_SRS + away_off_pass_epa_mean_cum + away_off_rush_epa_mean_cum + home_def_pass_epa_mean_cum + home_def_rush_epa_mean_cum + home_rest + away_rest + location + roof + temp + wind + (1 | H | home_team) + (1 | A | away_team) 
 
-# Family: MV(skew_normal, skew_normal) 
-# Links: mu = identity; sigma = identity; alpha = identity
-# mu = identity; sigma = identity; alpha = identity 
-# Formula: home_score ~ 0 + Intercept + home_OSRS + away_DSRS + home_off_pass_epa_mean_cum + home_off_rush_epa_mean_cum + away_def_pass_epa_mean_cum + away_def_rush_epa_mean_cum + home_rest + away_rest + location + div_game + roof + temp + wind + (1 | H | home_team) + (1 | A | away_team) 
-# away_score ~ 0 + Intercept + home_DSRS + away_OSRS + away_off_pass_epa_mean_cum + away_off_rush_epa_mean_cum + home_def_pass_epa_mean_cum + home_def_rush_epa_mean_cum + home_rest + away_rest + location + div_game + roof + temp + wind + (1 | H | home_team) + (1 | A | away_team) 
+# Family: MV(negbinomial, negbinomial) 
+# Links: mu = log; shape = identity
+# mu = log; shape = identity 
+# Formula: home_score ~ 0 + Intercept + home_OSRS + away_DSRS + home_off_pass_epa_cum + home_off_rush_epa_cum + away_def_pass_epa_cum + away_def_rush_epa_cum + home_rest + away_rest + div_game + roof + temp + wind + (1 | home_team) + (1 | away_team) 
+# away_score ~ 0 + Intercept + home_DSRS + away_OSRS + away_off_pass_epa_cum + away_off_rush_epa_cum + home_def_pass_epa_cum + home_def_rush_epa_cum + home_rest + away_rest + div_game + roof + temp + wind + (1 | home_team) + (1 | away_team)
 
 iters <- 3000
 burn <- 1000
@@ -127,40 +127,66 @@ formulaFitHome <-
        # away_MOV +
        # home_SRS +
        # away_SRS +
-       spread_line +
-       total_line +
+       # spread_line +
+       # total_line +
        home_OSRS +
        away_DSRS +
-       # home_off_epa_mean_cum +
-       home_off_pass_epa_mean_cum +
-       home_off_rush_epa_mean_cum +
-       # home_off_special_epa_mean_cum +
-       # home_off_penalty_epa_mean_cum +
-       # away_off_epa_mean_cum +
-       # away_off_pass_epa_mean_cum +
-       # away_off_rush_epa_mean_cum +
-       # away_off_special_epa_mean_cum +
-       # away_off_penalty_epa_mean_cum +
-       # home_def_epa_mean_cum +
-       # home_def_pass_epa_mean_cum +
-       # home_def_rush_epa_mean_cum +
-       # home_def_special_epa_mean_cum +
-       # home_def_penalty_epa_mean_cum +
-       # away_def_epa_mean_cum +
-       away_def_pass_epa_mean_cum +
-       away_def_rush_epa_mean_cum +
-       #away_def_special_epa_mean_cum +
-       # away_def_penalty_epa_mean_cum +
+       home_OSRS:away_DSRS +
+       # home_off_epa_cum +
+       home_off_pass_epa_cum +
+       home_off_rush_epa_cum +
+       # home_off_special_epa_cum +
+       # home_off_penalty_epa_cum +
+       # home_off_epa_roll +
+       home_off_pass_epa_roll +
+       home_off_rush_epa_roll +
+       # home_off_special_epa_roll +
+       # home_off_penalty_epa_roll +
+       # away_off_epa_cum +
+       # away_off_pass_epa_cum +
+       # away_off_rush_epa_cum +
+       # away_off_special_epa_cum +
+       # away_off_penalty_epa_cum +
+       # away_off_epa_roll +
+       # away_off_pass_epa_roll +
+       # away_off_rush_epa_roll +
+       # away_off_special_epa_roll +
+       # away_off_penalty_epa_roll +
+       # home_def_epa_cum +
+       # home_def_pass_epa_cum +
+       # home_def_rush_epa_cum +
+       # home_def_special_epa_cum +
+       # home_def_penalty_epa_cum +
+       # home_def_epa_roll +
+       # home_def_pass_epa_roll +
+       # home_def_rush_epa_roll +
+       # home_def_special_epa_roll +
+       # home_def_penalty_epa_roll +
+       # away_def_epa_cum +
+       away_def_pass_epa_cum +
+       away_def_rush_epa_cum +
+       # away_def_special_epa_cum +
+       # away_def_penalty_epa_cum +
+       # away_def_epa_roll +
+       away_def_pass_epa_roll +
+       away_def_rush_epa_roll +
+       # away_def_special_epa_roll +
+       # away_def_penalty_epa_roll +
+       home_off_pass_epa_cum:away_def_pass_epa_cum +
+       home_off_rush_epa_cum:away_def_rush_epa_cum +
+       home_off_pass_epa_roll:away_def_pass_epa_roll +
+       home_off_rush_epa_roll:away_def_rush_epa_roll +
        home_rest +
        away_rest +
+       home_rest:away_rest +
        # location +
        div_game +
        roof +
        temp +
        wind +
        # surface +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
   ) + negbinomial()
 formulaFitAway <- 
   bf(away_score ~ 0 + Intercept +
@@ -170,42 +196,68 @@ formulaFitAway <-
        # away_PAG +
        # home_MOV +
        # away_MOV +
-       # home_SRS + 
+       # home_SRS +
        # away_SRS +
-       spread_line +
-       total_line +
+       # spread_line +
+       # total_line +
        home_DSRS +
        away_OSRS +
-       # home_off_epa_mean_cum +
-       # home_off_pass_epa_mean_cum +
-       # home_off_rush_epa_mean_cum +
-       # home_off_special_epa_mean_cum +
-       # home_off_penalty_epa_mean_cum +
-       # away_off_epa_mean_cum +
-       away_off_pass_epa_mean_cum +
-       away_off_rush_epa_mean_cum +
-       #away_off_special_epa_mean_cum +
-       # away_off_penalty_epa_mean_cum +
-       # home_def_epa_mean_cum +
-       home_def_pass_epa_mean_cum +
-       home_def_rush_epa_mean_cum +
-       #home_def_special_epa_mean_cum +
-       # home_def_penalty_epa_mean_cum +
-       # away_def_epa_mean_cum +
-       # away_def_pass_epa_mean_cum +
-       # away_def_rush_epa_mean_cum +
-       #away_def_special_epa_mean_cum +
-       # away_def_penalty_epa_mean_cum +
+       home_DSRS:away_OSRS +
+       # home_off_epa_cum +
+       # home_off_pass_epa_cum +
+       # home_off_rush_epa_cum +
+       # home_off_special_epa_cum +
+       # home_off_penalty_epa_cum +
+       # home_off_epa_roll +
+       # home_off_pass_epa_roll +
+       # home_off_rush_epa_roll +
+       # home_off_special_epa_roll +
+       # home_off_penalty_epa_roll +
+       # away_off_epa_cum +
+       away_off_pass_epa_cum +
+       away_off_rush_epa_cum +
+       # away_off_special_epa_cum +
+       # away_off_penalty_epa_cum +
+       # away_off_epa_roll +
+       away_off_pass_epa_roll +
+       away_off_rush_epa_roll +
+       # away_off_special_epa_roll +
+       # away_off_penalty_epa_roll +
+       # home_def_epa_cum +
+       home_def_pass_epa_cum +
+       home_def_rush_epa_cum +
+       # home_def_special_epa_cum +
+       # home_def_penalty_epa_cum +
+       # home_def_epa_roll +
+       home_def_pass_epa_roll +
+       home_def_rush_epa_roll +
+       away_off_pass_epa_cum:home_def_pass_epa_cum +
+       away_off_rush_epa_cum:home_def_rush_epa_cum +
+       away_off_pass_epa_roll:home_def_pass_epa_roll +
+       away_off_rush_epa_roll:home_def_rush_epa_roll +
+       # home_def_special_epa_roll +
+       # home_def_penalty_epa_roll +
+       # away_def_epa_cum +
+       # away_def_pass_epa_cum +
+       # away_def_rush_epa_cum +
+       # away_def_special_epa_cum +
+       # away_def_penalty_epa_cum +
+       # away_def_epa_roll +
+       # away_def_pass_epa_roll +
+       # away_def_rush_epa_roll +
+       # away_def_special_epa_roll +
+       # away_def_penalty_epa_roll +
        home_rest +
        away_rest +
+       home_rest:away_rest +
        # location +
        div_game +
        roof +
        temp +
        wind +
        # surface +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
   ) + negbinomial()
 
 
@@ -222,7 +274,7 @@ Fit <- brm(
   backend = "cmdstan"
 )
 
-fit <- 12
+fit <- 5
 assign(paste0("fit", fit), Fit)
 
 #fitFormulas <- list()
@@ -400,6 +452,8 @@ set.seed(52)
 spreadPPD <- ppc_dens_overlay(y = modelData$result, 
                               yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ])
 spreadPPD
+
+
 
 ##### Prob Errors ----
 ##### Fit ----
@@ -692,8 +746,8 @@ create_updated_priors <- function(post_summary) {
                               group = group_name,
                               resp = response#,
                               #lb = 0
-                              )
                          )
+    )
     priors <- c(priors, priorTemp)
     #priors <- c(priors, prior(student_t(3, estimate, est_error), class = "sd", group = group_name, resp = response))
   }
@@ -1193,7 +1247,7 @@ successPerf
 ## Fit Model 2 ----
 # Initialize values
 predWeeks <- max(modelData$week)
-iterFitBase <- fit9
+iterFitBase <- fit2
 iterFit <- iterFitBase
 homefinalIterFitComb2 <- list()
 awayfinalIterFitComb2 <-  list()
@@ -1387,8 +1441,8 @@ PredsIterMedSpread <- apply(PredsIterSpread, 2, function(x){quantile(x, 0.5, na.
 PredsIterLCBSpread <- apply(PredsIterSpread, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 PredsIterUCBSpread <- apply(PredsIterSpread, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-spreadTrain <- modelData$result
-spreadTest <- modelData$result
+spreadTrain <- modelData1$result
+spreadTest <- modelData1$result
 predMetricsSpread <- tibble(
   Fit = paste0("Fit", fit),
   Response = rep("Spread", 2),
@@ -1414,7 +1468,7 @@ spreadPPD
 
 ##### Prob Errors ----
 ##### Fit ----
-spreadLineTrain <- modelData$spread_line
+spreadLineTrain <- modelData1$spread_line
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 FittedIterProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTrain))
@@ -1429,7 +1483,7 @@ FittedIterLogicalSpread <- spreadTrain > spreadLineTrain
 FittedIterProbSpread <- mean(FittedIterBetLogicalSpread == FittedIterLogicalSpread, na.rm = TRUE)
 FittedIterProbSpread
 
-spreadDataTrain <- modelData |>
+spreadDataTrain <- modData |> filter(season == 2024) |> filter(!is.na(result)) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line, spreadCover,
@@ -1458,7 +1512,7 @@ spreadSuccessTrain <- spreadDataTrain |>
 spreadSuccessTrain
 
 ##### Pred ----
-spreadLineTest <- modelData$spread_line
+spreadLineTest <- modelData1$spread_line
 #spreadTest <- as.numeric(spreadTestScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 PredsIterProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTest))
@@ -1473,7 +1527,7 @@ PredsIterLogicalSpread <- spreadTest > spreadLineTest
 PredsIterProbSpread <- mean(PredsIterBetLogicalSpread == PredsIterLogicalSpread, na.rm = TRUE)
 PredsIterProbSpread
 
-spreadDataTest <- modelData |>
+spreadDataTest <- modData |> filter(season == 2024) |> filter(!is.na(result)) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line,spreadCover,
@@ -1522,8 +1576,8 @@ PredsIterMedTotal <- apply(PredsIterTotal, 2, function(x){quantile(x, 0.5, na.rm
 PredsIterLCBTotal <- apply(PredsIterTotal, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 PredsIterUCBTotal <- apply(PredsIterTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-totalTrain <- modelData$total
-totalTest <- modelData$total
+totalTrain <- modelData1$total
+totalTest <- modelData1$total
 predMetricsTotal <- tibble(
   Fit = paste0("Fit", fit),
   Response = rep("Total", 2),
@@ -1538,18 +1592,18 @@ predMetricsTotal
 
 ##### Plot ----
 set.seed(52)
-totalPPC <- ppc_dens_overlay(y = modelData$total, 
+totalPPC <- ppc_dens_overlay(y = modelData1$total, 
                              yrep = FittedIterTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPC
 
 set.seed(52)
-totalPPD <- ppc_dens_overlay(y = modelData$total, 
+totalPPD <- ppc_dens_overlay(y = modelData1$total, 
                              yrep = PredsIterTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPD
 
 ##### Prob Errors ----
 ##### Fit ----
-totalLineTrain <- modelData$total_line
+totalLineTrain <- modelData1$total_line
 #totalTrain <- as.numeric(totalTrainScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
 FittedIterProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTrain))
@@ -1564,7 +1618,7 @@ FittedIterLogicalTotal <- totalTrain > totalLineTrain
 FittedIterProbTotal <- mean(FittedIterBetLogicalTotal == FittedIterLogicalTotal, na.rm = TRUE)
 FittedIterProbTotal
 
-totalDataTrain <- modelData |>
+totalDataTrain <- modData |> filter(season == 2024) |> filter(!is.na(result)) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,
@@ -1590,7 +1644,7 @@ totalSuccessTrain <- totalDataTrain |>
 totalSuccessTrain
 
 ##### Pred ----
-totalLineTest <- modelData$total_line
+totalLineTest <- modelData1$total_line
 #totalTest <- as.numeric(totalTestScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
 PredsIterProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
@@ -1605,7 +1659,7 @@ PredsIterLogicalTotal <- totalTest > totalLineTest
 PredsIterProbTotal <- mean(PredsIterBetLogicalTotal == PredsIterLogicalTotal, na.rm = TRUE)
 PredsIterProbTotal
 
-totalDataTest <- modelData |>
+totalDataTest <- modData |> filter(season == 2024) |> filter(!is.na(result)) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,
@@ -1650,7 +1704,37 @@ successPerf <- bind_rows(
   successPerf,
   successPerfTemp
 )
-successPerf
-fit9
+
+ppc_error_scatter_avg(modelData1$result, FittedIterSpread)
+ppc_error_scatter_avg(modelData1$result, PredsIterSpread)
+ppc_error_scatter_avg(modelData1$total, FittedIterTotal)
+ppc_error_scatter_avg(modelData1$total, PredsIterTotal)
+
+ppc_error_scatter_avg_vs_x(modelData1$result, FittedIterSpread, modelData$home_OSRS)
+ppc_error_scatter_avg_vs_x(modelData1$result, PredsIterSpread, modelData$home_OSRS)
+ppc_error_scatter_avg_vs_x(modelData1$total, FittedIterTotal, modelData$home_OSRS)
+ppc_error_scatter_avg_vs_x(modelData1$total, PredsIterTotal, modelData$home_OSRS)
+
+ppc_error_scatter_avg_vs_x(modelData1$result, FittedIterSpread, modelData$week)
+ppc_error_scatter_avg_vs_x(modelData1$result, PredsIterSpread, modelData$week)
+ppc_error_scatter_avg_vs_x(modelData1$total, FittedIterTotal, modelData$week)
+ppc_error_scatter_avg_vs_x(modelData1$total, PredsIterTotal, modelData$week)
+
+ppc_error_scatter_avg_grouped(modelData1$result, FittedIterSpread, 
+                              modelData$home_team,
+                              facet_args = list(scales = "fixed"))
+ppc_error_scatter_avg_grouped(modelData1$result, PredsIterSpread, 
+                              modelData$home_team,
+                              facet_args = list(scales = "fixed"))
+ppc_error_scatter_avg_grouped(modelData1$total, FittedIterTotal, modelData$home_team)
+ppc_error_scatter_avg_grouped(modelData1$total, PredsIterTotal, modelData$home_team)
+
+ppc_error_scatter_avg_grouped(modelData1$result, FittedIterSpread, modelData$away_team)
+ppc_error_scatter_avg_grouped(modelData1$result, PredsIterSpread, modelData$away_team)
+ppc_error_scatter_avg_grouped(modelData1$total, FittedIterTotal, modelData$away_team)
+ppc_error_scatter_avg_grouped(modelData1$total, PredsIterTotal, modelData$away_team)
+
+
+
 
 
