@@ -196,6 +196,9 @@ epaOffData <- pbpDataMod |>
     off_special_plays = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
     off_special_epa_sum = sum(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
     off_special_epa_mean = mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+    # Play distribution
+    off_pass_plays_perc = off_pass_plays/(off_pass_plays + off_rush_plays),
+    off_rush_plays_perc = off_rush_plays/(off_pass_plays + off_rush_plays)
   ) |>
   mutate(
     across(contains("off"), ~ifelse(is.nan(.x), 0, .x))
@@ -346,6 +349,155 @@ srsData <- epaData3 |>
   ) |>
   ungroup() 
 
+## Efficiency Stats ----
+seriesWeekData <- calculate_series_conversion_rates(pbpDataMod, weekly = TRUE)
+seriesSeasonData <- calculate_series_conversion_rates(pbpDataMod, weekly = FALSE)
+nflStatsWeek <- calculate_stats(seasons = 2021:2024,
+                                summary_level = "week",
+                                stat_type = "team",
+                                season_type = "REG+POST")
+nflStatsSeason <- calculate_stats(seasons = 2021:2024,
+                                summary_level = "season",
+                                stat_type = "team",
+                                season_type = "REG+POST")
+
+scoresData <- pbpDataMod |>
+  filter(season %in% seasonsMod) |>
+  select(game_id, season, week, posteam, home_team, away_team, td_team,
+         fixed_drive, fixed_drive_result) |>
+  distinct() |>
+  filter(!(fixed_drive_result == "Opp touchdown" & is.na(td_team))) |>
+  select(-td_team) |>
+  distinct() |>
+  filter(!is.na(posteam)) |>
+  group_by(game_id, season, week, posteam, home_team, away_team) |>
+  count(fixed_drive_result) |>
+  pivot_wider(
+    names_from = fixed_drive_result, 
+    values_from = n, 
+    values_fill = 0
+  ) |>
+  ungroup() |>
+  left_join(
+    nflStatsWeek |>
+      select(season, week, team, special_teams_tds, def_tds),
+    by = join_by(season, week, posteam == team)
+  )
+
+scoresData <- nflStatsWeek |>
+  select(season, week, team, 
+         passing_tds, rushing_tds, special_teams_tds, def_tds,
+         passing_2pt_conversions, rushing_2pt_conversions,
+         pat_att, pat_made,
+         fg_att, fg_made, 
+         def_safeties
+         ) |>
+  rowwise() |>
+  mutate(
+    offTD = sum(passing_tds, rushing_tds),
+    totalTD = offTD + special_teams_tds + def_tds,
+    twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
+    twoPtAtt = totalTD - pat_att
+  ) |>
+  ungroup()
+
+conversions <- pbpDataMod |>
+  filter(season %in% seasonsMod) |>
+  filter(!is.na(posteam)) |>
+  select(game_id, season, week, posteam, home_team, away_team,
+         extra_point_attempt, extra_point_result, extra_point_prob, 
+         #defensive_extra_point_attempt, defensive_extra_point_conv,
+         two_point_attempt, two_point_conv_result, two_point_conversion_prob
+         #defensive_two_point_attempt, defensive_two_point_conv
+         ) |>
+  group_by(game_id, season, week, posteam, home_team, away_team) |>
+  summarise(
+    extra_point_attempt = sum(extra_point_attempt, na.rm = TRUE),
+    extra_point_result = sum(extra_point_result == "good", na.rm = TRUE),
+    extra_point_prob = mean(extra_point_prob, na.rm = TRUE),
+    two_point_attempt = sum(two_point_attempt, na.rm = TRUE),
+    two_point_conv_result = sum(two_point_conv_result == "success", na.rm = TRUE),
+    two_point_conversion_prob = mean(two_point_conversion_prob, na.rm = TRUE)
+  ) |>
+  ungroup()
+
+scoresData2 <- conversions |>
+  rename(team = posteam) |>
+  left_join(
+    scoresData,
+    by = join_by(season, week, team)
+    ) |>
+  # relocate(game_id, .before = 1) |>
+  # relocate(c(home_team, away_team), .after = team) |>
+  # rename_with(
+  #  ~janitor::make_clean_names(.x, case = "lower_camel"),
+  #  .cols = -c(game_id, season, week, posteam, home_team, away_team)
+  # ) |>
+  mutate(
+    teamScore = 6*offTD + 6*special_teams_tds + 6*def_tds +
+      3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
+    #teamPA = 6*oppTouchdown + 2*safety
+  ) |>
+  #select(-teamPF, -teamPA) |>
+  # group_by(game_id) |>
+  # mutate(
+  #   opponentScore = rev(teamScore)
+  #   #opponentPA = rev(teamPA)
+  # ) |>
+  # ungroup() |>
+  # rowwise() |>
+  # mutate(
+  #   teamScore = sum(teamPF, opponentPA),
+  #   opponentScore = sum(opponentPF, teamPA),
+  #   .keep = "unused"
+  # ) |>
+  left_join(
+    gameDataLongMod |> select(game_id, team, team_score, opponent_score),
+    join_by(game_id, team)
+    ) |>
+  mutate(
+    scoreDiff = team_score - teamScore,
+    special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds),
+    def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
+  ) |>
+  rowwise() |>
+  mutate(
+    offTD = sum(passing_tds, rushing_tds),
+    totalTD = offTD + special_teams_tds + def_tds,
+    twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
+    twoPtAtt = totalTD - pat_att
+  ) |>
+  mutate(
+    teamScore = 6*totalTD + #6*offTD + 6*special_teams_tds + 6*def_tds +
+      3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
+    #teamPA = 6*oppTouchdown + 2*safety
+  ) |>
+  ungroup() |>
+  group_by(game_id) |>
+  mutate(
+    opponentScore = rev(teamScore)
+    #opponentPA = rev(teamPA)
+  ) |>
+  ungroup() |>
+  select(
+    game_id, team,
+    totalTD, 
+    fg_made, fg_att,
+    twoPtConv, twoPtAtt,
+    safeties = def_safeties,
+    pat_made, pat_att
+  )
+
+diffs <- which(scoresData2$teamScore != scoresData2$team_score)
+(scoresData2$teamScore - scoresData2$team_score)[diffs]
+
+which(scoresData2$opponentScore != scoresData2$opponent_score)
+
+scoresData2 |>
+  filter(teamScore != team_score | opponentScore != opponent_score) |>
+  view()
+  
+
 # Model Data ----
 modData <- gameDataMod |>
   select(-c(
@@ -374,6 +526,16 @@ modData <- gameDataMod |>
       select(game_id, team, 
              contains("cum"), contains("roll"),
              c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS)) |>
+      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, away_team == team)
+  ) |>
+  left_join(
+    scoresData2 |>
+      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    scoresData2 |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
@@ -411,7 +573,6 @@ modData <- gameDataMod |>
     temp = ifelse(is.na(temp), 70, temp),
     wind = ifelse(is.na(wind), 0, wind)
   )
-
 rm(list = ls()[ls() != "modData"])
 
 
