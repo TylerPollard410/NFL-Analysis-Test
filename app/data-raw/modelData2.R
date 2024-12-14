@@ -46,9 +46,12 @@ source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
 
 seasonsMod <- 2021:2024
-gameDataMod <- gameData |> filter(season %in% seasonsMod)
-gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod)
-pbpDataMod <- load_pbp(seasons = seasonsMod)
+gameDataMod <- gameData |> filter(season %in% seasonsMod) |>
+  filter(!(season == 2024 & week > 14))
+gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod) |>
+  filter(!(season == 2024 & week > 14))
+pbpDataMod <- load_pbp(seasons = seasonsMod) |>
+  filter(!(season == 2024 & week > 14))
 load("./app/data/seasonWeekStandings.rda")
 seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 
@@ -61,9 +64,6 @@ rm(gameData, gameDataLong)
 #                  host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
 # dbListTables(con)
 # dbDisconnect(con)
-
-pbpDataMod2 <- pbpDataMod |> filter(game_id != "2024_14_GB_DET")
-pbpDataMod <- pbpDataMod2
 
 
 # Aggregate pbp ----
@@ -356,11 +356,13 @@ nflStatsWeek <- calculate_stats(seasons = 2021:2024,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
+nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
 nflStatsSeason <- calculate_stats(seasons = 2021:2024,
                                 summary_level = "season",
                                 stat_type = "team",
                                 season_type = "REG+POST")
 
+## Score Stats ----
 scoresData <- pbpDataMod |>
   filter(season %in% seasonsMod) |>
   select(game_id, season, week, posteam, home_team, away_team, td_team,
@@ -481,7 +483,7 @@ scoresData2 <- conversions |>
   ungroup() |>
   select(
     game_id, team,
-    totalTD, 
+    totalTD, offTD, special_teams_tds, def_tds,
     fg_made, fg_att,
     twoPtConv, twoPtAtt,
     safeties = def_safeties,
@@ -491,11 +493,6 @@ scoresData2 <- conversions |>
 diffs <- which(scoresData2$teamScore != scoresData2$team_score)
 (scoresData2$teamScore - scoresData2$team_score)[diffs]
 
-which(scoresData2$opponentScore != scoresData2$opponent_score)
-
-scoresData2 |>
-  filter(teamScore != team_score | opponentScore != opponent_score) |>
-  view()
   
 
 # Model Data ----
@@ -574,6 +571,64 @@ modData <- gameDataMod |>
     wind = ifelse(is.na(wind), 0, wind)
   )
 rm(list = ls()[ls() != "modData"])
+
+xpData <- modData |>
+  select(
+    home_team,
+    away_team,
+    home_totalTD,
+    home_offTD,
+    home_special_teams_tds,
+    home_def_tds,
+    home_pass_epa_cum,
+    home_pat_att,
+    home_pat_made,
+    home_twoPtAtt,
+    home_twoPtConv
+  ) |>
+  mutate(
+    diff = home_totalTD - home_pat_att - home_twoPtAtt,
+    row = row_number()
+  ) |>
+  mutate(
+    across(-c(home_team, away_team,home_pass_epa_cum),
+           ~ifelse(row > 1050, NA, .x))
+  )
+
+TDform <- bf(
+  home_totalTD ~ home_pass_epa_cum + (1|home_team) + (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+XPform <- bf(
+  home_pat_att | trials(home_totalTD) ~ (1|home_team) + (1|away_team)
+) + binomial()
+
+testFit <- brm(
+  TDform + XPform +
+    set_rescor(FALSE),
+  data = xpData |> filter(row <= 1050),
+  save_pars = save_pars(all = TRUE),
+  seed = 52,
+  warmup = 500,
+  iter = 1000,
+  chains = chains,
+  #normalize = TRUE,
+  control = list(adapt_delta = 0.95),
+  backend = "cmdstan"
+)
+
+testFit
+VarCorr(testFit)
+pp_check(testFit, resp = "hometotalTD",type = "bars", ndraws = 100)
+pp_check(testFit, resp = "homepatatt", type = "bars", ndraws = 100)
+fitted(testFit)
+fittedVal <- posterior_predict(testFit)
+fittedVal[,,"hometotalTD"]
+TDsPred <- posterior_predict(testFit,
+                         resp = "hometotalTD",
+                         newdata = xpData |> filter(row <= 1050),
+                         allow_new_levels = TRUE,
+                         re_formula = NULL
+)
 
 
 # Compare to nflverse ----
