@@ -46,12 +46,12 @@ source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
 
 seasonsMod <- 2021:2024
-gameDataMod <- gameData |> filter(season %in% seasonsMod) |>
-  filter(!(season == 2024 & week > 14))
-gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod) |>
-  filter(!(season == 2024 & week > 14))
-pbpDataMod <- load_pbp(seasons = seasonsMod) |>
-  filter(!(season == 2024 & week > 14))
+gameDataMod <- gameData |> filter(season %in% seasonsMod)
+gameDataMod <- gameDataMod |> filter(!(season == 2024 & week > 14))
+gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod)
+gameDataLongMod <- gameDataLongMod |> filter(!(season == 2024 & week > 14))
+pbpDataMod <- load_pbp(seasons = seasonsMod) 
+pbpDataMod <- pbpDataMod |> filter(!(season == 2024 & week > 14))
 load("./app/data/seasonWeekStandings.rda")
 seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 
@@ -248,7 +248,8 @@ epaAvgs <- epaData |>
            .names = "{.col}"
     )
   ) |>
-  ungroup()
+  ungroup() |>
+  mutate(week = 1)
 
 #epaAvgs |> filter(season == 2024) |> arrange(desc(off_epa_mean)) |> view()
 
@@ -267,6 +268,19 @@ epaData2 <- gameDataLongMod |>
 #   epaAvgs,
 #   by = join_by(season, team)
 # )
+
+# mutate(week = 1)
+# 
+# epaData3A <- gameDataLongMod |>
+#   select(game_id, season, week, team, opponent) |>
+#   left_join(
+#     bind_rows(
+#       epaAvgs,
+#       epaData2 |>
+#         select(season, week, team) |>
+#         filter(week != 1)
+#     )
+#   )
 
 epaData3 <- epaData2 |>
   mutate(
@@ -350,17 +364,15 @@ srsData <- epaData3 |>
   ungroup() 
 
 ## Efficiency Stats ----
-seriesWeekData <- calculate_series_conversion_rates(pbpDataMod, weekly = TRUE)
-seriesSeasonData <- calculate_series_conversion_rates(pbpDataMod, weekly = FALSE)
 nflStatsWeek <- calculate_stats(seasons = 2021:2024,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
 nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
-nflStatsSeason <- calculate_stats(seasons = 2021:2024,
-                                summary_level = "season",
-                                stat_type = "team",
-                                season_type = "REG+POST")
+# nflStatsSeason <- calculate_stats(seasons = 2021:2024,
+#                                   summary_level = "season",
+#                                   stat_type = "team",
+#                                   season_type = "REG+POST")
 
 ## Score Stats ----
 scoresData <- pbpDataMod |>
@@ -393,7 +405,7 @@ scoresData <- nflStatsWeek |>
          pat_att, pat_made,
          fg_att, fg_made, 
          def_safeties
-         ) |>
+  ) |>
   rowwise() |>
   mutate(
     offTD = sum(passing_tds, rushing_tds),
@@ -411,7 +423,7 @@ conversions <- pbpDataMod |>
          #defensive_extra_point_attempt, defensive_extra_point_conv,
          two_point_attempt, two_point_conv_result, two_point_conversion_prob
          #defensive_two_point_attempt, defensive_two_point_conv
-         ) |>
+  ) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
   summarise(
     extra_point_attempt = sum(extra_point_attempt, na.rm = TRUE),
@@ -428,7 +440,7 @@ scoresData2 <- conversions |>
   left_join(
     scoresData,
     by = join_by(season, week, team)
-    ) |>
+  ) |>
   # relocate(game_id, .before = 1) |>
   # relocate(c(home_team, away_team), .after = team) |>
   # rename_with(
@@ -456,7 +468,7 @@ scoresData2 <- conversions |>
   left_join(
     gameDataLongMod |> select(game_id, team, team_score, opponent_score),
     join_by(game_id, team)
-    ) |>
+  ) |>
   mutate(
     scoreDiff = team_score - teamScore,
     special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds),
@@ -493,8 +505,51 @@ scoresData2 <- conversions |>
 diffs <- which(scoresData2$teamScore != scoresData2$team_score)
 (scoresData2$teamScore - scoresData2$team_score)[diffs]
 
-  
+## Series ----
+seriesWeekData <- calculate_series_conversion_rates(pbpDataMod, weekly = TRUE)
+#seriesSeasonData <- calculate_series_conversion_rates(pbpDataMod, weekly = FALSE)
 
+seriesWeekData2 <- gameDataLongMod |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(seriesWeekData) |>
+  group_by(season, team) |>
+  mutate(
+    across(-c(game_id, week, opponent),
+           ~cummean(.x))
+  ) |>
+  group_by(season, team) |>
+  mutate(
+    across(-c(game_id, week, opponent),
+           ~lag(.x))
+  ) |>
+  ungroup()
+
+seriesAvgs <- seriesWeekData |> 
+  group_by(season, team) |>
+  summarise(
+    across(-week,
+           ~mean(.x, na.rm = TRUE))
+  ) |> #arrange(season, team) 
+  ungroup() |>
+  group_by(team) |>
+  mutate(
+    across(-season,
+           ~lag(.x, default = 0))
+  ) |>
+  ungroup() |>
+  mutate(week = 1)
+
+seriesData <- gameDataLongMod |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(
+    bind_rows(
+      seriesAvgs,
+      seriesWeekData2 |>
+        select(-c(game_id, opponent)) |>
+        filter(week != 1)
+    )
+  )
+  
 # Model Data ----
 modData <- gameDataMod |>
   select(-c(
@@ -536,6 +591,18 @@ modData <- gameDataMod |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
+  left_join(
+    seriesData |>
+      select(-c(season, week, opponent)) |>
+      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    seriesData |>
+      select(-c(season, week, opponent))  |>
+      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, away_team == team)
+  ) |>
   rename_with(~str_remove(.x, "_mean"), contains("mean")) |>
   mutate(
     home_net_epa_cum = home_off_epa_cum - home_def_epa_cum,
@@ -572,123 +639,123 @@ modData <- gameDataMod |>
   )
 rm(list = ls()[ls() != "modData"])
 
-xpData <- modData |>
-  select(
-    home_team,
-    away_team,
-    home_totalTD,
-    home_offTD,
-    home_special_teams_tds,
-    home_def_tds,
-    home_pass_epa_cum,
-    home_pat_att,
-    home_pat_made,
-    home_twoPtAtt,
-    home_twoPtConv
-  ) |>
-  mutate(
-    diff = home_totalTD - home_pat_att - home_twoPtAtt,
-    row = row_number()
-  ) |>
-  mutate(
-    across(-c(home_team, away_team,home_pass_epa_cum),
-           ~ifelse(row > 1050, NA, .x))
-  )
-
-TDform <- bf(
-  home_totalTD ~ home_pass_epa_cum + (1|home_team) + (1|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
-XPform <- bf(
-  home_pat_att | trials(home_totalTD) ~ (1|home_team) + (1|away_team)
-) + binomial()
-
-testFit <- brm(
-  TDform + XPform +
-    set_rescor(FALSE),
-  data = xpData |> filter(row <= 1050),
-  save_pars = save_pars(all = TRUE),
-  seed = 52,
-  warmup = 500,
-  iter = 1000,
-  chains = chains,
-  #normalize = TRUE,
-  control = list(adapt_delta = 0.95),
-  backend = "cmdstan"
-)
-
-testFit
-VarCorr(testFit)
-pp_check(testFit, resp = "hometotalTD",type = "bars", ndraws = 100)
-pp_check(testFit, resp = "homepatatt", type = "bars", ndraws = 100)
-fitted(testFit)
-fittedVal <- posterior_predict(testFit)
-fittedVal[,,"hometotalTD"]
-TDsPred <- posterior_predict(testFit,
-                         resp = "hometotalTD",
-                         newdata = xpData |> filter(row <= 1050),
-                         allow_new_levels = TRUE,
-                         re_formula = NULL
-)
-
-
-# Compare to nflverse ----
-# fastRstatsWeek <- calculate_stats(
-#   seasons = 2021:2024, summary_level = "week", stat_type = "team", season_type = "REG+POST"
-#   )
-# fastRstatsWeek2 <- gameDataLongMod |>
-#   select(game_id, season, week, season_type, team, opponent, result, total) |>
-#   left_join(
-#     fastRstatsWeek |> select(-season_type),
-#     by = join_by(season, week, team, opponent == opponent_team)
-#   ) |>
-#   filter(!is.na(result))
-# 
-# modDataLong <- modData |>
-#   clean_homeaway(invert = "result")
-# 
-# ## Passing ----
-# fastRepa <- fastRstatsWeek2 |>
-#   select(game_id, season, week, team, opponent,
-#          attempts, passing_epa,
-#          carries, rushing_epa) |>
-#   mutate(
-#     passing_epa_mean = passing_epa/attempts,
-#     rushing_epa_mean = rushing_epa/carries
-#   ) |>
-#   arrange(game_id)
-# 
-# epaDataComp <- epaData |>
-#   select(game_id, season, week, team, opponent, 
-#          off_plays, off_epa_mean, 
-#          off_pass_plays, off_pass_epa_sum, off_pass_epa_mean,
-#          off_rush_plays, off_rush_epa_sum, off_rush_epa_mean) |>
-#   left_join(
-#     fastRepa
-#   )|>
-#   ungroup()
-# 
-# epaDataCompSum <- epaDataComp |>
-#   select(-c(game_id, week, opponent)) |>
-#   group_by(season, team) |>
-#   summarise(
-#     across(everything(), ~round(mean(.x), 2))
-#   ) |>
-#   ungroup()
-# 
-# epa2024means <- epaDataCompSum |>
-#   filter(season == 2024) |>
+# xpData <- modData |>
 #   select(
-#     team,
-#     off_epa_mean,
-#     off_pass_epa_mean,
-#     passing_epa_mean,
-#     off_rush_epa_mean,
-#     rushing_epa_mean
-#     ) |>
-#   arrange(desc(off_epa_mean))
-
-
-
+#     home_team,
+#     away_team,
+#     home_totalTD,
+#     home_offTD,
+#     home_special_teams_tds,
+#     home_def_tds,
+#     home_pass_epa_cum,
+#     home_pat_att,
+#     home_pat_made,
+#     home_twoPtAtt,
+#     home_twoPtConv
+#   ) |>
+#   mutate(
+#     diff = home_totalTD - home_pat_att - home_twoPtAtt,
+#     row = row_number()
+#   ) |>
+#   mutate(
+#     across(-c(home_team, away_team,home_pass_epa_cum),
+#            ~ifelse(row > 1050, NA, .x))
+#   )
+# 
+# TDform <- bf(
+#   home_totalTD ~ home_pass_epa_cum + (1|home_team) + (1|away_team)
+# ) + brmsfamily(family = "discrete_weibull")
+# XPform <- bf(
+#   home_pat_att | trials(home_totalTD) ~ (1|home_team) + (1|away_team)
+# ) + binomial()
+# 
+# testFit <- brm(
+#   TDform + XPform +
+#     set_rescor(FALSE),
+#   data = xpData |> filter(row <= 1050),
+#   save_pars = save_pars(all = TRUE),
+#   seed = 52,
+#   warmup = 500,
+#   iter = 1000,
+#   chains = chains,
+#   #normalize = TRUE,
+#   control = list(adapt_delta = 0.95),
+#   backend = "cmdstan"
+# )
+# 
+# testFit
+# VarCorr(testFit)
+# pp_check(testFit, resp = "hometotalTD",type = "bars", ndraws = 100)
+# pp_check(testFit, resp = "homepatatt", type = "bars", ndraws = 100)
+# fitted(testFit)
+# fittedVal <- posterior_predict(testFit)
+# fittedVal[,,"hometotalTD"]
+# TDsPred <- posterior_predict(testFit,
+#                              resp = "hometotalTD",
+#                              newdata = xpData |> filter(row <= 1050),
+#                              allow_new_levels = TRUE,
+#                              re_formula = NULL
+# )
+# 
+# 
+# # Compare to nflverse ----
+# # fastRstatsWeek <- calculate_stats(
+# #   seasons = 2021:2024, summary_level = "week", stat_type = "team", season_type = "REG+POST"
+# #   )
+# # fastRstatsWeek2 <- gameDataLongMod |>
+# #   select(game_id, season, week, season_type, team, opponent, result, total) |>
+# #   left_join(
+# #     fastRstatsWeek |> select(-season_type),
+# #     by = join_by(season, week, team, opponent == opponent_team)
+# #   ) |>
+# #   filter(!is.na(result))
+# # 
+# # modDataLong <- modData |>
+# #   clean_homeaway(invert = "result")
+# # 
+# # ## Passing ----
+# # fastRepa <- fastRstatsWeek2 |>
+# #   select(game_id, season, week, team, opponent,
+# #          attempts, passing_epa,
+# #          carries, rushing_epa) |>
+# #   mutate(
+# #     passing_epa_mean = passing_epa/attempts,
+# #     rushing_epa_mean = rushing_epa/carries
+# #   ) |>
+# #   arrange(game_id)
+# # 
+# # epaDataComp <- epaData |>
+# #   select(game_id, season, week, team, opponent, 
+# #          off_plays, off_epa_mean, 
+# #          off_pass_plays, off_pass_epa_sum, off_pass_epa_mean,
+# #          off_rush_plays, off_rush_epa_sum, off_rush_epa_mean) |>
+# #   left_join(
+# #     fastRepa
+# #   )|>
+# #   ungroup()
+# # 
+# # epaDataCompSum <- epaDataComp |>
+# #   select(-c(game_id, week, opponent)) |>
+# #   group_by(season, team) |>
+# #   summarise(
+# #     across(everything(), ~round(mean(.x), 2))
+# #   ) |>
+# #   ungroup()
+# # 
+# # epa2024means <- epaDataCompSum |>
+# #   filter(season == 2024) |>
+# #   select(
+# #     team,
+# #     off_epa_mean,
+# #     off_pass_epa_mean,
+# #     passing_epa_mean,
+# #     off_rush_epa_mean,
+# #     rushing_epa_mean
+# #     ) |>
+# #   arrange(desc(off_epa_mean))
+# 
+# 
+# 
 
 
 
