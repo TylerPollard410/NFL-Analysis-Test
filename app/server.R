@@ -2,11 +2,11 @@
 ## Amazon RDS connection ----
 plan("multisession")
 
-con <- dbConnect(RPostgres::Postgres(),
-                 dbname = "NFLdata",
-                 user = "postgre",
-                 password = "NFLpass1234",
-                 host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
+# con <- dbConnect(RPostgres::Postgres(),
+#                  dbname = "NFLdata",
+#                  user = "postgre",
+#                  password = "NFLpass1234",
+#                  host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
 
 allSeasons <- 2006:most_recent_season()
 

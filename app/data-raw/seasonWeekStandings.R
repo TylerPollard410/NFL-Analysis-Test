@@ -155,10 +155,10 @@ for(i in allSeasons){
 toc()
 
 # Save to data folder ----
-# save(
-#   seasonWeekStandings,
-#   file = "./app/data/seasonWeekStandings.rda"
-# )
+save(
+  seasonWeekStandings,
+  file = "./app/data/seasonWeekStandings.rda"
+)
 
 # Remove supp Vars ----
 rm(gameDataTemp,

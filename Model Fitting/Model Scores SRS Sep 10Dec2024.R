@@ -58,8 +58,8 @@ seasonsMod <- 2021:2024
 # seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 
 # Previous Data ----
-modData2 <- modData
-modData2 <- modData2 |> 
+modDataOG <- modData
+modData2 <- modData |> 
   filter(!is.na(result)) |>
   select(
     season,
@@ -85,10 +85,15 @@ modData2 <- modData2 |>
   mutate(
     across(where(is.character),
            ~factor(.x))
-  ) |>
-  filter(!(season == 2024 & week > 14))
-histModelData1 <- modData2 |> filter(season <= 2023)
-modelData1 <- modData2 |> filter(season == 2024) |> filter(complete.cases(result))
+  ) #|>
+modData3 <- modData[complete.cases(modData), ]
+modData2 <- modData2[complete.cases(modData2), ]
+#filter(!(season == 2024 & week > 14))
+histModelData1 <- modData2 |> 
+  filter(season %in% 2021:2023)
+modelData1 <- modData2 |> 
+  filter(season == 2024) |> 
+  filter(complete.cases(result)) 
 
 preProcValues <- preProcess(histModelData1 |> 
                               select(-home_score, -away_score,
@@ -96,17 +101,35 @@ preProcValues <- preProcess(histModelData1 |>
                                      -season, -week,
                                      -contains("totalTD"), 
                                      -contains("fg_made"), 
-                                     -contains("fg_att"),
+                                     #-contains("fg_att"),
                                      -contains("twoPtConv"), 
                                      -contains("twoPtAtt"),
                                      -contains("safeties"),
-                                     -contains("pat_made"), 
-                                     -contains("pat_att")
+                                     -contains("pat_made")
+                                     #-contains("pat_att")
                                      #-spread_line, -total_line
                               ),
                             method = c("center", "scale"))
-histModelData <- predict(preProcValues, histModelData1)
-modelData <- predict(preProcValues, modelData1)
+histModelData2 <- predict(preProcValues, histModelData1)
+modelData2 <- predict(preProcValues, modelData1)
+
+histModelData <- histModelData2
+modelData <- modelData2
+
+home_totalTD_range <- range(modData |> filter(!is.na(home_totalTD)) |> pull(home_totalTD))
+home_fg_att_range<- range(modData |> filter(!is.na(home_fg_att)) |> pull(home_fg_att))
+home_fg_made_range <- range(modData |> filter(!is.na(home_fg_made)) |> pull(home_fg_made))
+
+away_totalTD_range <- range(modData |> filter(!is.na(away_totalTD)) |> pull(away_totalTD))
+away_fg_att_range <- range(modData |> filter(!is.na(away_fg_att)) |> pull(away_fg_att))
+away_fg_made_range <- range(modData |> filter(!is.na(away_fg_made)) |> pull(away_fg_made))
+
+range_totalTD <- c(min(home_totalTD_range,away_totalTD_range), 
+                   max(home_totalTD_range,away_totalTD_range))
+range_fg_att_range <- c(min(home_fg_att_range,away_fg_att_range), 
+                        max(home_fg_att_range,away_fg_att_range))
+range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range), 
+                         max(home_fg_made_range,away_fg_made_range))
 
 # Fit historical ----
 # Family: MV(skew_normal, skew_normal) 
@@ -956,33 +979,40 @@ formulaFitAwaySafe <-
 #### TD ----
 ##### Off TD
 formulaFitHomeTD2 <- 
-  bf(home_totalTD ~ 0 + Intercept +
+  bf(home_totalTD|trunc(ub = 10) ~ 0 + Intercept + #home_totalTD|trunc(ub = 10) ~ 0 + Intercept +
        home_SRS + 
-       away_SRS +
-       home_off_pass_epa_cum +
-       away_def_pass_epa_cum +
+       #away_SRS +
+       #home_off_pass_epa_cum +
+       #away_def_pass_epa_cum +
        home_off_rush_epa_cum +
        away_def_rush_epa_cum +
        home_off_epa_roll + 
-       away_def_epa_cum +
+       #away_def_epa_cum +
        away_def_penalty_epa_cum +
        away_def_special_epa_roll + 
-       home_off_scr + 
-       away_def_scr + 
+       #home_off_scr + 
+       #away_def_scr + 
        home_off_td +
        away_def_td +
-       away_def_to + 
+       #away_def_to + 
+       home_off_interceptions +
+       away_def_interceptions +
+       home_off_fumbles +
+       away_def_fumbles +
+       home_off_interceptions:away_def_interceptions +
+       #home_off_fumbles:away_def_fumbles +
        wind + 
-       home_off_pass_epa_cum:away_def_pass_epa_cum + 
+       #home_off_pass_epa_cum:away_def_pass_epa_cum + 
        home_off_rush_epa_cum:away_def_rush_epa_cum + 
-       home_off_scr:away_def_scr + 
+       #home_off_scr:away_def_scr + 
        home_off_td:away_def_td +
        (1|home_team) +
        (1|away_team)
+     #nl = TRUE
   ) + brmsfamily(family = "discrete_weibull")
 #### FG ----
 formulaFitHomeFG2 <- 
-  bf(home_fg_made ~ 0 + Intercept + # bf(home_fg_made|trials(home_fg_att) ~ 0 + Intercept +
+  bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept + # bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept +
        home_off_special_epa_cum + 
        home_off_kick_epa_cum +
        away_def_kick_epa_cum +
@@ -999,9 +1029,13 @@ formulaFitHomeFG2 <-
        home_off_to +
        away_def_to +
        home_off_to:away_def_to +
+       #home_off_fg_att_roll +
+       #home_off_fg_pct_cum +
+       #home_off_fg_pct_roll +
        location +
        (1|home_team) +
        (1|away_team)
+     #family = brmsfamily(family = "discrete_weibull")
   ) + brmsfamily(family = "discrete_weibull")
 #### Extra Pt ----
 formulaFitHomeXP2 <- 
@@ -1016,21 +1050,23 @@ formulaFitHomeXP2 <-
        roof +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "binomial")
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "discrete_weibull")
 #### Two Pt ----
 formulaFitHomeTP2 <- 
-  bf(home_twoPtConv|trials(home_totalTD - home_pat_made) ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
+  bf(home_twoPtConv|trials(home_totalTD) ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
        away_SRS +
        home_off_rush_epa_cum + 
        home_off_rush_epa_roll +
        roof +
        (1|home_team) +
        (1|away_team)
+     #family = brmsfamily(family = "binomial")
   ) + brmsfamily(family = "binomial")
 ### Away ----
 #### TD ----
 formulaFitAwayTD2 <- 
-  bf(away_totalTD ~ 0 + Intercept +
+  bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept + #bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept +
        away_off_pass_epa_cum +
        away_off_rush_epa_cum +
        away_off_penalty_epa_cum +
@@ -1042,25 +1078,37 @@ formulaFitAwayTD2 <-
        home_rest + 
        away_off_penalty_epa_cum:home_def_penalty_epa_cum +
        away_off_penalty_epa_roll:home_def_penalty_epa_roll +
+       #away_off_interceptions +
+       home_def_interceptions +
+       #away_off_fumbles +
+       #home_def_fumbles +
+       #away_off_interceptions:home_def_interceptions +
+       #away_off_fumbles:home_def_fumbles +
        roof +
        (1|home_team) +
        (1|away_team)
+     #nl = TRUE
+     #family = brmsfamily(family = "discrete_weibull")
   ) + brmsfamily(family = "discrete_weibull")
 #### FG ----
 formulaFitAwayFG2 <- 
-  bf(away_fg_made ~ 0 + Intercept + # bf(home_fg_made|trials(home_fg_att) ~ 0 + Intercept +
+  bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept + # bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
        away_SRS + 
        away_off_special_epa_cum + 
        away_off_pass_epa_roll + 
-       away_off_special_epa_roll + 
+       #away_off_special_epa_roll + 
        away_off_penalty_epa_roll +
        home_def_special_epa_cum + 
        home_def_special_epa_roll +
-       home_def_td + 
+       #home_def_td + 
        away_off_to + 
+       #away_off_fg_att_roll +
+       away_off_fg_pct_cum +
+       away_off_fg_pct_roll +
        div_game +
        (1|home_team) +
        (1|away_team)
+     #family = brmsfamily(family = "discrete_weibull")
   ) + brmsfamily(family = "discrete_weibull")
 #### Extra Pt ----
 formulaFitAwayXP2 <- 
@@ -1071,59 +1119,233 @@ formulaFitAwayXP2 <-
        away_off_kick_epa_cum +
        away_off_kick_epa_roll + 
        home_def_special_epa_roll +
-       home_rest + 
+       #home_rest + 
        location +
        temp + 
        wind +
        (1|home_team) +
        (1|away_team)
+     #family = brmsfamily(family = "binomial")
   ) + brmsfamily(family = "binomial")
 #### Two Pt ----
 formulaFitAwayTP2 <- 
-  bf(away_twoPtConv|trials(away_totalTD - away_pat_made) ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
+  bf(away_twoPtConv|trials(away_totalTD) ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
        away_off_pass_epa_cum + 
        away_off_rush_epa_roll + 
        home_def_pass_epa_roll +
-       home_rest +
+       #home_rest +
+       #away_rest +
+       #home_rest:away_rest +
+       roof +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "binomial")
+
+## Forms from sig2 ----
+### Home ----
+#### TD ----
+##### Off TD
+formulaFitHomeTD2 <- 
+  bf(home_totalTD|trunc(ub = 10) ~ 0 + Intercept + #home_totalTD|trunc(ub = 10) ~ 0 + Intercept +
+       home_SRS + 
+       away_SRS +
+       #home_off_pass_epa_cum +
+       #away_def_pass_epa_cum +
+       home_off_rush_epa_cum +
+       away_def_rush_epa_cum +
+       home_off_epa_roll + 
+       #away_def_epa_cum +
+       away_def_penalty_epa_cum +
+       away_def_special_epa_roll + 
+       #home_off_scr + 
+       #away_def_scr + 
+       home_off_td +
+       away_def_td +
+       #away_def_to + 
+       home_off_interceptions +
+       away_def_interceptions +
+       home_off_fumbles +
+       away_def_fumbles +
+       home_off_interceptions:away_def_interceptions +
+       #home_off_fumbles:away_def_fumbles +
+       wind + 
+       #home_off_pass_epa_cum:away_def_pass_epa_cum + 
+       home_off_rush_epa_cum:away_def_rush_epa_cum + 
+       #home_off_scr:away_def_scr + 
+       home_off_td:away_def_td +
+       (1|home_team) +
+       (1|away_team)
+     #nl = TRUE
+  ) + brmsfamily(family = "discrete_weibull")
+#### FG ----
+formulaFitHomeFG2 <- 
+  bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept + # bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept +
+       home_off_special_epa_cum + 
+       home_off_kick_epa_cum +
+       away_def_kick_epa_cum +
+       home_off_rush_epa_roll +
+       away_def_rush_epa_roll +
+       home_off_penalty_epa_roll +
+       away_def_penalty_epa_roll +
+       home_off_kick_epa_roll + 
+       away_def_kick_epa_roll +
+       home_off_rush_epa_roll:away_def_rush_epa_roll + 
+       home_off_penalty_epa_roll:away_def_penalty_epa_roll + 
+       home_off_kick_epa_cum:away_def_kick_epa_cum +
+       home_off_kick_epa_roll:away_def_kick_epa_roll +
+       home_off_to +
+       away_def_to +
+       home_off_to:away_def_to +
+       #home_off_fg_att_roll +
+       #home_off_fg_pct_cum +
+       #home_off_fg_pct_roll +
+       location +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull")
+#### Extra Pt ----
+formulaFitHomeXP2 <- 
+  bf(home_pat_made ~ 0 + Intercept + # bf(home_pat_made|trials(home_pat_att) ~ 0 + Intercept +
+       away_SRS + 
+       home_off_special_epa_cum + 
+       home_off_special_epa_roll + 
+       home_off_kick_epa_roll +
+       home_rest + 
        away_rest +
        home_rest:away_rest +
        roof +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "binomial")
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "negbinomial")
+#### Two Pt ----
+formulaFitHomeTP2 <- 
+  bf(home_twoPtConv ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
+       away_SRS +
+       home_off_rush_epa_cum + 
+       home_off_rush_epa_roll +
+       roof +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "negbinomial")
+### Away ----
+#### TD ----
+formulaFitAwayTD2 <- 
+  bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept + #bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept +
+       away_off_pass_epa_cum +
+       away_off_rush_epa_cum +
+       away_off_penalty_epa_cum +
+       home_def_penalty_epa_cum + 
+       away_off_penalty_epa_roll +
+       home_def_penalty_epa_roll + 
+       away_off_td + 
+       away_off_to + 
+       home_rest + 
+       away_off_penalty_epa_cum:home_def_penalty_epa_cum +
+       away_off_penalty_epa_roll:home_def_penalty_epa_roll +
+       #away_off_interceptions +
+       home_def_interceptions +
+       #away_off_fumbles +
+       #home_def_fumbles +
+       #away_off_interceptions:home_def_interceptions +
+       #away_off_fumbles:home_def_fumbles +
+       roof +
+       (1|home_team) +
+       (1|away_team)
+     #nl = TRUE
+     #family = brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull")
+#### FG ----
+formulaFitAwayFG2 <- 
+  bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept + # bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
+       away_SRS + 
+       away_off_special_epa_cum + 
+       away_off_pass_epa_roll + 
+       #away_off_special_epa_roll + 
+       away_off_penalty_epa_roll +
+       home_def_special_epa_cum + 
+       home_def_special_epa_roll +
+       #home_def_td + 
+       away_off_to + 
+       #away_off_fg_att_roll +
+       away_off_fg_pct_cum +
+       away_off_fg_pct_roll +
+       div_game +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull")
+#### Extra Pt ----
+formulaFitAwayXP2 <- 
+  bf(away_pat_made ~ 0 + Intercept + # bf(home_pat_made|trials(home_pat_att) ~ 0 + Intercept +
+       home_SRS + 
+       away_SRS + 
+       home_SRS:away_SRS +
+       away_off_kick_epa_cum +
+       away_off_kick_epa_roll + 
+       home_def_special_epa_roll +
+       #home_rest + 
+       location +
+       temp + 
+       wind +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "negbinomial")
+#### Two Pt ----
+formulaFitAwayTP2 <- 
+  bf(away_twoPtConv ~ 0 + Intercept + #bf(home_twoPtConv|trials(home_twoPtAtt) ~ 0 + Intercept +
+       away_off_pass_epa_cum + 
+       away_off_rush_epa_roll + 
+       home_def_pass_epa_roll +
+       #home_rest +
+       #away_rest +
+       #home_rest:away_rest +
+       roof +
+       (1|home_team) +
+       (1|away_team)
+     #family = brmsfamily(family = "binomial")
+  ) + brmsfamily(family = "negbinomial")
 
 ## Fit ----
 priorPoints <- set_prior(horseshoe(), class = "b")
+priorhomeTD <- prior(normal(0,5), nlpar = "homeTD")
+priorawayTD <- prior(normal(0,5), nlpar = "awayTD")
 
 # 10 mins
 system.time(
-Fit <- brm(
-  formulaFitHomeTD2 + formulaFitHomeFG2 + formulaFitHomeXP2 + formulaFitHomeTP2 + #formulaFitHomeSafe +
-    formulaFitAwayTD2 + formulaFitAwayFG2 + formulaFitAwayXP2 + formulaFitAwayTP2 + #formulaFitAwaySafe +
-  # formulaFitHomeTD + formulaFitHomeFG + formulaFitHomeXP + formulaFitHomeTP + #formulaFitHomeSafe +
-  #   formulaFitAwayTD + formulaFitAwayFG + formulaFitAwayXP + formulaFitAwayTP + #formulaFitAwaySafe +
-    set_rescor(FALSE),
-  data = histModelData,
-  save_pars = save_pars(all = TRUE),
-  seed = 52,
-  warmup = burn,
-  iter = iters,
-  chains = chains,
-  cores = parallel::detectCores(),
-  prior = priorPoints,
-  drop_unused_levels = FALSE,
-  #normalize = TRUE,
-  init = 0,
-  control = list(adapt_delta = 0.95),
-  backend = "cmdstan"
-)
+  Fit <- brm(
+    formulaFitHomeTD2 + formulaFitHomeFG2 + #formulaFitHomeXPA2 + 
+      formulaFitHomeXP2 + formulaFitHomeTP2 + #formulaFitHomeSafe +
+      formulaFitAwayTD2 + formulaFitAwayFG2 + #formulaFitAwayXPA2 +
+      formulaFitAwayXP2 + formulaFitAwayTP2 + #formulaFitAwaySafe +
+      # formulaFitHomeTD + formulaFitHomeFG + formulaFitHomeXP + formulaFitHomeTP + #formulaFitHomeSafe +
+      #   formulaFitAwayTD + formulaFitAwayFG + formulaFitAwayXP + formulaFitAwayTP + #formulaFitAwaySafe +
+      set_rescor(FALSE),
+    data = histModelData,
+    save_pars = save_pars(all = TRUE),
+    seed = 52,
+    warmup = burn,
+    iter = iters,
+    chains = chains,
+    cores = parallel::detectCores(),
+    prior = priorPoints,
+    drop_unused_levels = FALSE,
+    #normalize = TRUE,
+    init = 0,
+    control = list(adapt_delta = 0.95),
+    backend = "cmdstan"
+  )
 )
 
-fit <- 20
+fit <- 17
 assign(paste0("fit", fit), Fit)
-save(fit20, file= paste0("~/Desktop/file", fit, ".RData"))
+save(fit16, file= paste0("~/Desktop/fit", fit, ".RData"))
 
-
+Fit <- fit8
 #fitFormulas <- list()
 # for(i in 1:fit){
 #   fitFormulas[[paste0("Fit",i)]] <- get(paste0("fit", i))
@@ -1136,7 +1358,7 @@ prior_summary(Fit)
 # launch_shinystan(Fit)
 print(Fit, digits = 4)
 fixedEff <- fixef(Fit)
-fixedEff20 <- data.frame(fixedEff) |>
+fixedEff8 <- data.frame(fixedEff) |>
   mutate(
     p_val = dnorm(Estimate/Est.Error)
   ) |>
@@ -1148,9 +1370,9 @@ fixedEff20 <- data.frame(fixedEff) |>
                  ifelse(p_val < 0.05, "**",
                         ifelse(p_val < 0.1, "*", "")))
   )
-print(fixedEff2, digits = 4)
-fixedSigEff <- fixedEff20 |> filter(p_val < 0.2)
-fixedSigEff20 <- fixedSigEff |> 
+print(fixedEff8, digits = 4)
+fixedSigEff <- fixedEff8 |> filter(p_val < 0.2)
+fixedSigEff8 <- fixedSigEff |> 
   rownames_to_column() |>
   mutate(
     response = str_split_i(rowname, "_", i = 1),
@@ -1158,50 +1380,51 @@ fixedSigEff20 <- fixedSigEff |>
   ) |> 
   relocate(c(response, param), .after = "rowname") |>
   select(-rowname)
+fixedSigEff8
 
-fixedSigEff20forms <- fixedSigEff20 |>
-  select(response, param) |>
-  group_by(response) |>
-  summarise(
-    formula = paste(param, collapse = " + ")
-  )
-fixedSigEff20forms$formula[7]
-fixedSigEff20forms$formula[5]
-fixedSigEff20forms$formula[6]
-fixedSigEff20forms$formula[8]
-fixedSigEff20forms$formula[3]
-fixedSigEff20forms$formula[1]
-fixedSigEff20forms$formula[2]
-fixedSigEff20forms$formula[4]
-
-fixedSigEff20
-print(fixedSigEff, digits = 4)
-save(fixedSigEff, file = paste0("./Model Fitting/Data/fixedSigEff", fit, ".RData"))
-
-fixedSigEff13141516 <- bind_rows(
-  fixedSigEff13 |> 
-    mutate(Fit = "fit13", .before = 1) |> 
-    mutate(response = factor(response, levels = unique(response))), 
-  fixedSigEff2 |> 
-    mutate(Fit = "fit14", .before = 1) |>
-    mutate(response = factor(response, levels = unique(response))),
-  fixedSigEff15 |> 
-    mutate(Fit = "fit15", .before = 1) |>
-    mutate(response = factor(response, levels = unique(response))),
-  fixedSigEff16 |> 
-    mutate(Fit = "fit16", .before = 1) |>
-    mutate(response = factor(response, levels = unique(response))),
-  fixedSigEff17 |> 
-    mutate(Fit = "fit17", .before = 1) |>
-    mutate(response = factor(response, levels = unique(response)))
-  ) |>
-  group_by(response, Fit) |>
-  arrange(p_val, .by_group = TRUE) |>
-  ungroup()
-
-fixedSigEff1314 |> 
-  filter(response == "hometotalTD") |>
-  pull(param) |> unique()
+# fixedSigEff1forms <- fixedSigEff1 |>
+#   select(response, param) |>
+#   group_by(response) |>
+#   summarise(
+#     formula = paste(param, collapse = " + ")
+#   )
+# fixedSigEff1forms$formula[7]
+# fixedSigEff1forms$formula[5]
+# fixedSigEff1forms$formula[6]
+# fixedSigEff1forms$formula[8]
+# fixedSigEff1forms$formula[3]
+# fixedSigEff1forms$formula[1]
+# fixedSigEff1forms$formula[2]
+# fixedSigEff1forms$formula[4]
+# 
+# fixedSigEff1
+# print(fixedSigEff, digits = 4)
+# save(fixedSigEff, file = paste0("./Model Fitting/Data/fixedSigEff", fit, ".RData"))
+# 
+# fixedSigEff13141516 <- bind_rows(
+#   fixedSigEff13 |> 
+#     mutate(Fit = "fit13", .before = 1) |> 
+#     mutate(response = factor(response, levels = unique(response))), 
+#   fixedSigEff2 |> 
+#     mutate(Fit = "fit14", .before = 1) |>
+#     mutate(response = factor(response, levels = unique(response))),
+#   fixedSigEff15 |> 
+#     mutate(Fit = "fit15", .before = 1) |>
+#     mutate(response = factor(response, levels = unique(response))),
+#   fixedSigEff16 |> 
+#     mutate(Fit = "fit16", .before = 1) |>
+#     mutate(response = factor(response, levels = unique(response))),
+#   fixedSigEff17 |> 
+#     mutate(Fit = "fit17", .before = 1) |>
+#     mutate(response = factor(response, levels = unique(response)))
+#   ) |>
+#   group_by(response, Fit) |>
+#   arrange(p_val, .by_group = TRUE) |>
+#   ungroup()
+# 
+# fixedSigEff1314 |> 
+#   filter(response == "hometotalTD") |>
+#   pull(param) |> unique()
 
 randEff <- ranef(Fit, summary = TRUE)
 print(randEff, digits = 4)
@@ -1211,38 +1434,45 @@ VarCorr(Fit)
 
 postSum <- posterior_summary(Fit)
 #postSum[grepl("^sd_", rownames(postSum)), ]
-
+Fit <- fit11
 FitR2 <- bayes_R2(Fit) |>
   bind_cols(Fit = paste0("Fit", fit)) |>
   select(Fit, everything())
 FitR2
 
-loo13 <- loo(fit13)
-loo14 <- loo(fit14)
-loo15 <- loo(fit15)
-loo16 <- loo(fit16)
-loo17 <- loo(fit17)
-loo18 <- loo(fit18)
-loo19 <- loo(fit19)
+loo7 <- loo(fit7)
+loo8 <- loo(fit8)
+loo9 <- loo(fit9)
+loo10 <- loo(fit10)
+loo11 <- loo(fit11)
+loo12 <- loo(fit12)
 loo20 <- loo(fit20)
 
-loo_compare(loo13, loo14, loo15, loo16, loo17, loo18, loo19, loo20)
+loo_compare(
+  #loo7, 
+  loo8,
+  loo9,
+  loo10,
+  loo11,
+  loo12,
+  loo20
+)
 
 ## PPC Plot ----
 Fit <- fit11
-# homePPCtd <- pp_check(Fit, resp = "hometotalTD", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Home PPC td")) +
-#   theme_bw()
-# homePPCfg <- pp_check(Fit, resp = "homefgmade", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Home PPC fg")) +
-#   theme_bw()
-# homePPCxp <- pp_check(Fit, resp = "homepatmade", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Home PPC xp")) +
-#   theme_bw()
-# homePPCtp <- pp_check(Fit, resp = "hometwoPtConv", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Home PPC tp")) +
-#   theme_bw()
-# homePPCsafe <- pp_check(Fit, resp = "homesafeties", ndraws = 100) + 
+homePPCtd <- pp_check(Fit, resp = "hometotalTD", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Home PPC td")) +
+  theme_bw()
+homePPCfg <- pp_check(Fit, resp = "homefgmade", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Home PPC fg")) +
+  theme_bw()
+homePPCxp <- pp_check(Fit, resp = "homepatmade", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Home PPC xp")) +
+  theme_bw()
+homePPCtp <- pp_check(Fit, resp = "hometwoPtConv", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Home PPC tp")) +
+  theme_bw()
+# homePPCsafe <- pp_check(Fit, resp = "homesafeties", ndraws = 100) +
 #   labs(title = paste0("Fit", fit, " Home PPC safe")) +
 #   theme_bw()
 
@@ -1252,28 +1482,31 @@ homePPCbarstd <- pp_check(Fit, resp = "hometotalTD", ndraws = 100, type = "bars"
 homePPCbarsfg <- pp_check(Fit, resp = "homefgmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC fg")) +
   theme_bw()
+# homePPCbarsxpa <- pp_check(Fit, resp = "homepatatt", ndraws = 100, type = "bars") + 
+#   labs(title = paste0("Fit", fit, " Home PPC xpa")) +
+#   theme_bw()
 homePPCbarsxp <- pp_check(Fit, resp = "homepatmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC xp")) +
   theme_bw()
 homePPCbarstp <- pp_check(Fit, resp = "hometwoPtConv", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC tp")) +
   theme_bw()
-homePPCbarssafe <- pp_check(Fit, resp = "homesafeties", ndraws = 100, type = "bars") + 
-  labs(title = paste0("Fit", fit, " Home PPC safe")) +
-  theme_bw()
+# homePPCbarssafe <- pp_check(Fit, resp = "homesafeties", ndraws = 100, type = "bars") + 
+#   labs(title = paste0("Fit", fit, " Home PPC safe")) +
+#   theme_bw()
 
-# awayPPCtd <- pp_check(Fit, resp = "awaytotalTD", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Away PPC td")) +
-#   theme_bw()
-# awayPPCfg <- pp_check(Fit, resp = "awayfgmade", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Away PPC fg")) +
-#   theme_bw()
-# awayPPCxp <- pp_check(Fit, resp = "awaypatmade", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Away PPC xp")) +
-#   theme_bw()
-# awayPPCtp <- pp_check(Fit, resp = "awaytwoPtConv", ndraws = 100) + 
-#   labs(title = paste0("Fit", fit, " Away PPC tp")) +
-#   theme_bw()
+awayPPCtd <- pp_check(Fit, resp = "awaytotalTD", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Away PPC td")) +
+  theme_bw()
+awayPPCfg <- pp_check(Fit, resp = "awayfgmade", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Away PPC fg")) +
+  theme_bw()
+awayPPCxp <- pp_check(Fit, resp = "awaypatmade", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Away PPC xp")) +
+  theme_bw()
+awayPPCtp <- pp_check(Fit, resp = "awaytwoPtConv", ndraws = 100) +
+  labs(title = paste0("Fit", fit, " Away PPC tp")) +
+  theme_bw()
 # awayPPCsafe <- pp_check(Fit, resp = "awaysafeties", ndraws = 100) + 
 #   labs(title = paste0("Fit", fit, " Away PPC safe")) +
 #   theme_bw()
@@ -1284,15 +1517,18 @@ awayPPCbarstd <- pp_check(Fit, resp = "awaytotalTD", ndraws = 100, type = "bars"
 awayPPCbarsfg <- pp_check(Fit, resp = "awayfgmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Away PPC fg")) +
   theme_bw()
+# awayPPCbarsxpa <- pp_check(Fit, resp = "awaypatatt", ndraws = 100, type = "bars") + 
+#   labs(title = paste0("Fit", fit, " Away PPC xp")) +
+#   theme_bw()
 awayPPCbarsxp <- pp_check(Fit, resp = "awaypatmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Away PPC xp")) +
   theme_bw()
 awayPPCbarstp <- pp_check(Fit, resp = "awaytwoPtConv", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Away PPC tp")) +
   theme_bw()
-awayPPCbarssafe <- pp_check(Fit, resp = "awaysafeties", ndraws = 100, type = "bars") + 
-  labs(title = paste0("Fit", fit, " Away PPC safe")) +
-  theme_bw()
+# awayPPCbarssafe <- pp_check(Fit, resp = "awaysafeties", ndraws = 100, type = "bars") + 
+#   labs(title = paste0("Fit", fit, " Away PPC safe")) +
+#   theme_bw()
 
 # homePPCtd
 # homePPCfg
@@ -1301,9 +1537,10 @@ awayPPCbarssafe <- pp_check(Fit, resp = "awaysafeties", ndraws = 100, type = "ba
 # homePPCsafe
 homePPCbarstd
 homePPCbarsfg
+#homePPCbarsxpa
 homePPCbarsxp
 homePPCbarstp
-homePPCbarssafe
+#homePPCbarssafe
 # awayPPCtd
 # awayPPCfg
 # awayPPCxp
@@ -1311,16 +1548,17 @@ homePPCbarssafe
 # awayPPCsafe
 awayPPCbarstd
 awayPPCbarsfg
+#awayPPCbarsxpa
 awayPPCbarsxp
 awayPPCbarstp
-awayPPCbarssafe
+#awayPPCbarssafe
 
 ## Fitted
 homefinalFittd <- posterior_predict(Fit, resp = "hometotalTD")
 homefinalFitfg <- posterior_predict(Fit, resp = "homefgmade")
 homefinalFitxp <- posterior_predict(Fit, resp = "homepatmade")
 homefinalFittp <- posterior_predict(Fit, resp = "hometwoPtConv")
-homefinalFitsafe <- posterior_predict(Fit, resp = "homesafeties")
+#homefinalFitsafe <- posterior_predict(Fit, resp = "homesafeties")
 
 ## Preds
 homefinalPredstd <- posterior_predict(Fit,
@@ -1347,19 +1585,19 @@ homefinalPredstp <- posterior_predict(Fit,
                                       allow_new_levels = TRUE,
                                       re_formula = NULL
 )
-homefinalPredssafe <- posterior_predict(Fit,
-                                        resp = "homesafeties",
-                                        newdata = modelData,
-                                        allow_new_levels = TRUE,
-                                        re_formula = NULL
-)
+# homefinalPredssafe <- posterior_predict(Fit,
+#                                         resp = "homesafeties",
+#                                         newdata = modelData,
+#                                         allow_new_levels = TRUE,
+#                                         re_formula = NULL
+# )
 
 ## Fitted
 awayfinalFittd <- posterior_predict(Fit, resp = "awaytotalTD")
 awayfinalFitfg <- posterior_predict(Fit, resp = "awayfgmade")
 awayfinalFitxp <- posterior_predict(Fit, resp = "awaypatmade")
 awayfinalFittp <- posterior_predict(Fit, resp = "awaytwoPtConv")
-awayfinalFitsafe <- posterior_predict(Fit, resp = "awaysafeties")
+#awayfinalFitsafe <- posterior_predict(Fit, resp = "awaysafeties")
 
 ## Preds
 awayfinalPredstd <- posterior_predict(Fit,
@@ -1386,16 +1624,56 @@ awayfinalPredstp <- posterior_predict(Fit,
                                       allow_new_levels = TRUE,
                                       re_formula = NULL
 )
-awayfinalPredssafe <- posterior_predict(Fit,
-                                        resp = "awaysafeties",
-                                        newdata = modelData,
-                                        allow_new_levels = TRUE,
-                                        re_formula = NULL
-)
+# awayfinalPredssafe <- posterior_predict(Fit,
+#                                         resp = "awaysafeties",
+#                                         newdata = modelData,
+#                                         allow_new_levels = TRUE,
+#                                         re_formula = NULL
+# )
 
+homePPDbarstd <- ppc_bars(y = modelData$home_totalTD, 
+                          yrep = homefinalPredstd[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD td")) +
+  theme_bw()
+homePPDbarsfg <- ppc_bars(y = modelData$home_fg_made, 
+                          yrep = homefinalPredsfg[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD fg")) +
+  theme_bw()
+homePPDbarsxp <- ppc_bars(y = modelData$home_pat_made, 
+                          yrep = homefinalPredsxp[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD xp")) +
+  theme_bw()
+homePPDbarstp <- ppc_bars(y = modelData$home_twoPtConv, 
+                          yrep = homefinalPredstp[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD tp")) +
+  theme_bw()
 
+awayPPDbarstd <- ppc_bars(y = modelData$away_totalTD, 
+                          yrep = awayfinalPredstd[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Away PPD td")) +
+  theme_bw()
+awayPPDbarsfg <- ppc_bars(y = modelData$away_fg_made, 
+                          yrep = awayfinalPredsfg[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Away PPD fg")) +
+  theme_bw()
+awayPPDbarsxp <- ppc_bars(y = modelData$away_pat_made, 
+                          yrep = awayfinalPredsxp[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Away PPD xp")) +
+  theme_bw()
+awayPPDbarstp <- ppc_bars(y = modelData$away_twoPtConv, 
+                          yrep = awayfinalPredstp[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Away PPD tp")) +
+  theme_bw()
 
+homePPDbarstd
+homePPDbarsfg
+homePPDbarsxp
+homePPDbarstp
 
+awayPPDbarstd
+awayPPDbarsfg
+awayPPDbarsxp
+awayPPDbarstp
 
 #### Home Score ----
 homefinalFit <- 
@@ -1529,32 +1807,42 @@ predMetricsSpread <- bind_rows(
   predMetricsSpreadTemp,
   predMetricsSpread
 )
-predMetricsSpread
+predMetricsSpread #<- predMetricsSpreadTemp
 
 ##### Plot ----
 set.seed(52)
 spreadPPC <- ppc_dens_overlay(y = histModelData$result, 
-                              yrep = FittedSpread[sample(1:sims, 100, replace = FALSE), ])
+                              yrep = FittedSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPC td")) +
+  theme_bw()
 spreadPPC
 
 spreadPPCbars <- ppc_bars(y = histModelData$result, 
-                          yrep = FittedSpread[sample(1:sims, 100, replace = FALSE), ])
+                          yrep = FittedSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPC td")) +
+  theme_bw()
 spreadPPCbars
 
 set.seed(52)
 spreadPPD <- ppc_dens_overlay(y = modelData$result, 
-                              yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ])
+                              yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPC td")) +
+  theme_bw()
 spreadPPD
 
 spreadPPDbars <- ppc_bars(y = modelData$result, 
-                          yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ])
+                          yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPC td")) +
+  theme_bw()
 spreadPPDbars
 
 
 
 ##### Prob Errors ----
 ##### Fit ----
-spreadLineTrain <- histModelData1$spread_line
+spreadLineTrain <- modData |>
+  filter(season %in% 2021:2023) |>
+  pull(spread_line)
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 FittedProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTrain))
@@ -1569,7 +1857,7 @@ FittedLogicalSpread <- spreadTrain > spreadLineTrain
 FittedProbSpread <- mean(FittedBetLogicalSpread == FittedLogicalSpread, na.rm = TRUE)
 FittedProbSpread
 
-spreadDataTrain <- modData |> filter(season <= 2023) |>
+spreadDataTrain <- modData |> filter(season %in% 2021:2023) |>
   select(season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line, spreadCover,
@@ -1598,7 +1886,10 @@ spreadSuccessTrain <- spreadDataTrain |>
 spreadSuccessTrain
 
 ##### Pred ----
-spreadLineTest <- modelData1$spread_line
+spreadLineTest <- modData |>
+  filter(season == 2024) |>
+  filter(!is.na(result)) |>
+  pull(spread_line)
 #spreadTest <- as.numeric(spreadTestScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 PredsProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTest))
@@ -1662,8 +1953,13 @@ PredsMedTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.5, na.rm = TRUE)
 PredsLCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 PredsUCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-totalTrain <- histModelData1$total
-totalTest <- modelData1$total
+totalTrain <- modData |>
+  filter(season %in% 2021:2023) |>
+  pull(total)
+totalTest <- modData |>
+  filter(season == 2024) |>
+  filter(!is.na(result)) |>
+  pull(total)
 predMetricsTotalTemp <- tibble(
   Fit = paste0("Fit", fit),
   Response = rep("Total", 2),
@@ -1680,30 +1976,32 @@ predMetricsTotal <- bind_rows(
   predMetricsTotalTemp,
   predMetricsTotal
 )
-predMetricsTotal
+predMetricsTotal #<- predMetricsTotalTemp
 
 ##### Plot ----
 set.seed(52)
-totalPPC <- ppc_dens_overlay(y = histModelData$total, 
+totalPPC <- ppc_dens_overlay(y = totalTrain,
                              yrep = FittedTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPC
 
-totalPPCbars <- ppc_bars(y = histModelData$total, 
-                     yrep = FittedTotal[sample(1:sims, 100, replace = FALSE), ])
+totalPPCbars <- ppc_bars(y =totalTrain, 
+                         yrep = FittedTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPCbars
 
 set.seed(52)
-totalPPD <- ppc_dens_overlay(y = modelData$total, 
+totalPPD <- ppc_dens_overlay(y = totalTest, 
                              yrep = PredsTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPD
 
-totalPPDbars <- ppc_bars(y = modelData$total, 
-                     yrep = PredsTotal[sample(1:sims, 100, replace = FALSE), ])
+totalPPDbars <- ppc_bars(y = totalTest, 
+                         yrep = PredsTotal[sample(1:sims, 100, replace = FALSE), ])
 totalPPDbars
 
 ##### Prob Errors ----
 ##### Fit ----
-totalLineTrain <- histModelData1$total_line
+totalLineTrain <- modData |>
+  filter(season %in% 2021:2023) |>
+  pull(total_line)
 #totalTrain <- as.numeric(totalTrainScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
 FittedProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTrain))
@@ -1718,7 +2016,7 @@ FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
 
-totalDataTrain <- modData |> filter(season <= 2023) |>
+totalDataTrain <- modData |> filter(season %in% 2021:2023) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,
@@ -1744,7 +2042,10 @@ totalSuccessTrain <- totalDataTrain |>
 totalSuccessTrain
 
 ##### Pred ----
-totalLineTest <- modelData1$total_line
+totalLineTest <- modData |>
+  filter(season == 2024) |>
+  filter(!is.na(result)) |>
+  pull(total_line)
 #totalTest <- as.numeric(totalTestScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
 PredsProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
@@ -1804,10 +2105,111 @@ successPerf <- bind_rows(
   successPerf,
   successPerfTemp
 )
-successPerf
+successPerf #<- successPerfTemp
 
+## Predict Week ----
+testWeekData <- modData2 |>
+  filter(season == 2024 & week == 15) |>
+  filter(is.na(result) & !is.na(spread_line))
 
-# Iterate -----
+testWeekData2 <- predict(preProcValues, testWeekData)
+
+## Preds
+homefinalPredstd <- posterior_predict(fit2,
+                                      resp = "hometotalTD",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+homefinalPredsfg <- posterior_predict(Fit,
+                                      resp = "homefgmade",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+homefinalPredsxp <- posterior_predict(Fit,
+                                      resp = "homepatmade",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+homefinalPredstp <- posterior_predict(Fit,
+                                      resp = "hometwoPtConv",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+
+## Preds
+awayfinalPredstd <- posterior_predict(Fit,
+                                      resp = "awaytotalTD",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+awayfinalPredsfg <- posterior_predict(Fit,
+                                      resp = "awayfgmade",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+awayfinalPredsxp <- posterior_predict(Fit,
+                                      resp = "awaypatmade",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+awayfinalPredstp <- posterior_predict(Fit,
+                                      resp = "awaytwoPtConv",
+                                      newdata = testWeekData2,
+                                      allow_new_levels = TRUE,
+                                      re_formula = NULL
+)
+
+## Prediction on new data
+homefinalPreds <-
+  6*homefinalPredstd +
+  3*homefinalPredsfg +
+  1*homefinalPredsxp +
+  2*homefinalPredstp #+
+#2*homefinalPredssafe
+
+# homefinalPreds <- posterior_predict(Fit,
+#                                     resp = "homescore",
+#                                     newdata = modelData,
+#                                     allow_new_levels = TRUE,
+#                                     re_formula = NULL
+# )
+homefinalPredsMean <- colMeans(homefinalPreds)
+homefinalPredsMed <- apply(homefinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+homefinalPredsLCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+homefinalPredsUCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
+
+#### Away Score ----
+awayfinalFit <- 
+  6*awayfinalFittd + 
+  3*awayfinalFitfg +
+  1*awayfinalFitxp +
+  2*awayfinalFittp #+
+#2*awayfinalFitsafe
+## Fitted
+#awayfinalFit <- posterior_predict(Fit, resp = "awayscore")
+awayfinalFitMean <- colMeans(awayfinalFit)
+awayfinalFitMed <- apply(awayfinalFit, 2, function(x){quantile(x, 0.5)})
+awayfinalFitLCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.025)})
+awayfinalFitUCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.975)})
+
+## Prediction on new data
+awayfinalPreds <-
+  6*awayfinalPredstd +
+  3*awayfinalPredsfg +
+  1*awayfinalPredsxp +
+  2*awayfinalPredstp #+
+
+spreadNew <- 
+  
+  
+  # Iterate -----
 ## Update Priors ----
 # Helper function to create updated priors
 prior_summary(fit20, all = FALSE)
@@ -2360,8 +2762,8 @@ successPerf
 
 ## Fit Model 2 ----
 # Initialize values
-predWeeks <- max(modelData$week)
-iterFitBase <- fit20
+predWeeks <- 14
+iterFitBase <- fit8
 iterFit <- iterFitBase
 homefinalIterFittdComb2 <- list()
 homefinalIterFitfgComb2 <- list()
@@ -2393,185 +2795,205 @@ old_priors <- create_updated_priors(post_summary = prePriors)
 
 ### Run loop
 system.time(
-for(i in 1:predWeeks){
-  predictWeekData <- modelData |>
-    filter(week == i)
-  
-  # nonUnique <- predictWeekData |>
-  #   select(where(is.character))
-  # 
-  # nonUnique <- predictWeekData |>
-  #   summarise(
-  #     across(where(is.character),
-  #            ~length(unique(.x)))
-  #   ) |> unlist()
-  # removeVars <- names(nonUnique[nonUnique == 1])
-  
-  # Make Prediction for week 
-  homefinalIterPredstd <- posterior_predict(iterFit,
-                                          resp = "hometotalTD",
-                                          newdata = predictWeekData,
-                                          allow_new_levels = TRUE,
-                                          re_formula = NULL
-  )
-  homefinalIterPredsfg <- posterior_predict(iterFit,
-                                                 resp = "homefgmade",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  homefinalIterPredsxp <- posterior_predict(iterFit,
-                                                 resp = "homepatmade",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  homefinalIterPredstp <- posterior_predict(iterFit,
-                                                 resp = "hometwoPtConv",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  
-  awayfinalIterPredstd <- posterior_predict(iterFit,
-                                                 resp = "awaytotalTD",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  awayfinalIterPredsfg <- posterior_predict(iterFit,
-                                                 resp = "awayfgmade",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  awayfinalIterPredsxp <- posterior_predict(iterFit,
-                                                 resp = "awaypatmade",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  awayfinalIterPredstp <- posterior_predict(iterFit,
-                                                 resp = "awaytwoPtConv",
-                                                 newdata = predictWeekData,
-                                                 allow_new_levels = TRUE,
-                                                 re_formula = NULL
-  )
-  
-  homefinalIterPreds <- 
-    6*homefinalIterPredstd + 
-    3*homefinalIterPredsfg +
-    1*homefinalIterPredsxp +
-    2*homefinalIterPredstp
-  
-  awayfinalIterPreds <- 
-    6*awayfinalIterPredstd + 
-    3*awayfinalIterPredsfg +
-    1*awayfinalIterPredsxp +
-    2*awayfinalIterPredstp
-  
-  homefinalIterPredsComb2[[i]] <- homefinalIterPreds
-  awayfinalIterPredsComb2[[i]] <- awayfinalIterPreds
-  
-  # Update prediction matrix
-  homefinalIterPredstdComb2[[i]] <- homefinalIterPredstd
-  homefinalIterPredsfgComb2[[i]] <- homefinalIterPredsfg
-  homefinalIterPredsxpComb2[[i]] <- homefinalIterPredsxp
-  homefinalIterPredstpComb2[[i]] <- homefinalIterPredstp
-  awayfinalIterPredstdComb2[[i]] <- awayfinalIterPredstd
-  awayfinalIterPredsfgComb2[[i]] <- awayfinalIterPredsfg
-  awayfinalIterPredsxpComb2[[i]] <- awayfinalIterPredsxp
-  awayfinalIterPredstpComb2[[i]] <- awayfinalIterPredstp
-  
-  iterData <- modelData |>
-    filter(week %in% 1:i)
-  
-  iterFit <- update(iterFitBase,
-                    newdata = iterData,
-                    prior = old_priors,
-                    drop_unused_levels = FALSE
-                    )
-  
-  # iterCoefs <- default_prior(
-  #   formulaFitHome + formulaFitAway + set_rescor(FALSE),
-  #   data = iterData,
-  #   save_pars = save_pars(all = TRUE),
-  #   seed = 52,
-  #   warmup = burn,
-  #   iter = iters,
-  #   chains = chains,
-  #   #prior = updated_priors2,
-  #   normalize = TRUE,
-  #   control = list(adapt_delta = 0.95),
-  #   backend = "cmdstan",
-  #   drop_unused_levels = TRUE
-  # )$coef
-  # 
-  # iterPrePrior <- posterior_summary(iterFit)
-  # iterPrePriorCoefs <- prior_summary(iterFit)$coef
-  # 
-  # dropCoefs <- iterPrePriorCoefs[!(iterPrePriorCoefs %in% iterCoefs)]
-  # newCoefs <- iterCoefs[!(iterCoefs %in% iterPrePriorCoefs)]
-  # 
-  # updated_priors <- create_updated_priors(post_summary = iterPrePrior)
-  # updated_priors_keep <- updated_priors |> filter(!(coef %in% dropCoefs))
-  # updated_priors_new <- old_priors |> filter(coef %in% newCoefs)
-  # updated_priors2 <- c(updated_priors_keep, updated_priors_new)
-  # 
-  # # Fit new model
-  # iterFit <- brm(
-  #   formulaFitHome + formulaFitAway + set_rescor(FALSE),
-  #   data = iterData,
-  #   save_pars = save_pars(all = TRUE),
-  #   seed = 52,
-  #   warmup = burn,
-  #   iter = iters,
-  #   chains = chains,
-  #   prior = updated_priors2,
-  #   normalize = TRUE,
-  #   control = list(adapt_delta = 0.95),
-  #   backend = "cmdstan"
-  # )
-  
-  # Get fitted values for week
-  homefinalIterFittd <- posterior_predict(Fit, resp = "hometotalTD")
-  homefinalIterFitfg <- posterior_predict(Fit, resp = "homefgmade")
-  homefinalIterFitxp <- posterior_predict(Fit, resp = "homepatmade")
-  homefinalIterFittp <- posterior_predict(Fit, resp = "hometwoPtConv")
-  
-  
-  awayfinalIterFittd <- posterior_predict(Fit, resp = "awaytotalTD")
-  awayfinalIterFitfg <- posterior_predict(Fit, resp = "awayfgmade")
-  awayfinalIterFitxp <- posterior_predict(Fit, resp = "awaypatmade")
-  awayfinalIterFittp <- posterior_predict(Fit, resp = "awaytwoPtConv")
-  
-  homefinalIterFit <- 
-    6*homefinalIterFittd + 
-    3*homefinalIterFitfg +
-    1*homefinalIterFitxp +
-    2*homefinalIterFittp
-  
-  awayfinalIterFit <- 
-    6*awayfinalIterFittd + 
-    3*awayfinalIterFitfg +
-    1*awayfinalIterFitxp +
-    2*awayfinalIterFittp
-  
-  homefinalIterFitComb2[[i]] <- homefinalIterFit
-  awayfinalIterFitComb2[[i]] <- awayfinalIterFit
-  
-  # Update prediction matrix
-  homefinalIterFittdComb2[[i]] <- homefinalIterFittd
-  homefinalIterFitfgComb2[[i]] <- homefinalIterFitfg
-  homefinalIterFitxpComb2[[i]] <- homefinalIterFitxp
-  homefinalIterFittpComb2[[i]] <- homefinalIterFittp
-  awayfinalIterFittdComb2[[i]] <- awayfinalIterFittd
-  awayfinalIterFitfgComb2[[i]] <- awayfinalIterFitfg
-  awayfinalIterFitxpComb2[[i]] <- awayfinalIterFitxp
-  awayfinalIterFittpComb2[[i]] <- awayfinalIterFittp
-  
-  print(paste0("Finished Week ", i))
-}
+  for(i in 1:predWeeks){
+    predictWeekData <- modelData |>
+      filter(week == i) |>
+      mutate(
+        home_totalTD = NA,
+        home_fg_made = NA,
+        home_pat_made = NA,
+        home_twoPtConv = NA,
+        away_totalTD = NA,
+        away_fg_made = NA,
+        away_pat_made = NA,
+        away_twoPtConv = NA
+      )
+    
+    # nonUnique <- predictWeekData |>
+    #   select(where(is.character))
+    # 
+    # nonUnique <- predictWeekData |>
+    #   summarise(
+    #     across(where(is.character),
+    #            ~length(unique(.x)))
+    #   ) |> unlist()
+    # removeVars <- names(nonUnique[nonUnique == 1])
+    
+    # Make Prediction for week 
+    homefinalIterPredstd <- posterior_predict(iterFit,
+                                              resp = "hometotalTD",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL,
+    )
+    homefinalIterPredstdMed <- apply(homefinalIterPredstd, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+    predictWeekData <- predictWeekData |>
+      mutate(
+        home_totalTD = homefinalIterPredstdMed
+      )
+    homefinalIterPredsfg <- posterior_predict(iterFit,
+                                              resp = "homefgmade",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    homefinalIterPredsxp <- posterior_predict(iterFit,
+                                              resp = "homepatmade",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    homefinalIterPredstp <- posterior_predict(iterFit,
+                                              resp = "hometwoPtConv",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    
+    awayfinalIterPredstd <- posterior_predict(iterFit,
+                                              resp = "awaytotalTD",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    awayfinalIterPredstdMed <- apply(awayfinalIterPredstd, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+    predictWeekData <- predictWeekData |>
+      mutate(
+        away_totalTD = awayfinalIterPredstd
+      )
+    awayfinalIterPredsfg <- posterior_predict(iterFit,
+                                              resp = "awayfgmade",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    awayfinalIterPredsxp <- posterior_predict(iterFit,
+                                              resp = "awaypatmade",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    awayfinalIterPredstp <- posterior_predict(iterFit,
+                                              resp = "awaytwoPtConv",
+                                              newdata = predictWeekData,
+                                              allow_new_levels = TRUE,
+                                              re_formula = NULL
+    )
+    
+    homefinalIterPreds <- 
+      6*homefinalIterPredstd + 
+      3*homefinalIterPredsfg +
+      1*homefinalIterPredsxp +
+      2*homefinalIterPredstp
+    
+    awayfinalIterPreds <- 
+      6*awayfinalIterPredstd + 
+      3*awayfinalIterPredsfg +
+      1*awayfinalIterPredsxp +
+      2*awayfinalIterPredstp
+    
+    homefinalIterPredsComb2[[i]] <- homefinalIterPreds
+    awayfinalIterPredsComb2[[i]] <- awayfinalIterPreds
+    
+    # Update prediction matrix
+    homefinalIterPredstdComb2[[i]] <- homefinalIterPredstd
+    homefinalIterPredsfgComb2[[i]] <- homefinalIterPredsfg
+    homefinalIterPredsxpComb2[[i]] <- homefinalIterPredsxp
+    homefinalIterPredstpComb2[[i]] <- homefinalIterPredstp
+    awayfinalIterPredstdComb2[[i]] <- awayfinalIterPredstd
+    awayfinalIterPredsfgComb2[[i]] <- awayfinalIterPredsfg
+    awayfinalIterPredsxpComb2[[i]] <- awayfinalIterPredsxp
+    awayfinalIterPredstpComb2[[i]] <- awayfinalIterPredstp
+    
+    iterData <- modelData |>
+      filter(week %in% 1:i)
+    
+    iterFit <- update(iterFitBase,
+                      newdata = iterData,
+                      prior = old_priors,
+                      drop_unused_levels = FALSE
+    )
+    
+    # iterCoefs <- default_prior(
+    #   formulaFitHome + formulaFitAway + set_rescor(FALSE),
+    #   data = iterData,
+    #   save_pars = save_pars(all = TRUE),
+    #   seed = 52,
+    #   warmup = burn,
+    #   iter = iters,
+    #   chains = chains,
+    #   #prior = updated_priors2,
+    #   normalize = TRUE,
+    #   control = list(adapt_delta = 0.95),
+    #   backend = "cmdstan",
+    #   drop_unused_levels = TRUE
+    # )$coef
+    # 
+    # iterPrePrior <- posterior_summary(iterFit)
+    # iterPrePriorCoefs <- prior_summary(iterFit)$coef
+    # 
+    # dropCoefs <- iterPrePriorCoefs[!(iterPrePriorCoefs %in% iterCoefs)]
+    # newCoefs <- iterCoefs[!(iterCoefs %in% iterPrePriorCoefs)]
+    # 
+    # updated_priors <- create_updated_priors(post_summary = iterPrePrior)
+    # updated_priors_keep <- updated_priors |> filter(!(coef %in% dropCoefs))
+    # updated_priors_new <- old_priors |> filter(coef %in% newCoefs)
+    # updated_priors2 <- c(updated_priors_keep, updated_priors_new)
+    # 
+    # # Fit new model
+    # iterFit <- brm(
+    #   formulaFitHome + formulaFitAway + set_rescor(FALSE),
+    #   data = iterData,
+    #   save_pars = save_pars(all = TRUE),
+    #   seed = 52,
+    #   warmup = burn,
+    #   iter = iters,
+    #   chains = chains,
+    #   prior = updated_priors2,
+    #   normalize = TRUE,
+    #   control = list(adapt_delta = 0.95),
+    #   backend = "cmdstan"
+    # )
+    
+    # Get fitted values for week
+    homefinalIterFittd <- posterior_predict(iterFit, resp = "hometotalTD")
+    homefinalIterFitfg <- posterior_predict(iterFit, resp = "homefgmade")
+    homefinalIterFitxp <- posterior_predict(iterFit, resp = "homepatmade")
+    homefinalIterFittp <- posterior_predict(iterFit, resp = "hometwoPtConv")
+    
+    
+    awayfinalIterFittd <- posterior_predict(iterFit, resp = "awaytotalTD")
+    awayfinalIterFitfg <- posterior_predict(iterFit, resp = "awayfgmade")
+    awayfinalIterFitxp <- posterior_predict(iterFit, resp = "awaypatmade")
+    awayfinalIterFittp <- posterior_predict(iterFit, resp = "awaytwoPtConv")
+    
+    homefinalIterFit <- 
+      6*homefinalIterFittd + 
+      3*homefinalIterFitfg +
+      1*homefinalIterFitxp +
+      2*homefinalIterFittp
+    
+    awayfinalIterFit <- 
+      6*awayfinalIterFittd + 
+      3*awayfinalIterFitfg +
+      1*awayfinalIterFitxp +
+      2*awayfinalIterFittp
+    
+    homefinalIterFitComb2[[i]] <- homefinalIterFit
+    awayfinalIterFitComb2[[i]] <- awayfinalIterFit
+    
+    # Update prediction matrix
+    homefinalIterFittdComb2[[i]] <- homefinalIterFittd
+    homefinalIterFitfgComb2[[i]] <- homefinalIterFitfg
+    homefinalIterFitxpComb2[[i]] <- homefinalIterFitxp
+    homefinalIterFittpComb2[[i]] <- homefinalIterFittp
+    awayfinalIterFittdComb2[[i]] <- awayfinalIterFittd
+    awayfinalIterFitfgComb2[[i]] <- awayfinalIterFitfg
+    awayfinalIterFitxpComb2[[i]] <- awayfinalIterFitxp
+    awayfinalIterFittpComb2[[i]] <- awayfinalIterFittp
+    
+    print(paste0("Finished Week ", i))
+  }
 )
 
 save(fit20,
@@ -2697,12 +3119,12 @@ predMetricsSpread
 
 ##### Plot ----
 set.seed(52)
-spreadPPC <- ppc_dens_overlay(y = modelData$result, 
+spreadPPC <- ppc_dens_overlay(y = modelData1$result, 
                               yrep = FittedIterSpread[sample(1:sims, 100, replace = FALSE), ])
 spreadPPC
 
 set.seed(52)
-spreadPPD <- ppc_dens_overlay(y = modelData$result, 
+spreadPPD <- ppc_dens_overlay(y = modelData1$result, 
                               yrep = PredsIterSpread[sample(1:sims, 100, replace = FALSE), ])
 spreadPPD
 

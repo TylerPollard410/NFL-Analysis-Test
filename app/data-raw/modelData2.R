@@ -44,16 +44,17 @@ library(tidyverse)
 
 source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
+source("./app/data-raw/pbpData.R")
 
 seasonsMod <- 2021:2024
-gameDataMod <- gameData |> filter(season %in% seasonsMod)
-gameDataMod <- gameDataMod |> filter(!(season == 2024 & week > 14))
-gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod)
-gameDataLongMod <- gameDataLongMod |> filter(!(season == 2024 & week > 14))
-pbpDataMod <- load_pbp(seasons = seasonsMod) 
-pbpDataMod <- pbpDataMod |> filter(!(season == 2024 & week > 14))
+gameDataMod <- gameData #|> filter(season %in% seasonsMod)
+#gameDataMod <- gameDataMod |> filter(!(season == 2024 & week > 14))
+gameDataLongMod <- gameDataLong #|> filter(season %in% seasonsMod)
+#gameDataLongMod <- gameDataLongMod |> filter(!(season == 2024 & week > 14))
+pbpDataMod <- pbpData
+#pbpDataMod <- pbpDataMod |> filter(!(season == 2024 & week > 14))
 load("./app/data/seasonWeekStandings.rda")
-seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
+#seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 
 rm(gameData, gameDataLong)
 
@@ -161,7 +162,7 @@ pbpPlayTypes <- pbpDataMod |>
 
 ### Penalty Sturcture 2 ----
 epaOffData <- pbpDataMod |>
-  filter(season %in% seasonsMod) |>
+  #filter(season %in% seasonsMod) |>
   #filter(play == 1) |> 
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
@@ -251,9 +252,13 @@ epaAvgs <- epaData |>
   ungroup() |>
   mutate(week = 1)
 
+
 #epaAvgs |> filter(season == 2024) |> arrange(desc(off_epa_mean)) |> view()
 
 epaData2 <- gameDataLongMod |>
+  select(
+    game_id, season, week, team
+  ) |>
   left_join(
     epaData |> select(game_id, team, opponent, contains("plays"), contains("mean"))
   ) |>
@@ -277,18 +282,20 @@ epaData2 <- gameDataLongMod |>
 #     bind_rows(
 #       epaAvgs,
 #       epaData2 |>
-#         select(season, week, team) |>
+#         select(season, week, team, contains("off"), contains("def")) |>
 #         filter(week != 1)
 #     )
 #   )
 
-epaData3 <- epaData2 |>
-  mutate(
-    across(c(contains("plays"), contains("mean")),
-           ~ifelse(is.na(.x), epaAvgs |> filter(season == season, team == team) |> pull(.x), .x))
-  ) |>
-  mutate(
-    row = row_number()
+epaData3A <- gameDataLongMod |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(
+    bind_rows(
+      epaAvgs,
+      epaData2 |>
+        select(season, week, team, contains("off"), contains("def")) |>
+        filter(week != 1)
+    )
   ) |>
   # select(
   #   game_id, season, week, team, contains("mean")
@@ -308,23 +315,30 @@ epaData3 <- epaData2 |>
   ) |>
   ungroup() |>
   rename_with(~str_remove(.x, "(?<=roll).+"), contains("roll")) |>
-  arrange(row) |>
-  select(-c(
-    row,
-    old_game_id,
-    gsis,
-    nfl_detail_id,
-    pfr,
-    pff,
-    espn,
-    ftn,
-    team_qb_id,
-    team_qb_name,
-    opponent_qb_id,
-    opponent_qb_name,
-    referee,
-    stadium_id
-  ))
+  select(
+    game_id, season, week, team, opponent, everything()
+  )
+
+epaData3 <- gameDataLongMod |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(epaData3A)
+# arrange(row) #|>
+# select(-c(
+#   row,
+#   old_game_id,
+#   gsis,
+#   nfl_detail_id,
+#   pfr,
+#   pff,
+#   espn,
+#   ftn,
+#   team_qb_id,
+#   team_qb_name,
+#   opponent_qb_id,
+#   opponent_qb_name,
+#   referee,
+#   stadium_id
+# ))
 
 #rm(epaData, epaData2, epaOffData, epaAvgs, pbpDataMod, pbpPlayTypes, pbpPlayTypesView)
 # mutate(
@@ -364,11 +378,11 @@ srsData <- epaData3 |>
   ungroup() 
 
 ## Efficiency Stats ----
-nflStatsWeek <- calculate_stats(seasons = 2021:2024,
+nflStatsWeek <- calculate_stats(seasons = allSeasons,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
-nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
+#nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
 # nflStatsSeason <- calculate_stats(seasons = 2021:2024,
 #                                   summary_level = "season",
 #                                   stat_type = "team",
@@ -376,7 +390,7 @@ nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
 
 ## Score Stats ----
 scoresData <- pbpDataMod |>
-  filter(season %in% seasonsMod) |>
+  #filter(season %in% seasonsMod) |>
   select(game_id, season, week, posteam, home_team, away_team, td_team,
          fixed_drive, fixed_drive_result) |>
   distinct() |>
@@ -402,21 +416,27 @@ scoresData <- nflStatsWeek |>
   select(season, week, team, 
          passing_tds, rushing_tds, special_teams_tds, def_tds,
          passing_2pt_conversions, rushing_2pt_conversions,
-         pat_att, pat_made,
-         fg_att, fg_made, 
-         def_safeties
+         pat_att, pat_made, pat_pct,
+         fg_att, fg_made, fg_pct, 
+         def_safeties,
+         off_interceptions = passing_interceptions,
+         sack_fumbles_lost, rushing_fumbles_lost, receiving_fumbles_lost,
+         def_fumbles_forced,
+         def_interceptions
   ) |>
   rowwise() |>
   mutate(
     offTD = sum(passing_tds, rushing_tds),
     totalTD = offTD + special_teams_tds + def_tds,
     twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
-    twoPtAtt = totalTD - pat_att
+    twoPtAtt = totalTD - pat_att,
+    off_fumbles = sack_fumbles_lost + rushing_fumbles_lost + receiving_fumbles_lost,
+    def_fumbles = def_fumbles_forced
   ) |>
   ungroup()
 
 conversions <- pbpDataMod |>
-  filter(season %in% seasonsMod) |>
+  #filter(season %in% seasonsMod) |>
   filter(!is.na(posteam)) |>
   select(game_id, season, week, posteam, home_team, away_team,
          extra_point_attempt, extra_point_result, extra_point_prob, 
@@ -441,30 +461,11 @@ scoresData2 <- conversions |>
     scoresData,
     by = join_by(season, week, team)
   ) |>
-  # relocate(game_id, .before = 1) |>
-  # relocate(c(home_team, away_team), .after = team) |>
-  # rename_with(
-  #  ~janitor::make_clean_names(.x, case = "lower_camel"),
-  #  .cols = -c(game_id, season, week, posteam, home_team, away_team)
-  # ) |>
   mutate(
     teamScore = 6*offTD + 6*special_teams_tds + 6*def_tds +
       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
     #teamPA = 6*oppTouchdown + 2*safety
   ) |>
-  #select(-teamPF, -teamPA) |>
-  # group_by(game_id) |>
-  # mutate(
-  #   opponentScore = rev(teamScore)
-  #   #opponentPA = rev(teamPA)
-  # ) |>
-  # ungroup() |>
-  # rowwise() |>
-  # mutate(
-  #   teamScore = sum(teamPF, opponentPA),
-  #   opponentScore = sum(opponentPF, teamPA),
-  #   .keep = "unused"
-  # ) |>
   left_join(
     gameDataLongMod |> select(game_id, team, team_score, opponent_score),
     join_by(game_id, team)
@@ -493,14 +494,71 @@ scoresData2 <- conversions |>
     #opponentPA = rev(teamPA)
   ) |>
   ungroup() |>
+  group_by(season, team) |>
+  mutate(
+    fg_pct_cum = cumsum(fg_made)/cumsum(fg_att),
+    pat_pct_cum = cumsum(pat_made)/cumsum(pat_att),
+    off_interceptions = cummean(off_interceptions),
+    def_interceptions = cummean(def_interceptions),
+    off_fumbles = cummean(off_fumbles),
+    def_fumbles = cummean(def_fumbles)
+  ) |>
+  relocate(fg_pct_cum, .after = fg_pct) |>
+  relocate(pat_pct_cum, .after = pat_pct) |>
+  tk_augment_slidify(
+    .value   = c(pat_made, pat_att, fg_made, fg_att),
+    # Multiple rolling windows
+    .period  = 5,
+    .f       = sum,
+    .partial = TRUE,
+    .align = "right",
+    .names = c("pat_made_roll", "pat_att_roll", "fg_made_roll", "fg_att_roll")
+  ) |>
+  mutate(pat_pct_roll = pat_made_roll/pat_att_roll, .after = pat_pct_cum) |>
+  mutate(fg_pct_roll = fg_made_roll/fg_att_roll, .after = fg_pct_cum) |>
+  tk_augment_slidify(
+    .value   = c(pat_att, fg_att),
+    # Multiple rolling windows
+    .period  = 5,
+    .f       = mean,
+    .partial = TRUE,
+    .align = "right",
+    .names = c("pat_att_roll", "fg_att_roll")
+  ) |>
+  ungroup() |>
+  group_by(team) |>
+  fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll), .direction = "down") |>
+  mutate(
+    pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
+    pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
+    off_interceptions = lag(off_interceptions, default = 0),
+    def_interceptions = lag(def_interceptions, default = 0),
+    off_fumbles = lag(off_fumbles, default = 0),
+    def_fumbles = lag(def_fumbles, default = 0)
+  ) |>
+  mutate(
+    off_pat_att_roll = lag(pat_att_roll),
+    off_pat_pct_cum = lag(pat_pct_cum, default = 1),
+    off_pat_pct_roll = lag(pat_pct_roll, default = 1),
+    off_fg_att_roll = lag(fg_att_roll),
+    off_fg_pct_cum = lag(fg_pct_cum),
+    off_fg_pct_roll = lag(fg_pct_roll)
+  ) |> 
+  ungroup() |>
   select(
-    game_id, team,
+    game_id, team, 
     totalTD, offTD, special_teams_tds, def_tds,
-    fg_made, fg_att,
+    fg_made, fg_att, 
+    off_fg_att_roll, off_fg_pct_cum, off_fg_pct_roll,
     twoPtConv, twoPtAtt,
     safeties = def_safeties,
-    pat_made, pat_att
+    pat_made, pat_att, 
+    off_pat_att_roll, off_pat_pct_cum, off_pat_pct_roll,
+    off_interceptions, 
+    def_interceptions,
+    off_fumbles, def_fumbles
   )
+
 
 diffs <- which(scoresData2$teamScore != scoresData2$team_score)
 (scoresData2$teamScore - scoresData2$team_score)[diffs]
@@ -549,7 +607,7 @@ seriesData <- gameDataLongMod |>
         filter(week != 1)
     )
   )
-  
+
 # Model Data ----
 modData <- gameDataMod |>
   select(-c(
@@ -637,6 +695,19 @@ modData <- gameDataMod |>
     temp = ifelse(is.na(temp), 70, temp),
     wind = ifelse(is.na(wind), 0, wind)
   )
+
+save(epaData3, file = "~/Desktop/epaData3.RData")
+save(srsData, file = "~/Desktop/srsData.RData")
+save(scoresData2, file = "~/Desktop/scoresData2.RData")
+save(seriesData, file = "~/Desktop/seriesData.RData")
+save(modData, file = "~/Desktop/modData.RData")
+
+load(file = "~/Desktop/epaData3.RData")
+load(file = "~/Desktop/srsData.RData")
+load(file = "~/Desktop/scoresData2.RData")
+load(file = "~/Desktop/seriesData.RData")
+load(file = "~/Desktop/modData.RData")
+
 rm(list = ls()[ls() != "modData"])
 
 # xpData <- modData |>

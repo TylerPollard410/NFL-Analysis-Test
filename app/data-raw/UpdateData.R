@@ -113,7 +113,9 @@ dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, ove
 dbListTables(con)
 rm(seasonWeekStandings)
 
-dbDisconnect(con)
 
+## Disconnect -----
+dbDisconnect(con)
+rm(list = ls())
 
 
