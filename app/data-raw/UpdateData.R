@@ -89,6 +89,7 @@ rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 ## playerOffenseData ---------------------------
 source("./app/data-raw/playerOffenseData.R")
+#save(playerOffenseData, file = "./app/data/playerOffenseData.RData")
 
 dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
@@ -98,6 +99,7 @@ rm(playerOffenseData)
 ## seasonStandings ------------------------------
 ### Initial
 source("./app/data-raw/seasonStandings.R")
+#save(seasonStandings, file = "./app/data/seasonStandings.RData")
 
 dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 
@@ -107,6 +109,7 @@ rm(seasonStandings)
 ## seasonWeekStandings ------------------------------
 ### Initial
 source("./app/data-raw/seasonWeekStandings.R")
+# save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.RData")
 
 dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
 

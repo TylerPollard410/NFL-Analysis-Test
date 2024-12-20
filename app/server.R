@@ -23,11 +23,14 @@ source(file = "./data-raw/gameDataLong.R")
 
 ## Player Data ----
 ### Offense ----
-playerOffenseData <- tbl(con, "playerOffenseData")
+#playerOffenseData <- tbl(con, "playerOffenseData")
+load(file = "./data/playerOffenseData.RData")
 
 # Load Historical Data ----
-#load(file = "./data/seasonStandings.rda")
-seasonStandings <- tbl(con, "seasonStandings")
+load(file = "./data/seasonStandings.rda")
+#seasonStandings <- tbl(con, "seasonStandings")
+
+source(file = "./data-raw/modelData.R")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
@@ -213,6 +216,16 @@ shinyServer(function(input, output, session) {
   output$show_inputs2 <- renderTable({
     AllInputs2()
   })
+  
+  ## Plot ====================================
+  modPlotInputs <- modDataPlotInputServer("modDataPlotInput",
+                                          teamsData,
+                                          modData)
+  
+  modDataPlotServer("modPlot",
+                    teamsData,
+                    modData,
+                    modPlotInputs)
   
   # Prediction Tab  #########################################
   

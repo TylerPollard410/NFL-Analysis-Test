@@ -47,12 +47,12 @@ source("./app/data-raw/gameDataLong.R")
 source("./app/data-raw/pbpData.R")
 
 seasonsMod <- 2021:2024
-gameDataMod <- gameData #|> filter(season %in% seasonsMod)
-#gameDataMod <- gameDataMod |> filter(!(season == 2024 & week > 14))
+gameData <- gameData #|> filter(season %in% seasonsMod)
+#gameData <- gameData |> filter(!(season == 2024 & week > 14))
 gameDataLongMod <- gameDataLong #|> filter(season %in% seasonsMod)
 #gameDataLongMod <- gameDataLongMod |> filter(!(season == 2024 & week > 14))
-pbpDataMod <- pbpData
-#pbpDataMod <- pbpDataMod |> filter(!(season == 2024 & week > 14))
+pbpData <- pbpData
+#pbpData <- pbpData |> filter(!(season == 2024 & week > 14))
 load("./app/data/seasonWeekStandings.rda")
 #seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 
@@ -68,30 +68,30 @@ rm(gameData, gameDataLong)
 
 
 # Aggregate pbp ----
-pbpPlayTypes <- pbpDataMod |>
-  select(
-    play,
-    play_type, 
-    play_type_nfl,
-    pass,
-    pass_attempt,
-    rush,
-    rush_attempt,
-    special_teams_play,
-    special,
-    penalty,
-    qb_dropback,
-    qb_kneel,
-    qb_spike,
-    qb_scramble,
-    penalty_type
-  ) |>
-  distinct()
+# pbpPlayTypes <- pbpData |>
+#   select(
+#     play,
+#     play_type, 
+#     play_type_nfl,
+#     pass,
+#     pass_attempt,
+#     rush,
+#     rush_attempt,
+#     special_teams_play,
+#     special,
+#     penalty,
+#     qb_dropback,
+#     qb_kneel,
+#     qb_spike,
+#     qb_scramble,
+#     penalty_type
+#   ) |>
+#   distinct()
 
 # pbpPlayTypesView <- pbpPlayTypes |>
 #   filter(play == 1, pass == 1)
 #   filter(play == 1, pass == 0, rush == 0, penalty == 1)
-# pbpDataMod |>
+# pbpData |>
 #   group_by(game_id, posteam) |>
 #   mutate(
 #     home_epa_diff = total_home_epa - lag(total_home_epa, default = 0),
@@ -110,7 +110,7 @@ pbpPlayTypes <- pbpDataMod |>
 
 ## EPA ----
 ### Penalty Structure 1 ----
-# epaOffData <- pbpDataMod |>
+# epaOffData <- pbpData |>
 #   filter(season %in% seasonsMod) |>
 #   #filter(play == 1) |> 
 #   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
@@ -161,7 +161,7 @@ pbpPlayTypes <- pbpDataMod |>
 #   ungroup()
 
 ### Penalty Sturcture 2 ----
-epaOffData <- pbpDataMod |>
+epaOffData <- pbpData |>
   #filter(season %in% seasonsMod) |>
   #filter(play == 1) |> 
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
@@ -255,7 +255,7 @@ epaAvgs <- epaData |>
 
 #epaAvgs |> filter(season == 2024) |> arrange(desc(off_epa_mean)) |> view()
 
-epaData2 <- gameDataLongMod |>
+epaData2 <- gameDataLong |>
   select(
     game_id, season, week, team
   ) |>
@@ -287,7 +287,7 @@ epaData2 <- gameDataLongMod |>
 #     )
 #   )
 
-epaData3A <- gameDataLongMod |>
+epaData3A <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(
     bind_rows(
@@ -319,7 +319,7 @@ epaData3A <- gameDataLongMod |>
     game_id, season, week, team, opponent, everything()
   )
 
-epaData3 <- gameDataLongMod |>
+epaData3 <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(epaData3A)
 # arrange(row) #|>
@@ -340,7 +340,7 @@ epaData3 <- gameDataLongMod |>
 #   stadium_id
 # ))
 
-#rm(epaData, epaData2, epaOffData, epaAvgs, pbpDataMod, pbpPlayTypes, pbpPlayTypesView)
+#rm(epaData, epaData2, epaOffData, epaAvgs, pbpData, pbpPlayTypes, pbpPlayTypesView)
 # mutate(
 #   off_epa_mean_feat = ifelse(is.na(off_epa_mean), off_epa_mean, off_epa_mean),
 #   off_pass_epa_mean_feat = ifelse(is.na(off_pass_epa_mean), off_pass_epa_mean, off_pass_epa_mean),
@@ -389,28 +389,28 @@ nflStatsWeek <- calculate_stats(seasons = allSeasons,
 #                                   season_type = "REG+POST")
 
 ## Score Stats ----
-scoresData <- pbpDataMod |>
-  #filter(season %in% seasonsMod) |>
-  select(game_id, season, week, posteam, home_team, away_team, td_team,
-         fixed_drive, fixed_drive_result) |>
-  distinct() |>
-  filter(!(fixed_drive_result == "Opp touchdown" & is.na(td_team))) |>
-  select(-td_team) |>
-  distinct() |>
-  filter(!is.na(posteam)) |>
-  group_by(game_id, season, week, posteam, home_team, away_team) |>
-  count(fixed_drive_result) |>
-  pivot_wider(
-    names_from = fixed_drive_result, 
-    values_from = n, 
-    values_fill = 0
-  ) |>
-  ungroup() |>
-  left_join(
-    nflStatsWeek |>
-      select(season, week, team, special_teams_tds, def_tds),
-    by = join_by(season, week, posteam == team)
-  )
+# scoresData <- pbpData |>
+#   #filter(season %in% seasonsMod) |>
+#   select(game_id, season, week, posteam, home_team, away_team, td_team,
+#          fixed_drive, fixed_drive_result) |>
+#   distinct() |>
+#   filter(!(fixed_drive_result == "Opp touchdown" & is.na(td_team))) |>
+#   select(-td_team) |>
+#   distinct() |>
+#   filter(!is.na(posteam)) |>
+#   group_by(game_id, season, week, posteam, home_team, away_team) |>
+#   count(fixed_drive_result) |>
+#   pivot_wider(
+#     names_from = fixed_drive_result, 
+#     values_from = n, 
+#     values_fill = 0
+#   ) |>
+#   ungroup() |>
+#   left_join(
+#     nflStatsWeek |>
+#       select(season, week, team, special_teams_tds, def_tds),
+#     by = join_by(season, week, posteam == team)
+#   )
 
 scoresData <- nflStatsWeek |>
   select(season, week, team, 
@@ -435,7 +435,7 @@ scoresData <- nflStatsWeek |>
   ) |>
   ungroup()
 
-conversions <- pbpDataMod |>
+conversions <- pbpData |>
   #filter(season %in% seasonsMod) |>
   filter(!is.na(posteam)) |>
   select(game_id, season, week, posteam, home_team, away_team,
@@ -467,7 +467,7 @@ scoresData2 <- conversions |>
     #teamPA = 6*oppTouchdown + 2*safety
   ) |>
   left_join(
-    gameDataLongMod |> select(game_id, team, team_score, opponent_score),
+    gameDataLong |> select(game_id, team, team_score, opponent_score),
     join_by(game_id, team)
   ) |>
   mutate(
@@ -567,10 +567,10 @@ scoresData <- scoresData2 |>
   )
 
 ## Series ----
-seriesWeekData <- calculate_series_conversion_rates(pbpDataMod, weekly = TRUE)
-#seriesSeasonData <- calculate_series_conversion_rates(pbpDataMod, weekly = FALSE)
+seriesWeekData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
+#seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
 
-seriesWeekData2 <- gameDataLongMod |>
+seriesWeekData2 <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(seriesWeekData) |>
   group_by(season, team) |>
@@ -600,7 +600,7 @@ seriesAvgs <- seriesWeekData |>
   ungroup() |>
   mutate(week = 1)
 
-seriesData <- gameDataLongMod |>
+seriesData <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(
     bind_rows(
@@ -611,8 +611,38 @@ seriesData <- gameDataLongMod |>
     )
   )
 
+## Weather -----
+# library(openmateo)
+# 
+# t <- weather_history(
+#   location = "Green Bay",
+#   start = "2006-12-03",
+#   end = "2006-12-03",
+#   response_units = list(
+#     temperature_units = "farenheit",
+#     windspeed_unit = "mph",
+#     precipitation_unit = "inch"
+#   ),
+#   hourly = c("temperature_2m",
+#              "apparent_temperature",
+#              "wind_speed_10m", 
+#              "precipitation", 
+#              "rain", 
+#              "snowfall",
+#              "weather_code")
+# )
+weatherData <- pbpData |>
+  select(game_id, home_team, away_team, weather) |>
+  distinct() |>
+  left_join(
+    gameData |> select(game_id, gameday, gametime, home_team, away_team, temp, wind, roof)
+  ) |>
+  mutate(
+    rain = str_split_i(weather, "Temp", i = 1)
+  )
+
 # Model Data ----
-modData <- gameDataMod |>
+modData <- gameData |>
   select(-c(
     old_game_id,
     gsis,
@@ -695,9 +725,16 @@ modData <- gameDataMod |>
     DSRS_net = away_DSRS - home_DSRS
   ) |>
   mutate(
-    temp = ifelse(is.na(temp), 70, temp),
+    temp = ifelse(is.na(temp), 68, temp),
     wind = ifelse(is.na(wind), 0, wind)
   )
+
+modDataLong <- modData |>
+  clean_homeaway(invert = c("result", "spread_line"))
+
+save(modData, file = "./app/data/modData.RData")
+save(seriesData, file = "./app/data/seriesData.RData")
+save(nflStatsWeek, file = "./app/data/nflStatsWeek.RData")
 
 save(epaData3, file = "~/Desktop/epaData3.RData")
 save(srsData, file = "~/Desktop/srsData.RData")

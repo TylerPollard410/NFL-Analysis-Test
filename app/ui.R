@@ -35,6 +35,8 @@ library(smplot2)
 # library(cowplot)
 # library(GGally)
 library(patchwork)
+library(glue)
+library(scales)
 
 ## Modeling ----
 library(pracma)
@@ -174,7 +176,8 @@ shinyUI(
                     ), 
                     h4("Betting", style = "color: white"),
                     menuItem(text = "Games", tabName = "bettingGamesTab", icon = icon("user")),
-                    menuItem(text = "Player Props", tabName = "bettingPlayerPropsTab", icon = icon("user"))
+                    menuItem(text = "Player Props", tabName = "bettingPlayerPropsTab", icon = icon("user")),
+                    menuItem(text = "Plot", tabName = "bettingPlotTab", icon = icon("chart-line"))
                   ) # close sidebar menu
                 ), # close dashboard sidebar
                 # Dashboard Controlbar ==================
@@ -391,6 +394,20 @@ shinyUI(
                         tableOutput('show_inputs2'),
                         tableOutput('show_outputs1'),
                         tableOutput('show_outputs2')
+                      )
+                    ),
+                    
+                    ## Plot =================================================
+                    tabItem(
+                      tabName = "bettingPlotTab",
+                      h4("Plot Data"),
+                      fluidRow(
+                        column(width = 3,
+                               modDataPlotInputUI("modDataPlotInput", 
+                                                  teamsDataPickerInput)
+                        ),
+                        column(width = 9,
+                               modDataPlotOutput("modPlot"))
                       )
                     )
                     

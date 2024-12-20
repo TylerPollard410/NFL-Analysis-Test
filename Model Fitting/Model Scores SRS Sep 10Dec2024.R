@@ -2425,12 +2425,16 @@ system.time(
     # awayfinalIterPredstpComb2[[i]] <- awayfinalIterPredstp
     
     iterData <- modelData |>
-      filter(week %in% 1:i)
+      filter(week %in% i:i)
     
-    iterFit <- update(iterFitBase,
+    new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
+    
+    iterFit <- update(iterFit,
                       newdata = iterData,
-                      prior = old_priors
+                      prior = new_priors,
+                      cores = parallel::detectCores()
     )
+  
     
     # iterFitB <- update(iterFitBaseB,
     #                   newdata = iterData,
@@ -2626,7 +2630,7 @@ awayIterPPDbarstp
 
 
 ### Home Score
-homefinalIterFit <- homefinalIterFitComb2[[15]]
+homefinalIterFit <- do.call(cbind, homefinalIterFitComb2)
 homefinalIterFitMean <- colMeans(homefinalIterFit)
 homefinalIterFitMed <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.5)})
 homefinalIterFitLCB <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.025)})
@@ -2641,7 +2645,7 @@ homefinalIterPredsUCB <- apply(homefinalIterPreds, 2, function(x){quantile(x, 0.
 
 #### Away Score
 ## Fitted
-awayfinalIterFit <- awayfinalIterFitComb2[[15]]
+awayfinalIterFit <- do.call(cbind, awayfinalIterFitComb2)
 awayfinalIterFitMean <- colMeans(awayfinalIterFit)
 awayfinalIterFitMed <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.5)})
 awayfinalIterFitLCB <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.025)})
@@ -2658,10 +2662,10 @@ awayfinalIterPredsUCB <- apply(awayfinalIterPreds, 2, function(x){quantile(x, 0.
 predIterMetricsHA <- tibble(
   Fit = rep(paste0("Fit", fit), 2),
   Score = c("home", "away"),
-  MAE_fit = c(mean(abs(homefinalIterFitMean - modelData$home_score)),
-              mean(abs(awayfinalIterFitMean - modelData$away_score))),
-  COV_fit = c(mean(homefinalIterFitLCB < modelData$home_score &  modelData$home_score < homefinalIterFitUCB),
-              mean(awayfinalIterFitLCB < modelData$away_score &  modelData$away_score < awayfinalIterFitUCB)),
+  # MAE_fit = c(mean(abs(homefinalIterFitMean - modelData$home_score)),
+  #             mean(abs(awayfinalIterFitMean - modelData$away_score))),
+  # COV_fit = c(mean(homefinalIterFitLCB < modelData$home_score &  modelData$home_score < homefinalIterFitUCB),
+  #             mean(awayfinalIterFitLCB < modelData$away_score &  modelData$away_score < awayfinalIterFitUCB)),
   MAE_pred = c(mean(abs(homefinalIterPredsMean - modelData$home_score), na.rm = TRUE),
                mean(abs(awayfinalIterPredsMean - modelData$away_score), na.rm = TRUE)),
   MAD_pred = c(mean(abs(homefinalIterPredsMed - modelData$home_score), na.rm = TRUE),
@@ -2707,10 +2711,10 @@ spreadTest <- modelData1$result
 predIterMetricsSpread <- tibble(
   Fit = paste0("Fit", fit),
   Response = rep("Spread", 2),
-  MAE_vegas = mean(abs(modelData1$result - modelData1$spread_line)),
-  MAE_fit = mean(abs(FittedIterMeanSpread - spreadTrain)),
-  MAD_fit = mean(abs(FittedIterMedSpread - spreadTrain)),
-  COV_fit = mean(FittedIterLCBSpread < spreadTrain & spreadTrain < FittedIterUCBSpread),
+  # MAE_vegas = mean(abs(modelData1$result - modelData1$spread_line)),
+  # MAE_fit = mean(abs(FittedIterMeanSpread - spreadTrain)),
+  # MAD_fit = mean(abs(FittedIterMedSpread - spreadTrain)),
+  # COV_fit = mean(FittedIterLCBSpread < spreadTrain & spreadTrain < FittedIterUCBSpread),
   MAE_pred = mean(abs(PredsIterMeanSpread - spreadTest), na.rm = TRUE),
   MAD_pred = mean(abs(PredsIterMedSpread - spreadTest), na.rm = TRUE),
   COV_pred = mean(PredsIterLCBSpread < spreadTest & spreadTest < PredsIterUCBSpread)
