@@ -28,8 +28,12 @@ library(tidyverse)
 ## Historical season games ----
 ### By Season and Week ----
 #### No prior ----
-seasonWeekStandings <- data.frame()
-seasonWeekStandingsConvergence <- data.frame()
+load(file = "./app/data/seasonWeekStandings.rda")
+seasonWeekStandings <- seasonWeekStandings |>
+  filter(season != 2024)
+#seasonWeekStandingsConvergence <- data.frame()
+allSeasons <- 2024
+gameData <- gameData |> filter(season == 2024)
 
 tic()
 for(i in allSeasons){
@@ -144,10 +148,10 @@ for(i in allSeasons){
     
     seasonWeekStandings <- rbind(seasonWeekStandings, standingTemp)
     
-    seasonWeekStandingsConvergence <- rbind(
-      seasonWeekStandingsConvergence,
-      data.frame(season = i, week = j, Converge = k)
-    )
+    # seasonWeekStandingsConvergence <- rbind(
+    #   seasonWeekStandingsConvergence,
+    #   data.frame(season = i, week = j, Converge = k)
+    # )
     
     cat("Season", i, "Week", j, "\n")
   }

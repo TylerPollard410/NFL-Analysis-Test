@@ -132,150 +132,101 @@ burn <- 1000
 chains <- 2
 sims <- (iters-burn)*chains
 
-formulaFitHome <- 
-  bf(home_score ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
-       # home_SRS +
-       # away_SRS +
-       # spread_line +
-       # total_line +
-       home_OSRS +
-       away_DSRS +
-       home_OSRS:away_DSRS +
-       # home_off_epa_cum +
-       #home_off_pass_epa_cum +
-       home_off_rush_epa_cum +
-       # home_off_special_epa_cum +
-       # home_off_penalty_epa_cum +
-       # home_off_epa_roll +
-       home_off_pass_epa_roll +
-       #home_off_rush_epa_roll +
-       # home_off_special_epa_roll +
-       # home_off_penalty_epa_roll +
-       # away_off_epa_cum +
-       # away_off_pass_epa_cum +
-       # away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       # away_off_pass_epa_roll +
-       # away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       # home_def_pass_epa_cum +
-       # home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       # home_def_pass_epa_roll +
-       # home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       # away_def_epa_cum +
-       #away_def_pass_epa_cum +
-       away_def_rush_epa_cum +
-       # away_def_special_epa_cum +
-       # away_def_penalty_epa_cum +
-       # away_def_epa_roll +
-       #away_def_pass_epa_roll +
-       #away_def_rush_epa_roll +
-       # away_def_special_epa_roll +
-       # away_def_penalty_epa_roll +
-       #home_off_pass_epa_cum:away_def_pass_epa_cum +
-       home_off_rush_epa_cum:away_def_rush_epa_cum +
-       #home_off_pass_epa_roll:away_def_pass_epa_roll +
-       #home_off_rush_epa_roll:away_def_rush_epa_roll +
-       home_rest +
-       away_rest +
-       home_rest:away_rest +
-       # location +
-       div_game +
-       roof +
-       #temp +
-       #wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
-  ) + negbinomial()
-formulaFitAway <- 
-  bf(away_score ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
-       # home_SRS +
-       # away_SRS +
-       # spread_line +
-       # total_line +
-       home_DSRS +
-       away_OSRS +
-       home_DSRS:away_OSRS +
-       # home_off_epa_cum +
-       # home_off_pass_epa_cum +
-       # home_off_rush_epa_cum +
-       # home_off_special_epa_cum +
-       # home_off_penalty_epa_cum +
-       # home_off_epa_roll +
-       # home_off_pass_epa_roll +
-       # home_off_rush_epa_roll +
-       # home_off_special_epa_roll +
-       # home_off_penalty_epa_roll +
-       # away_off_epa_cum +
-       #away_off_pass_epa_cum +
-       #away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       #away_off_pass_epa_roll +
-       #away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       #home_def_pass_epa_cum +
-       home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       #home_def_pass_epa_roll +
-       home_def_rush_epa_roll +
-       #away_off_pass_epa_cum:home_def_pass_epa_cum +
-       #away_off_rush_epa_cum:home_def_rush_epa_cum +
-       #away_off_pass_epa_roll:home_def_pass_epa_roll +
-       #away_off_rush_epa_roll:home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       # away_def_epa_cum +
-       # away_def_pass_epa_cum +
-       # away_def_rush_epa_cum +
-       # away_def_special_epa_cum +
-       # away_def_penalty_epa_cum +
-       # away_def_epa_roll +
-       # away_def_pass_epa_roll +
-       # away_def_rush_epa_roll +
-       # away_def_special_epa_roll +
-       # away_def_penalty_epa_roll +
-       home_rest +
-       away_rest +
-       home_rest:away_rest +
-       # location +
-       div_game +
-       roof +
-       #temp +
-       #wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
-  ) + negbinomial()
+inv_logit <- function(x) 1 / (1 + exp(-x))
 
-scoresPrior <- set_prior(horseshoe(main = TRUE), class = "b")
+formulaFitHome <- 
+  bf(home_score ~ inv_logit(7*homeTD + 3*homeFG + HFA),
+     HFA ~ 1 + (1|home_team) + (1|away_team),
+     homeTD ~ 0 + #Intercept + 
+       home_SRS + 
+       away_SRS +
+       #home_off_pass_epa_cum +
+       #away_def_pass_epa_cum +
+       home_off_rush_epa_cum +
+       away_def_rush_epa_cum +
+       home_off_epa_roll + 
+       #away_def_epa_cum +
+       away_def_penalty_epa_cum +
+       away_def_special_epa_roll + 
+       #home_off_scr + 
+       #away_def_scr + 
+       home_off_td +
+       away_def_td +
+       #away_def_to + 
+       home_off_interceptions +
+       away_def_interceptions +
+       home_off_fumbles +
+       away_def_fumbles +
+       home_off_interceptions:away_def_interceptions +
+       #home_off_fumbles:away_def_fumbles +
+       wind + 
+       #home_off_pass_epa_cum:away_def_pass_epa_cum + 
+       home_off_rush_epa_cum:away_def_rush_epa_cum + 
+       #home_off_scr:away_def_scr + 
+       home_off_td:away_def_td,
+     homeFG ~ 0 + #Intercept + # bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept +
+       home_off_special_epa_cum + 
+       home_off_kick_epa_cum +
+       away_def_kick_epa_cum +
+       home_off_rush_epa_roll +
+       away_def_rush_epa_roll +
+       home_off_penalty_epa_roll +
+       away_def_penalty_epa_roll +
+       home_off_kick_epa_roll + 
+       away_def_kick_epa_roll +
+       home_off_rush_epa_roll:away_def_rush_epa_roll + 
+       home_off_penalty_epa_roll:away_def_penalty_epa_roll + 
+       home_off_kick_epa_cum:away_def_kick_epa_cum +
+       home_off_kick_epa_roll:away_def_kick_epa_roll +
+       home_off_to +
+       away_def_to +
+       home_off_to:away_def_to,
+       #home_off_fg_att_roll +
+       #home_off_fg_pct_cum +
+       #home_off_fg_pct_roll +
+       #location,
+     nl = TRUE
+  ) + brmsfamily(family = "discrete_weibull", link = "identity")
+formulaFitAway <- 
+  bf(away_score ~ inv_logit(7*awayTD + 3*awayFG + HFA),
+     HFA ~ 1 + (1|home_team) + (1|away_team),
+     awayTD ~ 0 + #Intercept + #bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept +
+       away_off_pass_epa_cum +
+       away_off_rush_epa_cum +
+       away_off_penalty_epa_cum +
+       home_def_penalty_epa_cum + 
+       away_off_penalty_epa_roll +
+       home_def_penalty_epa_roll + 
+       away_off_td + 
+       away_off_to + 
+       home_rest + 
+       away_off_penalty_epa_cum:home_def_penalty_epa_cum +
+       away_off_penalty_epa_roll:home_def_penalty_epa_roll +
+       #away_off_interceptions +
+       home_def_interceptions +
+       #away_off_fumbles +
+       #home_def_fumbles +
+       #away_off_interceptions:home_def_interceptions +
+       #away_off_fumbles:home_def_fumbles +
+       roof,
+     awayFG ~ 0 + #Intercept + # bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
+       away_SRS + 
+       away_off_special_epa_cum + 
+       away_off_pass_epa_roll + 
+       #away_off_special_epa_roll + 
+       away_off_penalty_epa_roll +
+       home_def_special_epa_cum + 
+       home_def_special_epa_roll +
+       #home_def_td + 
+       away_off_to + 
+       #away_off_fg_att_roll +
+       away_off_fg_pct_cum +
+       away_off_fg_pct_roll +
+       div_game,
+     nl = TRUE
+  ) + brmsfamily(family = "discrete_weibull", link = "identity")
+
+scoresPrior <- set_prior(horseshoe(), class = "b")
 
 Fit <- brm(
   formulaFitHome + formulaFitAway + set_rescor(FALSE),
@@ -285,13 +236,16 @@ Fit <- brm(
   warmup = burn,
   iter = iters,
   chains = chains,
+  cores = parallel::detectCores(),
   prior = scoresPrior,
+  drop_unused_levels = FALSE,
   #normalize = TRUE,
+  #init = 0,
   control = list(adapt_delta = 0.95),
   backend = "cmdstan"
 )
 
-fit <- 3
+fit <- 12
 assign(paste0("fit", fit), Fit)
 
 #fitFormulas <- list()
@@ -306,7 +260,7 @@ prior_summary(Fit)
 # launch_shinystan(Fit)
 print(Fit, digits = 4)
 fixedEff <- fixef(Fit)
-fixedEff2 <- data.frame(fixedEff) |>
+fixedEff <- data.frame(fixedEff) |>
   mutate(
     p_val = dnorm(Estimate/Est.Error)
   ) |>
@@ -318,7 +272,22 @@ fixedEff2 <- data.frame(fixedEff) |>
                  ifelse(p_val < 0.05, "**",
                         ifelse(p_val < 0.1, "*", "")))
   )
-print(fixedEff2, digits = 4)
+print(fixedEff, digits = 4)
+fixedSigEff <- fixedEff |> filter(p_val < 0.2)
+fixedSigEff <- fixedSigEff |> 
+  rownames_to_column() |>
+  mutate(
+    response = str_split_i(rowname, "_", i = 1),
+    param = str_remove(rowname, paste0(response,"_"))
+  ) |> 
+  relocate(c(response, param), .after = "rowname") |>
+  select(-rowname)
+fixedSigEff
+
+assign(paste0("fixedEff", fit), fixedEff)
+assign(paste0("fixedSigEff", fit), fixedSigEff)
+
+
 randEff <- ranef(Fit, summary = TRUE)
 print(randEff, digits = 4)
 VarCorr(Fit)
@@ -328,10 +297,16 @@ plot(Fit, ask = FALSE)
 postSum <- posterior_summary(Fit)
 postSum[grepl("^sd_", rownames(postSum)), ]
 
-FitR2 <- bayes_R2(Fit) |>
+FitR2temp <- bayes_R2(Fit) |>
   bind_cols(Fit = paste0("Fit", fit)) |>
   select(Fit, everything())
-FitR2
+FitR2temp
+
+FitR2 <- bind_rows(
+  FitR2temp,
+  FitR2
+)
+FitR2 #<- FitR2temp
 
 
 ## PPC Plot ----
@@ -474,7 +449,9 @@ spreadPPD
 
 ##### Prob Errors ----
 ##### Fit ----
-spreadLineTrain <- histModelData1$spread_line
+spreadLineTrain <- modData |>
+  filter(season %in% 2022:2023) |>
+  pull(spread_line)
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 FittedProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTrain))
@@ -489,7 +466,7 @@ FittedLogicalSpread <- spreadTrain > spreadLineTrain
 FittedProbSpread <- mean(FittedBetLogicalSpread == FittedLogicalSpread, na.rm = TRUE)
 FittedProbSpread
 
-spreadDataTrain <- modData |> filter(season <= 2023) |>
+spreadDataTrain <- modData |> filter(season %in% 2022:2023) |>
   select(season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line, spreadCover,
@@ -518,7 +495,10 @@ spreadSuccessTrain <- spreadDataTrain |>
 spreadSuccessTrain
 
 ##### Pred ----
-spreadLineTest <- modelData1$spread_line
+spreadLineTest <- modData |>
+  filter(season == 2024) |>
+  filter(!is.na(result)) |>
+  pull(spread_line)
 #spreadTest <- as.numeric(spreadTestScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 PredsProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTest))
@@ -624,7 +604,7 @@ FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
 
-totalDataTrain <- modData |> filter(season <= 2023) |>
+totalDataTrain <- modData |> filter(season %in% 2022:2023) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,

@@ -487,7 +487,12 @@ scoresData2 <- conversions |>
       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
     #teamPA = 6*oppTouchdown + 2*safety
   ) |>
-  ungroup() |>
+  ungroup() 
+
+diffs <- which(scoresData2$teamScore != scoresData2$team_score)
+(scoresData2$teamScore - scoresData2$team_score)[diffs]
+
+scoresData <- scoresData2 |>
   group_by(game_id) |>
   mutate(
     opponentScore = rev(teamScore)
@@ -531,6 +536,8 @@ scoresData2 <- conversions |>
   mutate(
     pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
     pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
+    fg_pct_cum = ifelse(is.nan(fg_pct_cum), 1, fg_pct_cum), 
+    fg_pct_roll = ifelse(is.nan(fg_pct_roll), 1, fg_pct_roll), 
     off_interceptions = lag(off_interceptions, default = 0),
     def_interceptions = lag(def_interceptions, default = 0),
     off_fumbles = lag(off_fumbles, default = 0),
@@ -558,10 +565,6 @@ scoresData2 <- conversions |>
     def_interceptions,
     off_fumbles, def_fumbles
   )
-
-
-diffs <- which(scoresData2$teamScore != scoresData2$team_score)
-(scoresData2$teamScore - scoresData2$team_score)[diffs]
 
 ## Series ----
 seriesWeekData <- calculate_series_conversion_rates(pbpDataMod, weekly = TRUE)
@@ -640,12 +643,12 @@ modData <- gameDataMod |>
     by = join_by(game_id, away_team == team)
   ) |>
   left_join(
-    scoresData2 |>
+    scoresData |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    scoresData2 |>
+    scoresData |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
@@ -698,7 +701,7 @@ modData <- gameDataMod |>
 
 save(epaData3, file = "~/Desktop/epaData3.RData")
 save(srsData, file = "~/Desktop/srsData.RData")
-save(scoresData2, file = "~/Desktop/scoresData2.RData")
+save(scoresData, file = "~/Desktop/scoresData.RData")
 save(seriesData, file = "~/Desktop/seriesData.RData")
 save(modData, file = "~/Desktop/modData.RData")
 
