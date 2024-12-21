@@ -55,7 +55,16 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
       label = "Fit line?",
       value = FALSE,
       status = "info"
-    )
+    ),
+    conditionalPanel(condition = "input.fitLine",
+                     ns = NS(id),
+                     radioGroupButtons(
+                       inputId = NS(id, "corType"),
+                       label = "Correlation Type",
+                       choices = c("pearson", "kendall", "spearman"),
+                       status = "info"
+                     ))
+    #uiOutput(outputId = NS(id, "corTypeUI"))
   )
 }
 
@@ -75,7 +84,10 @@ modDataPlotInputServer <- function(id,
         selected = NULL,
         multiple = TRUE,
         options = pickerOptions(
-          maxOptions = 1
+          maxOptions = 1,
+          dropupAuto = FALSE,
+          header = TRUE,
+          liveSearch = TRUE
         )
       )
     })
@@ -89,7 +101,10 @@ modDataPlotInputServer <- function(id,
         selected = NULL,
         multiple = TRUE,
         options = pickerOptions(
-          maxOptions = 1
+          maxOptions = 1,
+          dropupAuto = FALSE,
+          header = TRUE,
+          liveSearch = TRUE
         )
       )
     })
@@ -103,7 +118,10 @@ modDataPlotInputServer <- function(id,
         selected = NULL,
         multiple = TRUE,
         options = pickerOptions(
-          maxOptions = 1
+          maxOptions = 1,
+          dropupAuto = FALSE,
+          header = TRUE,
+          liveSearch = TRUE
         )
       )
     })
@@ -117,10 +135,24 @@ modDataPlotInputServer <- function(id,
         selected = NULL,
         multiple = TRUE,
         options = pickerOptions(
-          maxOptions = 1
+          maxOptions = 1,
+          dropupAuto = FALSE,
+          header = TRUE,
+          liveSearch = TRUE
         )
       )
     })
+    
+    # output$corTypeUI <- renderUI({
+    #   conditionalPanel(condition = "input.fitLine",
+    #                    ns = NS(id),
+    #                    radioGroupButtons(
+    #                      inputId = NS(id, "corType"),
+    #                      label = "Correlation Type",
+    #                      choices = c("pearson", "kendall", "spearman"),
+    #                      status = "info"
+    #                    ))
+    # })
     
     list(
       seasons = reactive(input$seasons),
@@ -131,7 +163,8 @@ modDataPlotInputServer <- function(id,
       yVar = reactive(input$yVar),
       colorVar = reactive(input$colorVar),
       facetVar = reactive(input$facetVar),
-      fitLine = reactive(input$fitLine)
+      fitLine = reactive(input$fitLine),
+      corType = reactive(input$corType)
     )
   })
 }

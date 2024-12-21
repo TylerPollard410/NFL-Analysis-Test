@@ -5,7 +5,22 @@
 modDataPlotOutput <- function(id){
   tagList(
     verbatimTextOutput(outputId = NS(id, "modDataPrint")),
-    plotOutput(outputId = NS(id, "modDataPlot"))
+    fluidRow(
+      sliderInput(
+        inputId = NS(id, "plotWidth"),
+        label = "Plot Width",
+        min = 600, max = 1200, value = 1000,
+        sep = "", step = 10
+      ),
+      column(width = 1),
+      sliderInput(
+        inputId = NS(id, "plotHeight"),
+        label = "Plot Height",
+        min = 400, max = 1500, value = 600,
+        sep = "", step = 10
+      )
+    ),
+    uiOutput(outputId = NS(id, "modDataPlotUI"))
   )
 }
 
@@ -25,12 +40,17 @@ modDataPlotServer <- function(id,
     colorVar <- reactive(modPlotInputs$colorVar())
     facetVar <- reactive(modPlotInputs$facetVar())
     fitLine <- reactive(modPlotInputs$fitLine())
+    corType <- reactive(modPlotInputs$corType())
     
     modPlotData <- reactive({
       modData |>
-        filter(season %in% seasons(),
+        filter(season %in% seasons()[1]:seasons()[2],
                season_type %in% gameType(),
                home_team %in% teams() | away_team %in% teams()) |>
+        mutate(
+          season = factor(season),
+          week = factor(week)
+        ) |>
         select(
           season,
           season_type,
@@ -56,7 +76,8 @@ modDataPlotServer <- function(id,
         plot <- ggplot(data = modPlotData(), 
                        aes(x = !!sym(xVar()), 
                            y = !!sym(yVar()),
-                           color = !!sym(colorVar()))) +
+                           color = !!sym(colorVar()),
+                           group = !!sym(colorVar()))) +
           geom_point()
       }else{
         plot <- ggplot(data = modPlotData(), 
@@ -71,7 +92,26 @@ modDataPlotServer <- function(id,
         plot2 <- plot
       }
       
-      plot2 + theme_bw()
+      if(fitLine()){
+        plot3 <- plot2 + sm_statCorr(
+          corr_method = corType(), 
+          # label_x = ifelse(x == "Date", 
+          #                  max(plotData |> pull(x)) - months(3),
+          #                  0.9*max(plotData |> pull(x))),
+          legends = TRUE
+        )
+      }else{
+        plot3 <- plot2
+      }
+      
+      plot3 + theme_bw()
+    })
+    
+    output$modDataPlotUI <- renderUI({
+      req(modPlotData())
+      plotOutput(outputId = NS(id, "modDataPlot"),
+                 width = input$plotWidth,
+                 height = input$plotHeight)
     })
   })
 }

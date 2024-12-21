@@ -132,6 +132,7 @@ burn <- 1000
 chains <- 2
 sims <- (iters-burn)*chains
 
+## Formulas ----
 formulaFitHome <- 
   bf(home_score ~ 0 + Intercept +
        # home_PFG + 

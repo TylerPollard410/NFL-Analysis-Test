@@ -744,7 +744,7 @@ save(modData, file = "~/Desktop/modData.RData")
 
 load(file = "~/Desktop/epaData3.RData")
 load(file = "~/Desktop/srsData.RData")
-load(file = "~/Desktop/scoresData2.RData")
+load(file = "~/Desktop/scoresData.RData")
 load(file = "~/Desktop/seriesData.RData")
 load(file = "~/Desktop/modData.RData")
 

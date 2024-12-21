@@ -29,6 +29,7 @@ library(DescTools)
 library(car)
 library(bayesplot)
 library(BayesFactor)
+library(projpred)
 library(cmdstanr)
 library(rstanarm)
 library(tidybayes)
@@ -91,26 +92,37 @@ modData2 <- modData2[complete.cases(modData2), ]
 #filter(!(season == 2024 & week > 14))
 histModData <- modData2 |> filter(season <= 2023)
 histModelData1 <- modData2 |> 
-  filter(season %in% 2023:2023)
+  filter(season %in% 2022:2023)
 modelData1 <- modData2 |> 
   filter(season == 2024) |> 
   filter(complete.cases(result)) 
 
-preProcValues <- preProcess(histModelData1 |> 
-                              select(-home_score, -away_score,
-                                     -result, -total,
-                                     -season, -week,
-                                     -contains("totalTD"), 
-                                     -contains("fg_made"), 
-                                     -contains("fg_att"),
-                                     -contains("twoPtConv"), 
-                                     -contains("twoPtAtt"),
-                                     -contains("safeties"),
-                                     -contains("pat_made")
-                                     #-contains("pat_att")
-                                     #-spread_line, -total_line
-                              ),
-                            method = c("center", "scale"))
+predictorData <- histModelData1 |> 
+  select(-home_score, -away_score,
+         -result, -total,
+         -season, -week,
+         -contains("totalTD"), 
+         -contains("fg_made"), 
+         -contains("fg_att"),
+         -contains("twoPtConv"), 
+         -contains("twoPtAtt"),
+         -contains("safeties"),
+         -contains("pat_made"),
+         -contains("pat_att"),
+         -contains("tds"),
+         -contains("spread"), 
+         -contains("moneyline"),
+         -contains("offTD"),
+         -total_line,
+         -location,
+         -div_game,
+         -roof,
+         -temp,
+         -wind)
+preProcValues <- preProcess(predictorData,
+                            method = c("pca", "center", "scale"))
+preProcValues
+predictorData2 <- predict(preProcValues, predictorData)
 histModelData2 <- predict(preProcValues, histModelData1)
 modelData2 <- predict(preProcValues, modelData1)
 
@@ -132,6 +144,37 @@ range_fg_att_range <- c(min(home_fg_att_range,away_fg_att_range),
 range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range), 
                          max(home_fg_made_range,away_fg_made_range))
 
+
+## Correlations ----
+homeTDcor <- cor(histModelData |> select(home_totalTD),
+                 histModelData |> select(c(where(is.numeric), -home_totalTD)),
+                 use = "pairwise.complete.obs",
+                 method = "kendall"
+)
+homeTDcorT <- t(homeTDcor)
+homeTDcorT2 <- homeTDcorT[order(abs(homeTDcorT)),]
+homeTDcorT2df <- data.frame(sort(abs(homeTDcorT2), decreasing = TRUE))
+
+homeFGcor <- cor(histModelData |> select(home_fg_made),
+                 histModelData |> select(c(where(is.numeric), -home_fg_made)),
+                 use = "pairwise.complete.obs",
+                 method = "kendall"
+)
+homeFGcorT <- t(homeFGcor)
+homeFGcorT2 <- homeFGcorT[order(abs(homeFGcorT)),]
+homeFGcorT2df <- data.frame(sort(abs(homeFGcorT2), decreasing = TRUE))
+
+homeFGAcor <- cor(histModelData |> select(home_fg_att),
+                  histModelData |> select(c(where(is.numeric), -home_fg_att)),
+                  use = "pairwise.complete.obs",
+                  method = "kendall"
+)
+homeFGAcorT <- t(homeFGAcor)
+homeFGAcorT2 <- homeFGAcorT[order(abs(homeFGAcorT)),]
+homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
+
+
+
 # Fit historical ----
 # Family: MV(skew_normal, skew_normal) 
 # Links: mu = identity; sigma = identity; alpha = identity
@@ -147,197 +190,222 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
 
 iters <- 2000
 burn <- 1000
-chains <- 2
+chains <- 4
 sims <- (iters-burn)*chains
 
 ## Formulas ----
+### PCAs ----
+paste0("PC", 1:64, collapse = "+")
+formulaFitComb <- bf(
+  mvbind(home_totalTD, home_fg_made, away_totalTD, away_fg_made) ~ 0 + Intercept +
+    PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+
+    PC11+PC12+PC13+PC14+PC15+PC16+PC17+PC18+PC19+PC20+
+    PC21+PC22+PC23+PC24+PC25+PC26+PC27+PC28+PC29+PC30+
+    PC31+PC32+PC33+PC34+PC35+PC36+PC37+PC38+PC39+PC40+
+    PC41+PC42+PC43+PC44+PC45+PC46+PC47+PC48+PC49+PC50+
+    PC51+PC52+PC53+PC54+PC55+PC56+PC57+PC58+PC59+PC60+
+    PC61+PC62 +
+    location +
+    div_game +
+    roof +
+    temp +
+    wind +
+    (1|home_team) +
+    (1|away_team)
+) + brmsfamily(family = "discrete_weibull")
+
 ### Home ----
 #### TD ----
 ##### Off TD
 formulaFitHomeTD <- 
-  bf(home_totalTD ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
+  bf(home_totalTD ~ 0 + Intercept + 
+       home_PFG +
+       away_PAG +
+       home_PFG:away_PAG +
+       
        home_SRS +
        away_SRS +
-       home_SRS:away_SRS +
-       # spread_line +
-       # total_line +
-       # home_OSRS +
-       # away_DSRS +
-       # home_OSRS:away_DSRS +
+       home_SRS:away_SRS + 
+       
+       home_off_plays_cum + 
+       away_def_plays_cum + 
+       home_off_plays_cum:away_def_plays_cum + 
+       
        home_off_epa_cum +
-       home_off_pass_epa_cum +
-       home_off_rush_epa_cum +
-       home_off_special_epa_cum +
-       home_off_penalty_epa_cum +
-       home_off_epa_roll +
-       home_off_pass_epa_roll +
-       home_off_rush_epa_roll +
-       home_off_special_epa_roll +
-       home_off_penalty_epa_roll +
-       # away_off_epa_cum +
-       # away_off_pass_epa_cum +
-       # away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       # away_off_pass_epa_roll +
-       # away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       # home_def_pass_epa_cum +
-       # home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       # home_def_pass_epa_roll +
-       # home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       away_def_epa_cum +
-       away_def_pass_epa_cum +
-       away_def_rush_epa_cum +
-       away_def_special_epa_cum +
-       away_def_penalty_epa_cum +
-       away_def_epa_roll +
-       away_def_pass_epa_roll +
-       away_def_rush_epa_roll +
-       away_def_special_epa_roll +
-       away_def_penalty_epa_roll +
+       away_def_epa_cum + 
+       home_off_epa_cum:away_def_epa_cum + 
+       
+       home_off_pass_epa_cum + 
+       away_def_pass_epa_cum + 
        home_off_pass_epa_cum:away_def_pass_epa_cum +
+       
+       home_off_rush_epa_cum +
+       away_def_rush_epa_cum + 
        home_off_rush_epa_cum:away_def_rush_epa_cum +
-       home_off_pass_epa_roll:away_def_pass_epa_roll +
+       
+       home_off_special_epa_cum +
+       away_def_special_epa_cum + 
+       home_off_special_epa_cum:away_def_special_epa_cum +
+       
+       home_off_penalty_epa_cum + 
+       away_def_penalty_epa_cum + 
+       home_off_penalty_epa_cum:away_def_penalty_epa_cum + 
+       
+       home_off_kick_epa_cum + 
+       away_def_kick_epa_cum + 
+       home_off_kick_epa_cum:away_def_kick_epa_cum + 
+       
+       home_off_epa_roll +
+       away_def_epa_roll +
+       home_off_epa_roll:away_def_epa_roll +
+       
+       home_off_pass_epa_roll + 
+       away_def_pass_epa_roll + 
+       home_off_pass_epa_roll:away_def_pass_epa_roll + 
+       
+       home_off_rush_epa_roll +
+       away_def_rush_epa_roll + 
        home_off_rush_epa_roll:away_def_rush_epa_roll +
-       home_off_penalty_epa_cum:away_def_penalty_epa_cum +
+       
+       home_off_special_epa_roll +
+       away_def_special_epa_roll +
+       home_off_special_epa_roll:away_def_special_epa_roll +
+       
+       home_off_penalty_epa_roll +
+       away_def_penalty_epa_roll + 
        home_off_penalty_epa_roll:away_def_penalty_epa_roll +
-       home_off_scr +
-       #home_off_1st +
-       home_off_td +
-       home_off_fg +
+       
+       home_off_kick_epa_roll + 
+       away_def_kick_epa_roll + 
+       home_off_kick_epa_roll:away_def_kick_epa_roll +
+       
+       home_off_n + 
+       away_def_n +
+       home_off_n:away_def_n + 
+       
+       home_off_scr + 
        away_def_scr +
-       #away_def_1st +
-       away_def_td +
-       away_def_fg +
-       home_off_scr:away_def_scr +
-       #home_off_1st:away_def_1st +
+       home_off_scr:away_def_scr + 
+       
+       home_off_td +
+       away_def_td + 
        home_off_td:away_def_td +
-       home_off_fg:away_def_fg +
+       
+       home_off_fg + 
+       away_def_fg +
+       home_off_fg:away_def_fg + 
+       
        home_off_to +
-       away_def_to +
-       home_off_to:away_def_to +
+       away_def_to + 
+       home_off_to:away_def_to + 
+       
        home_rest +
-       away_rest +
-       home_rest:away_rest +
+       away_rest + 
+       home_rest:away_rest + 
+       
        location +
        div_game +
-       roof +
-       temp +
-       wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
+       roof + 
+       temp + 
+       wind + 
+       (1 | home_team) +
+       (1 | away_team) 
   ) + brmsfamily(family = "discrete_weibull")
+
 #### FG ----
 formulaFitHomeFG <- 
-  bf(home_fg_made ~ 0 + Intercept + # bf(home_fg_made|trials(home_fg_att) ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
+  bf(home_fg_made ~ 0 + Intercept + 
+       home_PFG +
+       away_PAG +
+       home_PFG:away_PAG +
+       
        home_SRS +
        away_SRS +
-       home_SRS:away_SRS +
-       # spread_line +
-       # total_line +
-       # home_OSRS +
-       # away_DSRS +
-       # home_OSRS:away_DSRS +
+       home_SRS:away_SRS + 
+       
+       home_off_plays_cum + 
+       away_def_plays_cum + 
+       home_off_plays_cum:away_def_plays_cum + 
+       
        home_off_epa_cum +
-       home_off_pass_epa_cum +
-       home_off_rush_epa_cum +
-       home_off_special_epa_cum +
-       home_off_penalty_epa_cum +
-       home_off_kick_epa_cum +
-       home_off_epa_roll +
-       home_off_pass_epa_roll +
-       home_off_rush_epa_roll +
-       home_off_special_epa_roll +
-       home_off_penalty_epa_roll +
-       home_off_kick_epa_roll +
-       # away_off_epa_cum +
-       # away_off_pass_epa_cum +
-       # away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       # away_off_pass_epa_roll +
-       # away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       # home_def_pass_epa_cum +
-       # home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       # home_def_pass_epa_roll +
-       # home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       away_def_epa_cum +
-       away_def_pass_epa_cum +
-       away_def_rush_epa_cum +
-       away_def_special_epa_cum +
-       away_def_penalty_epa_cum +
-       away_def_kick_epa_cum +
-       away_def_epa_roll +
-       away_def_pass_epa_roll +
-       away_def_rush_epa_roll +
-       away_def_special_epa_roll +
-       away_def_penalty_epa_roll +
-       away_def_kick_epa_roll +
+       away_def_epa_cum + 
+       home_off_epa_cum:away_def_epa_cum + 
+       
+       home_off_pass_epa_cum + 
+       away_def_pass_epa_cum + 
        home_off_pass_epa_cum:away_def_pass_epa_cum +
+       
+       home_off_rush_epa_cum +
+       away_def_rush_epa_cum + 
        home_off_rush_epa_cum:away_def_rush_epa_cum +
-       home_off_pass_epa_roll:away_def_pass_epa_roll +
+       
+       home_off_special_epa_cum +
+       away_def_special_epa_cum + 
+       home_off_special_epa_cum:away_def_special_epa_cum +
+       
+       home_off_penalty_epa_cum + 
+       away_def_penalty_epa_cum + 
+       home_off_penalty_epa_cum:away_def_penalty_epa_cum + 
+       
+       home_off_kick_epa_cum + 
+       away_def_kick_epa_cum + 
+       home_off_kick_epa_cum:away_def_kick_epa_cum + 
+       
+       home_off_epa_roll +
+       away_def_epa_roll +
+       home_off_epa_roll:away_def_epa_roll +
+       
+       home_off_pass_epa_roll + 
+       away_def_pass_epa_roll + 
+       home_off_pass_epa_roll:away_def_pass_epa_roll + 
+       
+       home_off_rush_epa_roll +
+       away_def_rush_epa_roll + 
        home_off_rush_epa_roll:away_def_rush_epa_roll +
-       home_off_penalty_epa_cum:away_def_penalty_epa_cum +
+       
+       home_off_special_epa_roll +
+       away_def_special_epa_roll +
+       home_off_special_epa_roll:away_def_special_epa_roll +
+       
+       home_off_penalty_epa_roll +
+       away_def_penalty_epa_roll + 
        home_off_penalty_epa_roll:away_def_penalty_epa_roll +
-       home_off_kick_epa_cum:away_def_kick_epa_cum +
+       
+       home_off_kick_epa_roll + 
+       away_def_kick_epa_roll + 
        home_off_kick_epa_roll:away_def_kick_epa_roll +
-       home_off_scr +
-       #home_off_1st +
-       home_off_td +
-       home_off_fg +
+       
+       home_off_n + 
+       away_def_n +
+       home_off_n:away_def_n + 
+       
+       home_off_scr + 
        away_def_scr +
-       #away_def_1st +
-       away_def_td +
-       away_def_fg +
-       home_off_scr:away_def_scr +
-       #home_off_1st:away_def_1st +
+       home_off_scr:away_def_scr + 
+       
+       home_off_td +
+       away_def_td + 
        home_off_td:away_def_td +
-       home_off_fg:away_def_fg +
+       
+       home_off_fg + 
+       away_def_fg +
+       home_off_fg:away_def_fg + 
+       
        home_off_to +
-       away_def_to +
-       home_off_to:away_def_to +
+       away_def_to + 
+       home_off_to:away_def_to + 
+       
        home_rest +
-       away_rest +
-       home_rest:away_rest +
+       away_rest + 
+       home_rest:away_rest + 
+       
        location +
        div_game +
-       roof +
-       temp +
-       wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
+       roof + 
+       temp + 
+       wind + 
+       (1 | home_team) +
+       (1 | away_team) 
   ) + brmsfamily(family = "discrete_weibull")
 #### Extra Pt ----
 formulaFitHomeXP <- 
@@ -569,183 +637,194 @@ formulaFitHomeSafe <-
 ### Away ----
 #### TD ----
 formulaFitAwayTD <- 
-  bf(away_totalTD ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
+  bf(away_totalTD ~ 0 + Intercept + 
+       away_PFG +
+       home_PAG +
+       away_PFG:home_PAG +
+       
        home_SRS +
        away_SRS +
-       home_SRS:away_SRS +
-       # spread_line +
-       # total_line +
-       # home_OSRS +
-       # away_DSRS +
-       # home_OSRS:away_DSRS +
+       home_SRS:away_SRS + 
+       
+       away_off_plays_cum + 
+       home_def_plays_cum + 
+       away_off_plays_cum:home_def_plays_cum + 
+       
        away_off_epa_cum +
-       away_off_pass_epa_cum +
-       away_off_rush_epa_cum +
-       away_off_special_epa_cum +
-       away_off_penalty_epa_cum +
-       away_off_epa_roll +
-       away_off_pass_epa_roll +
-       away_off_rush_epa_roll +
-       away_off_special_epa_roll +
-       away_off_penalty_epa_roll +
-       # away_off_epa_cum +
-       # away_off_pass_epa_cum +
-       # away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       # away_off_pass_epa_roll +
-       # away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       # home_def_pass_epa_cum +
-       # home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       # home_def_pass_epa_roll +
-       # home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       home_def_epa_cum +
-       home_def_pass_epa_cum +
-       home_def_rush_epa_cum +
-       home_def_special_epa_cum +
-       home_def_penalty_epa_cum +
-       home_def_epa_roll +
-       home_def_pass_epa_roll +
-       home_def_rush_epa_roll +
-       home_def_special_epa_roll +
-       home_def_penalty_epa_roll +
+       home_def_epa_cum + 
+       away_off_epa_cum:home_def_epa_cum + 
+       
+       away_off_pass_epa_cum + 
+       home_def_pass_epa_cum + 
        away_off_pass_epa_cum:home_def_pass_epa_cum +
+       
+       away_off_rush_epa_cum +
+       home_def_rush_epa_cum + 
        away_off_rush_epa_cum:home_def_rush_epa_cum +
-       away_off_pass_epa_roll:home_def_pass_epa_roll +
+       
+       away_off_special_epa_cum +
+       home_def_special_epa_cum + 
+       away_off_special_epa_cum:home_def_special_epa_cum +
+       
+       away_off_penalty_epa_cum + 
+       home_def_penalty_epa_cum + 
+       away_off_penalty_epa_cum:home_def_penalty_epa_cum + 
+       
+       away_off_kick_epa_cum + 
+       home_def_kick_epa_cum + 
+       away_off_kick_epa_cum:home_def_kick_epa_cum + 
+       
+       away_off_epa_roll +
+       home_def_epa_roll +
+       away_off_epa_roll:home_def_epa_roll +
+       
+       away_off_pass_epa_roll + 
+       home_def_pass_epa_roll + 
+       away_off_pass_epa_roll:home_def_pass_epa_roll + 
+       
+       away_off_rush_epa_roll +
+       home_def_rush_epa_roll + 
        away_off_rush_epa_roll:home_def_rush_epa_roll +
-       away_off_penalty_epa_cum:home_def_penalty_epa_cum +
+       
+       away_off_special_epa_roll +
+       home_def_special_epa_roll +
+       away_off_special_epa_roll:home_def_special_epa_roll +
+       
+       away_off_penalty_epa_roll +
+       home_def_penalty_epa_roll + 
        away_off_penalty_epa_roll:home_def_penalty_epa_roll +
-       away_off_scr +
-       #away_off_1st +
-       away_off_td +
-       away_off_fg +
+       
+       away_off_kick_epa_roll + 
+       home_def_kick_epa_roll + 
+       away_off_kick_epa_roll:home_def_kick_epa_roll +
+       
+       away_off_n + 
+       home_def_n +
+       away_off_n:home_def_n + 
+       
+       away_off_scr + 
        home_def_scr +
-       #home_def_1st +
-       home_def_td +
-       home_def_fg +
-       away_off_scr:home_def_scr +
-       #away_off_1st:home_def_1st +
+       away_off_scr:home_def_scr + 
+       
+       away_off_td +
+       home_def_td + 
        away_off_td:home_def_td +
-       away_off_fg:home_def_fg +
+       
+       away_off_fg + 
+       home_def_fg +
+       away_off_fg:home_def_fg + 
+       
        away_off_to +
-       home_def_to +
-       away_off_to:home_def_to +
+       home_def_to + 
+       away_off_to:home_def_to + 
+       
        home_rest +
-       away_rest +
-       home_rest:away_rest +
+       away_rest + 
+       home_rest:away_rest + 
+       
        location +
        div_game +
-       roof +
-       temp +
-       wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
+       roof + 
+       temp + 
+       wind + 
+       (1 | home_team) +
+       (1 | away_team) 
   ) + brmsfamily(family = "discrete_weibull")
+
 #### FG ----
 formulaFitAwayFG <- 
-  bf(away_fg_made ~ 0 + Intercept + # bf(home_fg_made|trials(home_fg_att) ~ 0 + Intercept +
-       # home_PFG + 
-       # away_PFG +
-       # home_PAG + 
-       # away_PAG +
-       # home_MOV +
-       # away_MOV +
+  bf(away_fg_made ~ 0 + Intercept + 
+       away_PFG +
+       home_PAG +
+       away_PFG:home_PAG +
+       
        home_SRS +
        away_SRS +
-       home_SRS:away_SRS +
-       # spread_line +
-       # total_line +
-       # away_OSRS +
-       # home_DSRS +
-       # away_OSRS:home_DSRS +
+       home_SRS:away_SRS + 
+       
+       away_off_plays_cum + 
+       home_def_plays_cum + 
+       away_off_plays_cum:home_def_plays_cum + 
+       
        away_off_epa_cum +
-       away_off_pass_epa_cum +
-       away_off_rush_epa_cum +
-       away_off_special_epa_cum +
-       away_off_penalty_epa_cum +
-       away_off_epa_roll +
-       away_off_pass_epa_roll +
-       away_off_rush_epa_roll +
-       away_off_special_epa_roll +
-       away_off_penalty_epa_roll +
-       # away_off_epa_cum +
-       # away_off_pass_epa_cum +
-       # away_off_rush_epa_cum +
-       # away_off_special_epa_cum +
-       # away_off_penalty_epa_cum +
-       # away_off_epa_roll +
-       # away_off_pass_epa_roll +
-       # away_off_rush_epa_roll +
-       # away_off_special_epa_roll +
-       # away_off_penalty_epa_roll +
-       # home_def_epa_cum +
-       # home_def_pass_epa_cum +
-       # home_def_rush_epa_cum +
-       # home_def_special_epa_cum +
-       # home_def_penalty_epa_cum +
-       # home_def_epa_roll +
-       # home_def_pass_epa_roll +
-       # home_def_rush_epa_roll +
-       # home_def_special_epa_roll +
-       # home_def_penalty_epa_roll +
-       home_def_epa_cum +
-       home_def_pass_epa_cum +
-       home_def_rush_epa_cum +
-       home_def_special_epa_cum +
-       home_def_penalty_epa_cum +
-       home_def_epa_roll +
-       home_def_pass_epa_roll +
-       home_def_rush_epa_roll +
-       home_def_special_epa_roll +
-       home_def_penalty_epa_roll +
+       home_def_epa_cum + 
+       away_off_epa_cum:home_def_epa_cum + 
+       
+       away_off_pass_epa_cum + 
+       home_def_pass_epa_cum + 
        away_off_pass_epa_cum:home_def_pass_epa_cum +
+       
+       away_off_rush_epa_cum +
+       home_def_rush_epa_cum + 
        away_off_rush_epa_cum:home_def_rush_epa_cum +
-       away_off_pass_epa_roll:home_def_pass_epa_roll +
+       
+       away_off_special_epa_cum +
+       home_def_special_epa_cum + 
+       away_off_special_epa_cum:home_def_special_epa_cum +
+       
+       away_off_penalty_epa_cum + 
+       home_def_penalty_epa_cum + 
+       away_off_penalty_epa_cum:home_def_penalty_epa_cum + 
+       
+       away_off_kick_epa_cum + 
+       home_def_kick_epa_cum + 
+       away_off_kick_epa_cum:home_def_kick_epa_cum + 
+       
+       away_off_epa_roll +
+       home_def_epa_roll +
+       away_off_epa_roll:home_def_epa_roll +
+       
+       away_off_pass_epa_roll + 
+       home_def_pass_epa_roll + 
+       away_off_pass_epa_roll:home_def_pass_epa_roll + 
+       
+       away_off_rush_epa_roll +
+       home_def_rush_epa_roll + 
        away_off_rush_epa_roll:home_def_rush_epa_roll +
-       away_off_penalty_epa_cum:home_def_penalty_epa_cum +
+       
+       away_off_special_epa_roll +
+       home_def_special_epa_roll +
+       away_off_special_epa_roll:home_def_special_epa_roll +
+       
+       away_off_penalty_epa_roll +
+       home_def_penalty_epa_roll + 
        away_off_penalty_epa_roll:home_def_penalty_epa_roll +
-       away_off_scr +
-       #away_off_1st +
-       away_off_td +
-       away_off_fg +
+       
+       away_off_kick_epa_roll + 
+       home_def_kick_epa_roll + 
+       away_off_kick_epa_roll:home_def_kick_epa_roll +
+       
+       away_off_n + 
+       home_def_n +
+       away_off_n:home_def_n + 
+       
+       away_off_scr + 
        home_def_scr +
-       #home_def_1st +
-       home_def_td +
-       home_def_fg +
-       away_off_scr:home_def_scr +
-       #away_off_1st:home_def_1st +
+       away_off_scr:home_def_scr + 
+       
+       away_off_td +
+       home_def_td + 
        away_off_td:home_def_td +
-       away_off_fg:home_def_fg +
+       
+       away_off_fg + 
+       home_def_fg +
+       away_off_fg:home_def_fg + 
+       
        away_off_to +
-       home_def_to +
-       away_off_to:home_def_to +
+       home_def_to + 
+       away_off_to:home_def_to + 
+       
        home_rest +
-       away_rest +
-       home_rest:away_rest +
+       away_rest + 
+       home_rest:away_rest + 
+       
        location +
        div_game +
-       roof +
-       temp +
-       wind +
-       # surface +
-       (1|home_team) +
-       (1|away_team)
+       roof + 
+       temp + 
+       wind + 
+       (1 | home_team) +
+       (1 | away_team) 
   ) + brmsfamily(family = "discrete_weibull")
 #### Extra Pt ----
 formulaFitAwayXP <- 
@@ -975,6 +1054,146 @@ formulaFitAwaySafe <-
        (1|away_team)
   ) + brmsfamily(family = "discrete_weibull")
 
+## Forms Sig1 ----
+### Home ----
+#### TD ----
+##### Off TD
+formulaFitHomeTD <- 
+  bf(home_totalTD ~ 0 + Intercept +
+       home_SRS +
+       home_off_special_epa_cum + 
+       home_off_penalty_epa_cum + 
+       away_def_penalty_epa_cum +
+       home_off_kick_epa_cum + 
+       away_def_kick_epa_cum +
+       home_off_special_epa_roll +
+       home_off_penalty_epa_roll + 
+       home_off_kick_epa_roll + 
+       away_def_kick_epa_roll +
+       location + 
+       
+       home_PFG + away_PAG +
+       home_PFG:away_PAG + 
+       
+       home_off_pass_epa_cum + away_def_pass_epa_cum +
+       home_off_pass_epa_cum:away_def_pass_epa_cum +
+       
+       away_def_special_epa_cum +
+       home_off_special_epa_cum:away_def_special_epa_cum + 
+       
+       home_off_epa_roll + away_def_epa_roll +
+       home_off_epa_roll:away_def_epa_roll + 
+       
+       home_off_pass_epa_roll + away_def_pass_epa_roll +
+       home_off_pass_epa_roll:away_def_pass_epa_roll +
+       (1|home_team) +
+       (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+
+#### FG ----
+formulaFitHomeFG <- 
+  bf(home_fg_made ~ 0 + Intercept +
+       home_PFG + 
+       home_SRS +
+       away_SRS +
+       away_def_plays_cum +
+       home_off_penalty_epa_cum +
+       away_def_kick_epa_cum + 
+       away_def_rush_epa_roll + 
+       away_def_penalty_epa_roll + 
+       home_off_kick_epa_roll + 
+       home_off_n +
+       away_def_n + 
+       away_def_scr + 
+       away_rest + 
+       location + 
+       home_off_plays_cum +
+       home_off_plays_cum:away_def_plays_cum +
+       
+       home_off_pass_epa_cum + away_def_pass_epa_cum +
+       home_off_pass_epa_cum:away_def_pass_epa_cum + 
+       
+       home_off_kick_epa_cum +
+       home_off_kick_epa_cum:away_def_kick_epa_cum + 
+       
+       home_off_epa_roll + away_def_epa_roll +
+       home_off_epa_roll:away_def_epa_roll + 
+       
+       home_off_pass_epa_roll + away_def_pass_epa_roll +
+       home_off_pass_epa_roll:away_def_pass_epa_roll + 
+       
+       away_def_kick_epa_roll +
+       home_off_kick_epa_roll:away_def_kick_epa_roll +
+       
+       home_off_td + away_def_td +
+       home_off_td:away_def_td +
+       
+       home_off_to + away_def_to +
+       home_off_to:away_def_to +
+       (1|home_team) +
+       (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+
+### Away ----
+#### TD ----
+formulaFitAwayTD <- 
+  bf(away_totalTD ~ 0 + Intercept +
+       home_PAG +
+       away_SRS +
+       away_off_pass_epa_cum + 
+       away_off_penalty_epa_cum + 
+       away_off_penalty_epa_roll +
+       away_off_n +
+       away_off_td +
+       home_rest + 
+       div_game +
+       roof + 
+       away_off_plays_cum + home_def_plays_cum +
+       away_off_plays_cum:home_def_plays_cum + 
+       
+       home_def_penalty_epa_cum + 
+       away_off_penalty_epa_cum:home_def_penalty_epa_cum + 
+       
+       away_off_special_epa_roll + home_def_special_epa_roll + 
+       away_off_special_epa_roll:home_def_special_epa_roll + 
+       
+       home_def_penalty_epa_roll +
+       away_off_penalty_epa_roll:home_def_penalty_epa_roll +
+       
+       away_off_kick_epa_roll + home_def_kick_epa_roll + 
+       away_off_kick_epa_roll:home_def_kick_epa_roll + 
+       
+       home_def_n +
+       away_off_n:home_def_n + 
+       
+       away_off_to + home_def_to +
+       away_off_to:home_def_to +
+       (1|home_team) +
+       (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+#### FG ----
+formulaFitAwayFG <- 
+  bf(away_fg_made ~ 0 + Intercept +
+       away_PFG +
+       home_PAG +
+       home_SRS + 
+       away_SRS + 
+       home_def_special_epa_cum + 
+       away_off_kick_epa_cum +
+       home_def_special_epa_roll + 
+       away_off_penalty_epa_roll + 
+       away_off_kick_epa_roll + 
+       home_def_scr +
+       away_off_td +
+       home_def_fg +
+       roof +
+       wind + 
+       away_PFG:home_PAG +
+       home_SRS:away_SRS +
+       (1|home_team) +
+       (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+
 ## Forms from sig2 ----
 ### Home ----
 #### TD ----
@@ -1007,10 +1226,10 @@ formulaFitHomeTD2 <-
        home_off_rush_epa_cum:away_def_rush_epa_cum + 
        #home_off_scr:away_def_scr + 
        home_off_td:away_def_td +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
      #nl = TRUE
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "poisson")
 #### FG ----
 formulaFitHomeFG2 <- 
   bf(home_fg_made ~ 0 + Intercept + # bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept +
@@ -1034,10 +1253,10 @@ formulaFitHomeFG2 <-
        #home_off_fg_pct_cum +
        #home_off_fg_pct_roll +
        location +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
      #family = brmsfamily(family = "discrete_weibull")
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "poisson")
 #### Extra Pt ----
 # formulaFitHomeXP2 <- 
 #   bf(home_pat_made|trials(home_totalTD) ~ 0 + Intercept + # bf(home_pat_made|trials(home_pat_att) ~ 0 + Intercept +
@@ -1086,11 +1305,11 @@ formulaFitAwayTD2 <-
        #away_off_interceptions:home_def_interceptions +
        #away_off_fumbles:home_def_fumbles +
        roof +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
      #nl = TRUE
      #family = brmsfamily(family = "discrete_weibull")
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "poisson")
 #### FG ----
 formulaFitAwayFG2 <- 
   bf(away_fg_made ~ 0 + Intercept + # bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
@@ -1107,10 +1326,10 @@ formulaFitAwayFG2 <-
        away_off_fg_pct_cum +
        away_off_fg_pct_roll +
        div_game +
-       (1|H|home_team) +
-       (1|A|away_team)
+       (1|home_team) +
+       (1|away_team)
      #family = brmsfamily(family = "discrete_weibull")
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "poisson")
 #### Extra Pt ----
 # formulaFitAwayXP2 <- 
 #   bf(away_pat_made|trials(away_totalTD) ~ 0 + Intercept + # bf(home_pat_made|trials(home_pat_att) ~ 0 + Intercept +
@@ -1144,19 +1363,26 @@ formulaFitAwayFG2 <-
 #   ) + brmsfamily(family = "binomial")
 
 ## Fit ----
-priorPoints <- set_prior(horseshoe(), class = "b")
-priorhomeTD <- prior(normal(0,5), nlpar = "homeTD")
-priorawayTD <- prior(normal(0,5), nlpar = "awayTD")
+priorPoints <- c(
+  set_prior(horseshoe(df = 1, par_ratio = 0.3), class = "b", resp = "hometotalTD"),
+  set_prior(horseshoe(df = 1, par_ratio = 0.3), class = "b", resp = "homefgmade"),
+  set_prior(horseshoe(df = 1, par_ratio = 0.3), class = "b", resp = "awaytotalTD"),
+  set_prior(horseshoe(df = 1, par_ratio = 0.3), class = "b", resp = "awayfgmade")
+)
+priorPoints <- c(
+  prior(normal(0,5), class = "b", resp = "hometotalTD"),
+  prior(normal(0,5), class = "b", resp = "homefgmade"),
+  prior(normal(0,5), class = "b", resp = "awaytotalTD"),
+  prior(normal(0,5), class = "b", resp = "awayfgmade")
+)
 
 # 10 mins
 system.time(
   Fit <- brm(
-    formulaFitHomeTD2 + formulaFitHomeFG2 + #formulaFitHomeXPA2 + 
+    formulaFitHomeTD + formulaFitHomeFG + #formulaFitHomeXPA2 + 
       #formulaFitHomeXP2 + formulaFitHomeTP2 + #formulaFitHomeSafe +
-      formulaFitAwayTD2 + formulaFitAwayFG2 + #formulaFitAwayXPA2 +
+      formulaFitAwayTD + formulaFitAwayFG + #formulaFitAwayXPA2 +
       #formulaFitAwayXP2 + formulaFitAwayTP2 + #formulaFitAwaySafe +
-      # formulaFitHomeTD + formulaFitHomeFG + formulaFitHomeXP + formulaFitHomeTP + #formulaFitHomeSafe +
-      #   formulaFitAwayTD + formulaFitAwayFG + formulaFitAwayXP + formulaFitAwayTP + #formulaFitAwaySafe +
       set_rescor(FALSE),
     data = histModelData,
     save_pars = save_pars(all = TRUE),
@@ -1199,10 +1425,10 @@ system.time(
 #   )
 # )
 
-fit <- 16
+fit <- 17
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
-save(fit16, file= paste0("~/Desktop/fit", fit, ".RData"))
+save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
 
 Fit <- fit8
 #fitFormulas <- list()
@@ -1210,6 +1436,7 @@ Fit <- fit8
 #   fitFormulas[[paste0("Fit",i)]] <- get(paste0("fit", i))
 # }
 #fitFormulas[[paste0("Fit",fit)]] <- get(paste0("fit", fit))
+
 ## Diagnostics ----
 prior_summary(Fit)
 # posterior_summary(Fit)
@@ -1243,20 +1470,21 @@ fixedSigEff
 assign(paste0("fixedEff", fit), fixedEff)
 assign(paste0("fixedSigEff", fit), fixedSigEff)
 
-# fixedSigEff1forms <- fixedSigEff1 |>
-#   select(response, param) |>
-#   group_by(response) |>
-#   summarise(
-#     formula = paste(param, collapse = " + ")
-#   )
-# fixedSigEff1forms$formula[7]
-# fixedSigEff1forms$formula[5]
-# fixedSigEff1forms$formula[6]
-# fixedSigEff1forms$formula[8]
-# fixedSigEff1forms$formula[3]
-# fixedSigEff1forms$formula[1]
-# fixedSigEff1forms$formula[2]
-# fixedSigEff1forms$formula[4]
+fixedSigEffForms <- fixedSigEff |>
+  select(response, param) |>
+  group_by(response) |>
+  summarise(
+    formula = paste(param, collapse = " + ")
+  )
+fixedSigEffForms
+fixedSigEffForms$formula[7]
+fixedSigEffForms$formula[5]
+fixedSigEffForms$formula[6]
+fixedSigEffForms$formula[8]
+fixedSigEffForms$formula[3]
+fixedSigEffForms$formula[1]
+fixedSigEffForms$formula[2]
+fixedSigEffForms$formula[4]
 # 
 # fixedSigEff1
 # print(fixedSigEff, digits = 4)
@@ -1295,7 +1523,8 @@ VarCorr(Fit)
 
 postSum <- posterior_summary(Fit)
 #postSum[grepl("^sd_", rownames(postSum)), ]
-Fit <- fit7
+
+### Bayes R2 -----
 FitR2temp <- bayes_R2(Fit) |>
   bind_cols(Fit = paste0("Fit", fit)) |>
   select(Fit, everything())
@@ -1306,6 +1535,22 @@ FitR2 <- bind_rows(
   FitR2
 )
 FitR2 #<- FitR2temp
+
+FitR2tempPred <- bayes_R2(Fit, newdata = modelData) |>
+  bind_cols(Fit = paste0("Pred", fit)) |>
+  select(Fit, everything())
+FitR2tempPred
+
+
+
+performance_score(Fit)
+performance::check_distribution(Fit)
+performance::check_zeroinflation(Fit,)
+### Projpred ----
+# fitVarselHomeTD <- varsel(Fit, resp = "hometotalTD")
+# fitVarselHomeFG <- varsel(Fit, resp = "homefgmade")
+# fitVarselAwayTD <- varsel(Fit, resp = "awaytotalTD")
+# fitVarselAwayFG <- varsel(Fit, resp = "awayfgmade")
 
 # loo7 <- loo(fit7)
 # 
@@ -1539,8 +1784,8 @@ awayPPDbarsfg
 homefinalFit <- 
   7*homefinalFittd + 
   3*homefinalFitfg #+
-  #1*homefinalFitxp +
-  #2*homefinalFittp #+
+#1*homefinalFitxp +
+#2*homefinalFittp #+
 #2*homefinalFitsafe
 
 ## Fitted
@@ -1554,8 +1799,8 @@ homefinalFitUCB <- apply(homefinalFit, 2, function(x){quantile(x, 0.975)})
 homefinalPreds <-
   7*homefinalPredstd +
   3*homefinalPredsfg #+
-  #1*homefinalPredsxp +
-  #2*homefinalPredstp #+
+#1*homefinalPredsxp +
+#2*homefinalPredstp #+
 #2*homefinalPredssafe
 
 # homefinalPreds <- posterior_predict(Fit,
@@ -1573,8 +1818,8 @@ homefinalPredsUCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.975, na.
 awayfinalFit <- 
   7*awayfinalFittd + 
   3*awayfinalFitfg #+
-  #1*awayfinalFitxp +
-  #2*awayfinalFittp #+
+#1*awayfinalFitxp +
+#2*awayfinalFittp #+
 #2*awayfinalFitsafe
 ## Fitted
 #awayfinalFit <- posterior_predict(Fit, resp = "awayscore")
@@ -1587,8 +1832,8 @@ awayfinalFitUCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.975)})
 awayfinalPreds <-
   7*awayfinalPredstd +
   3*awayfinalPredsfg #+
-  #1*awayfinalPredsxp +
-  #2*awayfinalPredstp #+
+#1*awayfinalPredsxp +
+#2*awayfinalPredstp #+
 #2*awayfinalPredssafe
 # awayfinalPreds <- posterior_predict(Fit,
 #                                     resp = "awayscore",
@@ -1701,7 +1946,7 @@ spreadPPDbars
 ##### Prob Errors ----
 ##### Fit ----
 spreadLineTrain <- modData |>
-  filter(season %in% 2023:2023) |>
+  filter(season %in% 2022:2023) |>
   pull(spread_line)
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
@@ -1717,7 +1962,7 @@ FittedLogicalSpread <- spreadTrain > spreadLineTrain
 FittedProbSpread <- mean(FittedBetLogicalSpread == FittedLogicalSpread, na.rm = TRUE)
 FittedProbSpread
 
-spreadDataTrain <- modData |> filter(season %in% 2023:2023) |>
+spreadDataTrain <- modData |> filter(season %in% 2022:2023) |>
   select(season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line, spreadCover,
@@ -1814,7 +2059,7 @@ PredsLCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.025, na.rm = TRU
 PredsUCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 totalTrain <- modData |>
-  filter(season %in% 2023:2023) |>
+  filter(season %in% 2022:2023) |>
   pull(total)
 totalTest <- modData |>
   filter(season == 2024) |>
@@ -1860,7 +2105,7 @@ totalPPDbars
 ##### Prob Errors ----
 ##### Fit ----
 totalLineTrain <- modData |>
-  filter(season %in% 2023:2023) |>
+  filter(season %in% 2022:2023) |>
   pull(total_line)
 #totalTrain <- as.numeric(totalTrainScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
@@ -1876,7 +2121,7 @@ FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
 
-totalDataTrain <- modData |> filter(season %in% 2023:2023) |>
+totalDataTrain <- modData |> filter(season %in% 2022:2023) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,
@@ -2402,14 +2647,14 @@ system.time(
     homefinalIterPreds <- 
       7*homefinalIterPredstd + 
       3*homefinalIterPredsfg #+
-      # 1*homefinalIterPredsxp +
-      # 2*homefinalIterPredstp
+    # 1*homefinalIterPredsxp +
+    # 2*homefinalIterPredstp
     
     awayfinalIterPreds <- 
       7*awayfinalIterPredstd + 
       3*awayfinalIterPredsfg #+
-      # 1*awayfinalIterPredsxp +
-      # 2*awayfinalIterPredstp
+    # 1*awayfinalIterPredsxp +
+    # 2*awayfinalIterPredstp
     
     homefinalIterPredsComb2[[i]] <- homefinalIterPreds
     awayfinalIterPredsComb2[[i]] <- awayfinalIterPreds
@@ -2425,16 +2670,17 @@ system.time(
     # awayfinalIterPredstpComb2[[i]] <- awayfinalIterPredstp
     
     iterData <- modelData |>
-      filter(week %in% i:i)
+      filter(week %in% 1:i)
     
-    new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
-    
+    #new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
     iterFit <- update(iterFit,
                       newdata = iterData,
-                      prior = new_priors,
+                      prior = old_priors,
+                      drop_unused_levels = FALSE,
                       cores = parallel::detectCores()
     )
-  
+    
+    new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
     
     # iterFitB <- update(iterFitBaseB,
     #                   newdata = iterData,
@@ -2498,14 +2744,14 @@ system.time(
     homefinalIterFit <- 
       7*homefinalIterFittd + 
       3*homefinalIterFitfg #+
-      # 1*homefinalIterFitxp +
-      # 2*homefinalIterFittp
+    # 1*homefinalIterFitxp +
+    # 2*homefinalIterFittp
     
     awayfinalIterFit <- 
       7*awayfinalIterFittd + 
       3*awayfinalIterFitfg #+
-      # 1*awayfinalIterFitxp +
-      # 2*awayfinalIterFittp
+    # 1*awayfinalIterFitxp +
+    # 2*awayfinalIterFittp
     
     homefinalIterFitComb2[[i]] <- homefinalIterFit
     awayfinalIterFitComb2[[i]] <- awayfinalIterFit
@@ -2573,13 +2819,13 @@ awayfinalIterPredstp2 <- do.call(cbind, awayfinalIterPredstpComb2)
 homefinalIterPreds <- 
   7*homefinalIterPredstd2 +
   3*homefinalIterPredsfg2 #+
-  1*homefinalIterPredsxp2 +
+1*homefinalIterPredsxp2 +
   2*homefinalIterPredstp2
 
 awayfinalIterPreds <- 
   7*awayfinalIterPredstd2 +
   3*awayfinalIterPredsfg2 #+
-  1*awayfinalIterPredsxp2 +
+1*awayfinalIterPredsxp2 +
   2*awayfinalIterPredstp2
 
 ## PPD Plots
@@ -2632,9 +2878,9 @@ awayIterPPDbarstp
 ### Home Score
 homefinalIterFit <- do.call(cbind, homefinalIterFitComb2)
 homefinalIterFitMean <- colMeans(homefinalIterFit)
-homefinalIterFitMed <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.5)})
-homefinalIterFitLCB <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.025)})
-homefinalIterFitUCB <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.975)})
+homefinalIterFitMed <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+homefinalIterFitLCB <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+homefinalIterFitUCB <- apply(homefinalIterFit, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 ## Prediction on new data
 homefinalIterPreds <- do.call(cbind, homefinalIterPredsComb2)
@@ -2647,9 +2893,9 @@ homefinalIterPredsUCB <- apply(homefinalIterPreds, 2, function(x){quantile(x, 0.
 ## Fitted
 awayfinalIterFit <- do.call(cbind, awayfinalIterFitComb2)
 awayfinalIterFitMean <- colMeans(awayfinalIterFit)
-awayfinalIterFitMed <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.5)})
-awayfinalIterFitLCB <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.025)})
-awayfinalIterFitUCB <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.975)})
+awayfinalIterFitMed <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+awayfinalIterFitLCB <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+awayfinalIterFitUCB <- apply(awayfinalIterFit, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 ## Prediction on new data
 awayfinalIterPreds <- do.call(cbind, awayfinalIterPredsComb2)
@@ -2690,9 +2936,9 @@ predIterMetricsHA
 FittedIterSpread <- homefinalIterFit - awayfinalIterFit
 #FittedIter <- posterior_predict(Fit)
 FittedIterMeanSpread <- colMeans(FittedIterSpread)
-FittedIterMedSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.5)})
-FittedIterLCBSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.025)})
-FittedIterUCBSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.975)})
+FittedIterMedSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+FittedIterLCBSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+FittedIterUCBSpread <- apply(FittedIterSpread, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 # Prediction
 PredsIterSpread <- homefinalIterPreds - awayfinalIterPreds
@@ -2733,7 +2979,7 @@ spreadPPD <- ppc_dens_overlay(y = modelData$result,
 spreadPPD
 
 spreadPPDbars <- ppc_bars(y = modelData$result, 
-                              yrep = PredsIterSpread[sample(1:sims, 100, replace = FALSE), ])
+                          yrep = PredsIterSpread[sample(1:sims, 100, replace = FALSE), ])
 spreadPPDbars
 
 ##### Prob Errors ----
@@ -2805,7 +3051,7 @@ spreadDataTest <- modData |> filter(season == 2024) |> filter(!is.na(result)) |>
          away_spread_prob, away_spread_prob
          #over_odds, over_prob,
          #under_odds, under_prob
-         ) |>
+  ) |>
   mutate(
     spreadPred = PredsIterMeanSpread,
     coverBet = ifelse(spreadPred > spread_line, TRUE, FALSE),
@@ -2831,9 +3077,9 @@ spreadSuccessTest
 FittedIterTotal <- homefinalIterFit + awayfinalIterFit
 #FittedIter <- posterior_predict(Fit)
 FittedIterMeanTotal <- colMeans(FittedIterTotal)
-FittedIterMedTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.5)})
-FittedIterLCBTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.025)})
-FittedIterUCBTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.975)})
+FittedIterMedTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+FittedIterLCBTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+FittedIterUCBTotal <- apply(FittedIterTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 # Prediction
 PredsIterTotal <- homefinalIterPreds + awayfinalIterPreds
