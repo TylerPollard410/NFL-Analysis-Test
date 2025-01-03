@@ -87,12 +87,9 @@ modData2 <- modData |>
     across(where(is.character),
            ~factor(.x))
   ) #|>
-modData3 <- modData[complete.cases(modData), ]
-modData2 <- modData2[complete.cases(modData2), ]
-#filter(!(season == 2024 & week > 14))
-histModData <- modData2 |> filter(season <= 2023)
+
 histModelData1 <- modData2 |> 
-  filter(season %in% 2022:2023)
+  filter(season %in% 2023:2023)
 modelData1 <- modData2 |> 
   filter(season == 2024) |> 
   filter(complete.cases(result)) 
@@ -120,7 +117,7 @@ predictorData <- histModelData1 |>
          -temp,
          -wind)
 preProcValues <- preProcess(predictorData,
-                            method = c("pca", "center", "scale"))
+                            method = c("center", "scale"))
 preProcValues
 predictorData2 <- predict(preProcValues, predictorData)
 histModelData2 <- predict(preProcValues, histModelData1)
@@ -1059,7 +1056,7 @@ formulaFitAwaySafe <-
 #### TD ----
 ##### Off TD
 formulaFitHomeTD <- 
-  bf(home_totalTD ~ 0 + Intercept +
+  bf(home_totalTD|trunc(ub = 10) ~ 0 + Intercept +
        home_SRS +
        home_off_special_epa_cum + 
        home_off_penalty_epa_cum + 
@@ -1088,11 +1085,11 @@ formulaFitHomeTD <-
        home_off_pass_epa_roll:away_def_pass_epa_roll +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "zero_inflated_poisson")
 
 #### FG ----
 formulaFitHomeFG <- 
-  bf(home_fg_made ~ 0 + Intercept +
+  bf(home_fg_made|trunc(ub = 10) ~ 0 + Intercept +
        home_PFG + 
        home_SRS +
        away_SRS +
@@ -1132,12 +1129,12 @@ formulaFitHomeFG <-
        home_off_to:away_def_to +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "zero_inflated_poisson")
 
 ### Away ----
 #### TD ----
 formulaFitAwayTD <- 
-  bf(away_totalTD ~ 0 + Intercept +
+  bf(away_totalTD|trunc(ub = 10) ~ 0 + Intercept +
        home_PAG +
        away_SRS +
        away_off_pass_epa_cum + 
@@ -1170,10 +1167,10 @@ formulaFitAwayTD <-
        away_off_to:home_def_to +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "zero_inflated_poisson")
 #### FG ----
 formulaFitAwayFG <- 
-  bf(away_fg_made ~ 0 + Intercept +
+  bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
        away_PFG +
        home_PAG +
        home_SRS + 
@@ -1192,7 +1189,7 @@ formulaFitAwayFG <-
        home_SRS:away_SRS +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "zero_inflated_poisson")
 
 ## Forms from sig2 ----
 ### Home ----
@@ -1425,7 +1422,7 @@ system.time(
 #   )
 # )
 
-fit <- 17
+fit <- 21
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
@@ -1946,7 +1943,7 @@ spreadPPDbars
 ##### Prob Errors ----
 ##### Fit ----
 spreadLineTrain <- modData |>
-  filter(season %in% 2022:2023) |>
+  filter(season %in% 2023:2023) |>
   pull(spread_line)
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
@@ -1962,7 +1959,7 @@ FittedLogicalSpread <- spreadTrain > spreadLineTrain
 FittedProbSpread <- mean(FittedBetLogicalSpread == FittedLogicalSpread, na.rm = TRUE)
 FittedProbSpread
 
-spreadDataTrain <- modData |> filter(season %in% 2022:2023) |>
+spreadDataTrain <- modData |> filter(season %in% 2023:2023) |>
   select(season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, spread_line, spreadCover,
@@ -2059,7 +2056,7 @@ PredsLCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.025, na.rm = TRU
 PredsUCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
 totalTrain <- modData |>
-  filter(season %in% 2022:2023) |>
+  filter(season %in% 2023:2023) |>
   pull(total)
 totalTest <- modData |>
   filter(season == 2024) |>
@@ -2105,7 +2102,7 @@ totalPPDbars
 ##### Prob Errors ----
 ##### Fit ----
 totalLineTrain <- modData |>
-  filter(season %in% 2022:2023) |>
+  filter(season %in% 2023:2023) |>
   pull(total_line)
 #totalTrain <- as.numeric(totalTrainScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
@@ -2121,7 +2118,7 @@ FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
 
-totalDataTrain <- modData |> filter(season %in% 2022:2023) |>
+totalDataTrain <- modData |> filter(season %in% 2023:2023) |>
   select(game_id, season, week, #game_type,
          home_team, home_score, away_team, away_score,
          result, total_line, totalCover,
@@ -2520,68 +2517,79 @@ for(i in 1:predWeeks){
 ## Fit Model 2 ----
 # Initialize values
 predWeeks <- max(modelData$week)
-iterFitBase <- fit16
-iterFitBaseB <- fitB8
+iterFitBase <- fit18
+#iterFitBaseB <- fitB8
 iterFit <- iterFitBase
-iterFitB <- iterFitBaseB
+#iterFitB <- iterFitBaseB
 homefinalIterFittdComb2 <- list()
 homefinalIterFitfgComb2 <- list()
-homefinalIterFitxpComb2 <- list()
-homefinalIterFittpComb2 <- list()
+# homefinalIterFitxpComb2 <- list()
+# homefinalIterFittpComb2 <- list()
 homefinalIterFitComb2 <- list()
 
 awayfinalIterFittdComb2 <- list()
 awayfinalIterFitfgComb2 <- list()
-awayfinalIterFitxpComb2 <- list()
-awayfinalIterFittpComb2 <- list()
+# awayfinalIterFitxpComb2 <- list()
+# awayfinalIterFittpComb2 <- list()
 awayfinalIterFitComb2 <- list()
 
 homefinalIterPredstdComb2 <- list()
 homefinalIterPredsfgComb2 <- list()
-homefinalIterPredsxpComb2 <- list()
-homefinalIterPredstpComb2 <- list()
+# homefinalIterPredsxpComb2 <- list()
+# homefinalIterPredstpComb2 <- list()
 homefinalIterPredsComb2 <- list()
 
 awayfinalIterPredstdComb2 <- list()
 awayfinalIterPredsfgComb2 <- list()
-awayfinalIterPredsxpComb2 <- list()
-awayfinalIterPredstpComb2 <- list()
+# awayfinalIterPredsxpComb2 <- list()
+# awayfinalIterPredstpComb2 <- list()
 awayfinalIterPredsComb2 <- list()
 
 prePriors <- posterior_summary(iterFitBase)
 prePriorCoefs <- prior_summary(iterFitBase)$coef
 old_priors <- create_updated_priors(post_summary = prePriors)
 
-prePriorsB <- posterior_summary(iterFitBaseB)
-prePriorCoefsB <- prior_summary(iterFitBaseB)$coef
-old_priorsB <- create_updated_priors(post_summary = prePriorsB)
+trainingData <- modData2 |> filter(season %in% 2023:2023)
+predictorIterData <- trainingData |> 
+  select(-home_score, -away_score,
+         -result, -total,
+         -season, -week,
+         -contains("totalTD"), 
+         -contains("fg_made"), 
+         -contains("fg_att"),
+         -contains("twoPtConv"), 
+         -contains("twoPtAtt"),
+         -contains("safeties"),
+         -contains("pat_made"),
+         -contains("pat_att"),
+         -contains("tds"),
+         -contains("spread"), 
+         -contains("moneyline"),
+         -contains("offTD"),
+         -total_line,
+         -location,
+         -div_game,
+         -roof,
+         -temp,
+         -wind)
+preProcIterValues <- preProcess(predictorIterData,
+                                method = c("center", "scale"))
+
+# prePriorsB <- posterior_summary(iterFitBaseB)
+# prePriorCoefsB <- prior_summary(iterFitBaseB)$coef
+# old_priorsB <- create_updated_priors(post_summary = prePriorsB)
 
 ### Run loop  ----
 # took 29 minutes
 system.time(
   for(i in 1:predWeeks){
-    predictWeekData <- modelData |>
-      filter(week == i) |>
-      mutate(
-        home_totalTD = NA,
-        home_fg_made = NA,
-        home_pat_made = NA,
-        home_twoPtConv = NA,
-        away_totalTD = NA,
-        away_fg_made = NA,
-        away_pat_made = NA,
-        away_twoPtConv = NA
-      )
     
-    # nonUnique <- predictWeekData |>
-    #   select(where(is.character))
-    # 
-    # nonUnique <- predictWeekData |>
-    #   summarise(
-    #     across(where(is.character),
-    #            ~length(unique(.x)))
-    #   ) |> unlist()
-    # removeVars <- names(nonUnique[nonUnique == 1])
+    predictWeekData <- modData2 |> 
+      filter(season == 2024, week == i) |>
+      filter(!is.na(result))
+    
+    predictWeekData <- predict(preProcIterValues, predictWeekData)
+    
     
     # Make Prediction for week 
     homefinalIterPredstd <- posterior_predict(iterFit,
@@ -2669,18 +2677,49 @@ system.time(
     # awayfinalIterPredsxpComb2[[i]] <- awayfinalIterPredsxp
     # awayfinalIterPredstpComb2[[i]] <- awayfinalIterPredstp
     
-    iterData <- modelData |>
-      filter(week %in% 1:i)
+    # iterData <- modelData |>
+    #   filter(week %in% i:i)
+    # 
+    # new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
+    trainingData <- bind_rows(
+      modData2 |> filter(season %in% 2023:2023),
+      modData2 |> filter(season == 2024, week <= i) 
+    )
+    predictorIterData <- trainingData |> 
+      select(-home_score, -away_score,
+             -result, -total,
+             -season, -week,
+             -contains("totalTD"), 
+             -contains("fg_made"), 
+             -contains("fg_att"),
+             -contains("twoPtConv"), 
+             -contains("twoPtAtt"),
+             -contains("safeties"),
+             -contains("pat_made"),
+             -contains("pat_att"),
+             -contains("tds"),
+             -contains("spread"), 
+             -contains("moneyline"),
+             -contains("offTD"),
+             -total_line,
+             -location,
+             -div_game,
+             -roof,
+             -temp,
+             -wind)
+    preProcIterValues <- preProcess(predictorIterData,
+                                    method = c("center", "scale"))
+    trainingData <- predict(preProcIterValues, trainingData)
+    trainingWeekData <- trainingData |> filter(season == 2024, week == i)
     
-    #new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
+    
     iterFit <- update(iterFit,
-                      newdata = iterData,
-                      prior = old_priors,
+                      newdata = trainingData,
                       drop_unused_levels = FALSE,
                       cores = parallel::detectCores()
     )
     
-    new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
+    #new_priors <- create_updated_priors(post_summary = posterior_summary(iterFit))
     
     # iterFitB <- update(iterFitBaseB,
     #                   newdata = iterData,
@@ -2730,14 +2769,22 @@ system.time(
     # )
     
     # Get fitted values for week
-    homefinalIterFittd <- posterior_predict(iterFit, resp = "hometotalTD")
-    homefinalIterFitfg <- posterior_predict(iterFit, resp = "homefgmade")
+    homefinalIterFittd <- posterior_predict(iterFit, 
+                                            newdata = trainingWeekData,
+                                            resp = "hometotalTD")
+    homefinalIterFitfg <- posterior_predict(iterFit, 
+                                            newdata = trainingWeekData,
+                                            resp = "homefgmade")
     # homefinalIterFitxp <- posterior_predict(iterFitB, resp = "homepatmade")
     # homefinalIterFittp <- posterior_predict(iterFitB, resp = "hometwoPtConv")
     
     
-    awayfinalIterFittd <- posterior_predict(iterFit, resp = "awaytotalTD")
-    awayfinalIterFitfg <- posterior_predict(iterFit, resp = "awayfgmade")
+    awayfinalIterFittd <- posterior_predict(iterFit, 
+                                            newdata = trainingWeekData,
+                                            resp = "awaytotalTD")
+    awayfinalIterFitfg <- posterior_predict(iterFit, 
+                                            newdata = trainingWeekData,
+                                            resp = "awayfgmade")
     # awayfinalIterFitxp <- posterior_predict(iterFitB, resp = "awaypatmade")
     # awayfinalIterFittp <- posterior_predict(iterFitB, resp = "awaytwoPtConv")
     
@@ -2770,34 +2817,25 @@ system.time(
   }
 )
 
-fit8end <- iterFit
-fitB8end <- iterFitB
+iterFit2 <- iterFit
 
-save(fit8, fitB8, fit8end, fitB8end,
+save(iterFit1,
      homefinalIterFittdComb2,
      homefinalIterFitfgComb2,
-     homefinalIterFitxpComb2,
-     homefinalIterFittpComb2,
      homefinalIterFitComb2,
      
      awayfinalIterFittdComb2,
      awayfinalIterFitfgComb2,
-     awayfinalIterFitxpComb2,
-     awayfinalIterFittpComb2,
      awayfinalIterFitComb2,
      
      homefinalIterPredstdComb2,
      homefinalIterPredsfgComb2,
-     homefinalIterPredsxpComb2,
-     homefinalIterPredstpComb2,
      homefinalIterPredsComb2,
      
      awayfinalIterPredstdComb2,
      awayfinalIterPredsfgComb2,
-     awayfinalIterPredsxpComb2,
-     awayfinalIterPredstpComb2,
      awayfinalIterPredsComb2,
-     file = "~/Desktop/NFL Analysis Data/iter data Multi2.RData")
+     file = "~/Desktop/NFL Analysis Data/iter data Multi3.RData")
 
 ## Diagnostics ----
 
@@ -2809,24 +2847,24 @@ dim(homefinalIterFitComb2[[1]])
 
 homefinalIterPredstd2 <- do.call(cbind, homefinalIterPredstdComb2)
 homefinalIterPredsfg2 <- do.call(cbind, homefinalIterPredsfgComb2)
-homefinalIterPredsxp2 <- do.call(cbind, homefinalIterPredsxpComb2)
-homefinalIterPredstp2 <- do.call(cbind, homefinalIterPredstpComb2)
+# homefinalIterPredsxp2 <- do.call(cbind, homefinalIterPredsxpComb2)
+# homefinalIterPredstp2 <- do.call(cbind, homefinalIterPredstpComb2)
 awayfinalIterPredstd2 <- do.call(cbind, awayfinalIterPredstdComb2)
 awayfinalIterPredsfg2 <- do.call(cbind, awayfinalIterPredsfgComb2)
-awayfinalIterPredsxp2 <- do.call(cbind, awayfinalIterPredsxpComb2)
-awayfinalIterPredstp2 <- do.call(cbind, awayfinalIterPredstpComb2)
+# awayfinalIterPredsxp2 <- do.call(cbind, awayfinalIterPredsxpComb2)
+# awayfinalIterPredstp2 <- do.call(cbind, awayfinalIterPredstpComb2)
 
 homefinalIterPreds <- 
   7*homefinalIterPredstd2 +
   3*homefinalIterPredsfg2 #+
-1*homefinalIterPredsxp2 +
-  2*homefinalIterPredstp2
+# 1*homefinalIterPredsxp2 +
+#   2*homefinalIterPredstp2
 
 awayfinalIterPreds <- 
   7*awayfinalIterPredstd2 +
   3*awayfinalIterPredsfg2 #+
-1*awayfinalIterPredsxp2 +
-  2*awayfinalIterPredstp2
+# 1*awayfinalIterPredsxp2 +
+#   2*awayfinalIterPredstp2
 
 ## PPD Plots
 homeIterPPDbarstd <- ppc_bars(y = modelData$home_totalTD, 
@@ -2837,14 +2875,14 @@ homeIterPPDbarsfg <- ppc_bars(y = modelData$home_fg_made,
                               yrep = homefinalIterPredsfg2[sample(1:sims, 100, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home IterPPD fg")) +
   theme_bw()
-homeIterPPDbarsxp <- ppc_bars(y = modelData$home_pat_made, 
-                              yrep = homefinalIterPredsxp2[sample(1:sims, 100, replace = FALSE), ]) + 
-  labs(title = paste0("Fit", fit, " Home IterPPD xp")) +
-  theme_bw()
-homeIterPPDbarstp <- ppc_bars(y = modelData$home_twoPtConv, 
-                              yrep = homefinalIterPredstp2[sample(1:sims, 100, replace = FALSE), ]) + 
-  labs(title = paste0("Fit", fit, " Home IterPPD tp")) +
-  theme_bw()
+# homeIterPPDbarsxp <- ppc_bars(y = modelData$home_pat_made, 
+#                               yrep = homefinalIterPredsxp2[sample(1:sims, 100, replace = FALSE), ]) + 
+#   labs(title = paste0("Fit", fit, " Home IterPPD xp")) +
+#   theme_bw()
+# homeIterPPDbarstp <- ppc_bars(y = modelData$home_twoPtConv, 
+#                               yrep = homefinalIterPredstp2[sample(1:sims, 100, replace = FALSE), ]) + 
+#   labs(title = paste0("Fit", fit, " Home IterPPD tp")) +
+#   theme_bw()
 
 awayIterPPDbarstd <- ppc_bars(y = modelData$away_totalTD, 
                               yrep = awayfinalIterPredstd2[sample(1:sims, 100, replace = FALSE), ]) + 
@@ -2854,24 +2892,24 @@ awayIterPPDbarsfg <- ppc_bars(y = modelData$away_fg_made,
                               yrep = awayfinalIterPredsfg2[sample(1:sims, 100, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Away IterPPD fg")) +
   theme_bw()
-awayIterPPDbarsxp <- ppc_bars(y = modelData$away_pat_made, 
-                              yrep = awayfinalIterPredsxp2[sample(1:sims, 100, replace = FALSE), ]) + 
-  labs(title = paste0("Fit", fit, " Away IterPPD xp")) +
-  theme_bw()
-awayIterPPDbarstp <- ppc_bars(y = modelData$away_twoPtConv, 
-                              yrep = awayfinalIterPredstp2[sample(1:sims, 100, replace = FALSE), ]) + 
-  labs(title = paste0("Fit", fit, " Away IterPPD tp")) +
-  theme_bw()
+# awayIterPPDbarsxp <- ppc_bars(y = modelData$away_pat_made, 
+#                               yrep = awayfinalIterPredsxp2[sample(1:sims, 100, replace = FALSE), ]) + 
+#   labs(title = paste0("Fit", fit, " Away IterPPD xp")) +
+#   theme_bw()
+# awayIterPPDbarstp <- ppc_bars(y = modelData$away_twoPtConv, 
+#                               yrep = awayfinalIterPredstp2[sample(1:sims, 100, replace = FALSE), ]) + 
+#   labs(title = paste0("Fit", fit, " Away IterPPD tp")) +
+#   theme_bw()
 
 homeIterPPDbarstd
 homeIterPPDbarsfg
-homeIterPPDbarsxp
-homeIterPPDbarstp
+# homeIterPPDbarsxp
+# homeIterPPDbarstp
 
 awayIterPPDbarstd
 awayIterPPDbarsfg
-awayIterPPDbarsxp
-awayIterPPDbarstp
+# awayIterPPDbarsxp
+# awayIterPPDbarstp
 
 
 
@@ -2984,7 +3022,7 @@ spreadPPDbars
 
 ##### Prob Errors ----
 ##### Fit ----
-spreadLineTrain <- modelData1$spread_line
+spreadLineTrain <- modelData$spread_line
 #spreadTrain <- as.numeric(spreadTrainScale*attr(spreadTrainScale, "scaled:scale") + attr(spreadTrainScale, "scaled:center"))
 
 FittedIterProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTrain))
@@ -3121,7 +3159,7 @@ totalPPD
 
 ##### Prob Errors ----
 ##### Fit ----
-totalLineTrain <- modelData1$total_line
+totalLineTrain <- modelData$total_line
 #totalTrain <- as.numeric(totalTrainScale*attr(totalTrainScale, "scaled:scale") + attr(totalTrainScale, "scaled:center"))
 
 FittedIterProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTrain))
@@ -3228,7 +3266,7 @@ ppc_error_scatter_avg(modelData1$result, PredsIterSpread)
 ppc_error_scatter_avg(modelData1$total, FittedIterTotal)
 ppc_error_scatter_avg(modelData1$total, PredsIterTotal)
 
-ppc_error_scatter_avg_vs_x(modelData1$result, FittedIterSpread, modelData$home_OSRS)
+ppc_error_scatter_avg_vs_x(modelData1$result, FittedIterSpread, modelData$home_SRS)
 ppc_error_scatter_avg_vs_x(modelData1$result, PredsIterSpread, modelData$home_OSRS)
 ppc_error_scatter_avg_vs_x(modelData1$total, FittedIterTotal, modelData$home_OSRS)
 ppc_error_scatter_avg_vs_x(modelData1$total, PredsIterTotal, modelData$home_OSRS)

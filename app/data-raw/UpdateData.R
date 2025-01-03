@@ -99,7 +99,7 @@ rm(playerOffenseData)
 ## seasonStandings ------------------------------
 ### Initial
 source("./app/data-raw/seasonStandings.R")
-#save(seasonStandings, file = "./app/data/seasonStandings.RData")
+save(seasonStandings, file = "./app/data/seasonStandings.RData")
 
 dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 

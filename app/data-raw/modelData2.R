@@ -736,17 +736,17 @@ save(modData, file = "./app/data/modData.RData")
 save(seriesData, file = "./app/data/seriesData.RData")
 save(nflStatsWeek, file = "./app/data/nflStatsWeek.RData")
 
-save(epaData3, file = "~/Desktop/epaData3.RData")
-save(srsData, file = "~/Desktop/srsData.RData")
-save(scoresData, file = "~/Desktop/scoresData.RData")
-save(seriesData, file = "~/Desktop/seriesData.RData")
-save(modData, file = "~/Desktop/modData.RData")
-
-load(file = "~/Desktop/epaData3.RData")
-load(file = "~/Desktop/srsData.RData")
-load(file = "~/Desktop/scoresData.RData")
-load(file = "~/Desktop/seriesData.RData")
-load(file = "~/Desktop/modData.RData")
+# save(epaData3, file = "~/Desktop/epaData3.RData")
+# save(srsData, file = "~/Desktop/srsData.RData")
+# save(scoresData, file = "~/Desktop/scoresData.RData")
+# save(seriesData, file = "~/Desktop/seriesData.RData")
+# save(modData, file = "~/Desktop/modData.RData")
+# 
+# load(file = "~/Desktop/epaData3.RData")
+# load(file = "~/Desktop/srsData.RData")
+# load(file = "~/Desktop/scoresData.RData")
+# load(file = "~/Desktop/seriesData.RData")
+# load(file = "~/Desktop/modData.RData")
 
 rm(list = ls()[ls() != "modData"])
 

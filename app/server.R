@@ -24,13 +24,13 @@ source(file = "./data-raw/gameDataLong.R")
 ## Player Data ----
 ### Offense ----
 #playerOffenseData <- tbl(con, "playerOffenseData")
-load(file = "./data/playerOffenseData.RData")
+load(file = "./data/playerOffenseData.rda")
 
 # Load Historical Data ----
 load(file = "./data/seasonStandings.rda")
 #seasonStandings <- tbl(con, "seasonStandings")
 
-source(file = "./data-raw/modelData.R")
+load(file = "./data/modData.RData")
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
