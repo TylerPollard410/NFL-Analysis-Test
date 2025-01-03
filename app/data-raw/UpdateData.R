@@ -27,6 +27,7 @@ con <- dbConnect(RPostgres::Postgres(),
 
 ## List Tables ----
 dbListTables(con)
+dbRemoveTable(conn = con, name = "seasonWeekStandings")
 
 # Universal Variables ----
 allSeasons <- 2006:most_recent_season()
@@ -41,12 +42,12 @@ gameIDs <- load_schedules(seasons = allSeasons) |>
 source("./app/data-raw/gameData.R")
 
 ### Initial 
-dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
+#dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
 
 ## gameDataLong -------------------------------
 source("./app/data-raw/gameDataLong.R")
 
-dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
+#dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
 
 ## pbpData ------------------------------
 ### Initial
@@ -89,9 +90,9 @@ rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 ## playerOffenseData ---------------------------
 source("./app/data-raw/playerOffenseData.R")
-#save(playerOffenseData, file = "./app/data/playerOffenseData.RData")
+save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
 
-dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
+#dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
 dbListTables(con)
 rm(playerOffenseData)
@@ -99,9 +100,9 @@ rm(playerOffenseData)
 ## seasonStandings ------------------------------
 ### Initial
 source("./app/data-raw/seasonStandings.R")
-save(seasonStandings, file = "./app/data/seasonStandings.RData")
+save(seasonStandings, file = "./app/data/seasonStandings.rda")
 
-dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
+#dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 
 dbListTables(con)
 rm(seasonStandings)
@@ -109,9 +110,9 @@ rm(seasonStandings)
 ## seasonWeekStandings ------------------------------
 ### Initial
 source("./app/data-raw/seasonWeekStandings.R")
-# save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.RData")
+save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 
-dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
+#dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
 
 dbListTables(con)
 rm(seasonWeekStandings)

@@ -28,7 +28,7 @@ library(tidyverse)
 
 ## Historical season games ----
 seasonStandings <- data.frame()
-seasonStandingsConvergence <- data.frame()
+# seasonStandingsConvergence <- data.frame()
 
 for(i in allSeasons){
   gameDataTemp <- gameData |>
@@ -134,10 +134,10 @@ for(i in allSeasons){
     mutate(season = i, .before = 1) |>
     arrange(team)
   
-  seasonStandingsConvergence <- rbind(
-    seasonStandingsConvergence,
-    data.frame(season = i, Converge = k)
-  )
+  # seasonStandingsConvergence <- rbind(
+  #   seasonStandingsConvergence,
+  #   data.frame(season = i, Converge = k)
+  # )
   
   seasonStandings <- rbind(seasonStandings, standingTemp)
   
@@ -210,15 +210,15 @@ seasonStandings <- seasonStandings |>
   )
 
 # Save to data folder ----
-save(
-  seasonStandings,
-  file = "./app/data/seasonStandings.rda"
-)
+# save(
+#   seasonStandings,
+#   file = "./app/data/seasonStandings.rda"
+# )
 
 # Remove supp Vars ----
 rm(gameDataTemp,
    gameDataLongTemp,
-   seasonStandingsConvergence,
+   # seasonStandingsConvergence,
    seasonStandingsNFLverse,
    standingTemp,
    i, k,
