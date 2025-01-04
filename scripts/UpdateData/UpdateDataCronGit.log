@@ -1,0 +1,88 @@
+-- Attaching packages ---------------------------------------- nflverse 1.0.3 --
+v nflfastR 5.0.0     v nflreadr 1.4.1
+v nflseedR 1.2.0     v nflplotR 1.4.0
+v nfl4th   1.0.4     
+---------------------------------------------------------------- Ready to go! --
+-- Attaching core tidyverse packages ------------------------ tidyverse 2.0.0 --
+v dplyr     1.1.4     v readr     2.1.5
+v forcats   1.0.0     v stringr   1.5.1
+v ggplot2   3.5.1     v tibble    3.2.1
+v lubridate 1.9.3     v tidyr     1.3.1
+v purrr     1.0.2     
+-- Conflicts ------------------------------------------ tidyverse_conflicts() --
+x dplyr::filter() masks stats::filter()
+x dplyr::lag()    masks stats::lag()
+i Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+Converged after 14 iterations.
+Season 2006 
+Converged after 16 iterations.
+Season 2007 
+Converged after 17 iterations.
+Season 2008 
+Converged after 16 iterations.
+Season 2009 
+Converged after 17 iterations.
+Season 2010 
+Converged after 17 iterations.
+Season 2011 
+Converged after 22 iterations.
+Season 2012 
+Converged after 17 iterations.
+Season 2013 
+Converged after 16 iterations.
+Season 2014 
+Converged after 25 iterations.
+Season 2015 
+Converged after 16 iterations.
+Season 2016 
+Converged after 14 iterations.
+Season 2017 
+Converged after 17 iterations.
+Season 2018 
+Converged after 16 iterations.
+Season 2019 
+Converged after 16 iterations.
+Season 2020 
+Converged after 14 iterations.
+Season 2021 
+Converged after 13 iterations.
+Season 2022 
+Converged after 13 iterations.
+Season 2023 
+Converged after 16 iterations.
+Season 2024 
+Reached maximum iterations =  200 without full convergence.
+Season 2024 Week 1 
+Reached maximum iterations =  200 without full convergence.
+Season 2024 Week 2 
+Converged after 65 iterations.
+Season 2024 Week 3 
+Converged after 32 iterations.
+Season 2024 Week 4 
+Converged after 27 iterations.
+Season 2024 Week 5 
+Converged after 27 iterations.
+Season 2024 Week 6 
+Converged after 24 iterations.
+Season 2024 Week 7 
+Converged after 21 iterations.
+Season 2024 Week 8 
+Converged after 22 iterations.
+Season 2024 Week 9 
+Converged after 23 iterations.
+Season 2024 Week 10 
+Converged after 21 iterations.
+Season 2024 Week 11 
+Converged after 22 iterations.
+Season 2024 Week 12 
+Converged after 21 iterations.
+Season 2024 Week 13 
+Converged after 20 iterations.
+Season 2024 Week 14 
+Converged after 18 iterations.
+Season 2024 Week 15 
+Converged after 17 iterations.
+Season 2024 Week 16 
+Converged after 16 iterations.
+Season 2024 Week 17 
+17.552 sec elapsed

@@ -10,7 +10,7 @@ cmd2 <- cron_rscript(path2)
 
 cron_add(command = cmd1, 
          frequency = "daily", 
-         at = "21:00", 
+         at = "21:13", 
          id = "test1",
          description = "My process 1"
 )
@@ -21,6 +21,12 @@ cron_add(command = cmd2,
          description = "My process 2"
 )
 
+## cronR job
+## id:   updateNFLdata
+## tags: 
+## desc: Automated script to update nfl data for app
+47 21 * * * '/Users/tylerpollard/Desktop/NFLAnalysisTest/UpdateDataCronGit.sh'  >> '/Users/tylerpollard/Desktop/NFLAnalysisTest/UpdateDataCronGit.log' 2>&1
+
 cron_ls()
 
-cron_rm("job_eca3e1bd13736aff8749d48be8b42aa4")
+cron_rm("job_abc0f4a0148a92b5520c5760f78d983e")
