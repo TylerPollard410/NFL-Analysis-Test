@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/Library/Frameworks/R.framework/Resources/bin/Rscript '/Users/tylerpollard/Desktop/NFLAnalysisTest/scripts/UpdateData/UpdateDataCronScript.R'
+/Library/Frameworks/R.framework/Resources/bin/Rscript '/Users/tylerpollard/Desktop/NFLAnalysisTest/scripts/UpdateData/UpdateData.R'
 
 # Navigate to the local Git repository
 cd /Users/tylerpollard/Desktop/NFLAnalysisTest
