@@ -576,3 +576,9 @@ i Use the conflicted package (<http://conflicted.r-lib.org/>) to force all confl
 [372] "pbpData updated 2025-01-03 11:01:05 EST with 901563 rows and pass_oe cols."                             
 Error in tic() : could not find function "tic"
 Execution halted
+[main ed6dbfd] Auto-update: 2025-01-04 01:30:49
+ 5 files changed, 540 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/UpdateData/UpdateData.R
+ rename scripts/UpdateData/{UpdataData.R => UpdateDataAWS.R} (100%)
+To github.com:TylerPollard410/NFL-Analysis-Test.git
+   3348e03..ed6dbfd  main -> main

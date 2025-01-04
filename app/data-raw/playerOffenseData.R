@@ -1,6 +1,6 @@
 ## playerOffense Data
-library(nflverse)
-library(tidyverse)
+require(nflverse)
+require(tidyverse)
 
 playerOffenseData <- load_player_stats(
   seasons = allSeasons,

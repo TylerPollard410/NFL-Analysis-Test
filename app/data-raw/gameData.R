@@ -1,6 +1,6 @@
 ## Create Game Data for App
-library(nflverse)
-library(tidyverse)
+require(nflverse)
+require(tidyverse)
 
 # Create game data -----
 allSeasons <- 2006:most_recent_season()

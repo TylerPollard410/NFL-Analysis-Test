@@ -4,13 +4,20 @@
 
 
 # Libraries ----
+## Helpers ----
+library(tictoc)
+library(progressr)
+
 ## Database 
 library(future)
 library(DBI)
 library(RPostgres)
 
-## seasonStandings
+## Manipulate Data ----
 library(DescTools)
+library(stringr)
+library(pracma)
+library(timetk)
 
 ## nflverse
 library(nflverse)
@@ -85,7 +92,7 @@ pbpDataUpdateRows <- pbpData_tbl |>
   pull(game_id) |>
   length()
 
-pbpDataUpdateCols <- pbpData_tbl$lazy_query$vars
+pbpDataUpdateCols <- length(pbpData_tbl$lazy_query$vars)
 
 pbpDataDate <- attributes(pbpDataUpdate)$nflverse_timestamp
 paste0("pbpData updated ", pbpDataDate, 

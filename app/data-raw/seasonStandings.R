@@ -1,11 +1,11 @@
 # Libraries ----
-library(DescTools)
+require(DescTools)
 
 ## NFL Verse ----
-library(nflverse)
+require(nflverse)
 
 ## Tidyverse ----
-library(tidyverse)
+require(tidyverse)
 
 # Load nflverse data ----
 # allSeasons <- 2006:most_recent_season()

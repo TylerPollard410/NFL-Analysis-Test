@@ -1,6 +1,6 @@
 ## Create Game Data for App
-library(nflverse)
-library(tidyverse)
+require(nflverse)
+require(tidyverse)
 
 gameDataLong <- gameData |>
   clean_homeaway(invert = c("result", "spread_line")) |>
