@@ -748,7 +748,7 @@ modDataLong <- modData |>
 # load(file = "~/Desktop/seriesData.RData")
 # load(file = "~/Desktop/modData.RData")
 
-rm(list = ls()[ls() != "modData"])
+#rm(list = ls()[ls() != "modData"])
 
 # xpData <- modData |>
 #   select(
