@@ -25,7 +25,7 @@ cron_add(command = cmd2,
 ## id:   updateNFLdata
 ## tags: 
 ## desc: Automated script to update nfl data for app
-47 21 * * * '/Users/tylerpollard/Desktop/NFLAnalysisTest/UpdateDataCronGit.sh'  >> '/Users/tylerpollard/Desktop/NFLAnalysisTest/UpdateDataCronGit.log' 2>&1
+55 21 * * * '/Users/tylerpollard/Desktop/NFLAnalysisTest/scripts/UpdateData/UpdateDataCronGit.sh'  >> '/Users/tylerpollard/Desktop/NFLAnalysisTest/scripts/UpdateData/UpdateDataCronGit.log' 2>&1
 
 cron_ls()
 
