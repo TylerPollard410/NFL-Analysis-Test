@@ -16,7 +16,7 @@ library(nflverse)
 library(tidyverse)
 
 # Set wd ----
-setwd("/Users/tylerpollard/Desktop/NFL Analysis Test")
+setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
 
 # Amazon RDS connection ----
 plan("multisession")
@@ -35,20 +35,20 @@ plan("multisession")
 allSeasons <- 2006:most_recent_season()
 teamsData <- load_teams(current = FALSE)
 
-gameIDs <- load_schedules(seasons = allSeasons) |>
-  filter(!is.na(result)) |>
-  pull(game_id)
+# gameIDs <- load_schedules(seasons = allSeasons) |>
+#   filter(!is.na(result)) |>
+#   pull(game_id)
 
 # Load/Updata Data ----
 ## gameData -------------------------------
 source("./app/data-raw/gameData.R")
-save(gameData, file = "./app/data/gameData.rda")
+#save(gameData, file = "./app/data/gameData.rda")
 
 ### Initial 
 #dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
 
 ## gameDataLong -------------------------------
-#source("./app/data-raw/gameDataLong.R")
+source("./app/data-raw/gameDataLong.R")
 
 #dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
 
@@ -91,9 +91,9 @@ save(gameData, file = "./app/data/gameData.rda")
 # rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 # 
 # 
-# ## playerOffenseData ---------------------------
-# source("./app/data-raw/playerOffenseData.R")
-# save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
+## playerOffenseData ---------------------------
+source("./app/data-raw/playerOffenseData.R")
+save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
 # fst::write_fst(playerOffenseData, 
 #                path = "./app/data/playerOffenseData.fst",
 #                compress = 100)
@@ -103,20 +103,20 @@ save(gameData, file = "./app/data/gameData.rda")
 # dbListTables(con)
 # rm(playerOffenseData)
 # 
-# ## seasonStandings ------------------------------
+## seasonStandings ------------------------------
 # ### Initial
-# source("./app/data-raw/seasonStandings.R")
-# save(seasonStandings, file = "./app/data/seasonStandings.rda")
+source("./app/data-raw/seasonStandings.R")
+save(seasonStandings, file = "./app/data/seasonStandings.rda")
 # 
 # #dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 # 
 # dbListTables(con)
 # rm(seasonStandings)
 # 
-# ## seasonWeekStandings ------------------------------
+## seasonWeekStandings ------------------------------
 # ### Initial
-# source("./app/data-raw/seasonWeekStandings.R")
-# save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
+source("./app/data-raw/seasonWeekStandings.R")
+save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 # 
 # #dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
 # 
@@ -124,7 +124,7 @@ save(gameData, file = "./app/data/gameData.rda")
 # rm(seasonWeekStandings)
 # 
 # 
-# ## Disconnect -----
+## Disconnect -----
 # dbDisconnect(con)
 # rm(list = ls())
 
