@@ -27,7 +27,7 @@ con <- dbConnect(RPostgres::Postgres(),
 
 ## List Tables ----
 dbListTables(con)
-dbRemoveTable(conn = con, name = "seasonWeekStandings")
+#dbRemoveTable(conn = con, name = "seasonWeekStandings")
 
 # Universal Variables ----
 allSeasons <- 2006:most_recent_season()
@@ -84,42 +84,59 @@ pbpDataUpdateRows <- pbpData_tbl |>
 
 pbpDataUpdateCols <- pbpData_tbl$lazy_query$vars
 
-dbListTables(con)
+pbpDataDate <- attributes(pbpDataUpdate)$nflverse_timestamp
+paste0("pbpData updated ", pbpDataDate, 
+       " with ", pbpDataUpdateRows, " rows and ",
+       pbpDataUpdateCols, " cols.")
+
+save(pbpDataDate, file = "./app/data/pbpDataDate.rda")
+
+#dbListTables(con)
 rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 
 ## playerOffenseData ---------------------------
+tic()
 source("./app/data-raw/playerOffenseData.R")
 save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
-fst::write_fst(playerOffenseData, 
-               path = "./app/data/playerOffenseData.fst",
-               compress = 100)
+toc()
+# fst::write_fst(playerOffenseData, 
+#                path = "./app/data/playerOffenseData.fst",
+#                compress = 100)
 
 #dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
-dbListTables(con)
-rm(playerOffenseData)
+#dbListTables(con)
+#rm(playerOffenseData)
 
 ## seasonStandings ------------------------------
 ### Initial
+tic()
 source("./app/data-raw/seasonStandings.R")
 save(seasonStandings, file = "./app/data/seasonStandings.rda")
-
+toc()
 #dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
 
-dbListTables(con)
-rm(seasonStandings)
+#dbListTables(con)
+#rm(seasonStandings)
 
 ## seasonWeekStandings ------------------------------
 ### Initial
+tic()
 source("./app/data-raw/seasonWeekStandings.R")
 save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
+toc()
 
 #dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
 
-dbListTables(con)
-rm(seasonWeekStandings)
+#dbListTables(con)
+#rm(seasonWeekStandings)
 
+## modData ----
+tic()
+source("./app/data-raw/modData.R")
+save(modData, file = "./app/data/modData.rda")
+toc()
 
 ## Disconnect -----
 dbDisconnect(con)

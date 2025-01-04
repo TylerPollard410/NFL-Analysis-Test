@@ -32,11 +32,11 @@ load(file = "./app/data/seasonWeekStandings.rda")
 seasonWeekStandings <- seasonWeekStandings |>
   filter(season != 2024)
 #seasonWeekStandingsConvergence <- data.frame()
-allSeasons <- 2024
-gameData <- gameData |> filter(season == 2024)
+newSeasons <- 2024
+#gameData <- gameData |> filter(season == 2024)
 
 tic()
-for(i in allSeasons){
+for(i in newSeasons){
   gameDataSeason <- gameData |>
     filter(season == i) |>
     #filter(game_type == "REG")
