@@ -28,7 +28,7 @@ modDataPlotOutput <- function(id){
 # Server Module ----
 modDataPlotServer <- function(id,
                               teamsData,
-                              modData,
+                              modDataLong,
                               modPlotInputs){
   moduleServer(id, function(input, output, session){
     seasons <- reactive(modPlotInputs$seasons())
@@ -43,10 +43,11 @@ modDataPlotServer <- function(id,
     corType <- reactive(modPlotInputs$corType())
     
     modPlotData <- reactive({
-      modData |>
+      modDataLong |>
         filter(season %in% seasons()[1]:seasons()[2],
                season_type %in% gameType(),
-               home_team %in% teams() | away_team %in% teams()) |>
+               #home_team %in% teams() | away_team %in% teams()) |>
+               team %in% teams()) |>
         mutate(
           season = factor(season),
           week = factor(week)
@@ -54,8 +55,8 @@ modDataPlotServer <- function(id,
         select(
           season,
           season_type,
-          home_team,
-          away_team,
+          team,
+          #away_team,
           xVar(),
           yVar(),
           colorVar(),

@@ -72,9 +72,9 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
 # Server Module ----
 modDataPlotInputServer <- function(id,
                                    teamsData,
-                                   modData){
+                                   modDataLong){
   
-  xVarOptions <- modData |> select(c(-contains("id"))) |> colnames()
+  xVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
   moduleServer(id, function(input, output, session){
     output$xVarUI <- renderUI({
       pickerInput(
@@ -92,7 +92,7 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    yVarOptions <- modData |> select(c(-contains("id"))) |> colnames()
+    yVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
     output$yVarUI <- renderUI({
       pickerInput(
         inputId = NS(id, "yVar"),
@@ -109,7 +109,7 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    colorVarOptions <- modData |> select(c(-contains("id"))) |> colnames()
+    colorVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
     output$colorVarUI <- renderUI({
       pickerInput(
         inputId = NS(id, "colorVar"),
@@ -126,7 +126,7 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    facetVarOptions <- modData |> select(c(season, week, where(is.character), -contains("id"))) |> colnames()
+    facetVarOptions <- modDataLong |> select(c(season, week, where(is.character), -contains("id"))) |> colnames()
     output$facetVarUI <- renderUI({
       pickerInput(
         inputId = NS(id, "facetVar"),

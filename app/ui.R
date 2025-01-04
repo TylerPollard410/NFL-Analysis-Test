@@ -50,14 +50,14 @@ library(caret)
 library(splines)
 library(mgcv)
 library(DescTools)
-library(car)
-library(bayesplot)
-library(BayesFactor)
-library(rstanarm)
-library(tidybayes)
-library(loo)
-library(brms)
-library(performance)
+# library(car)
+# library(bayesplot)
+# library(BayesFactor)
+# library(rstanarm)
+# library(tidybayes)
+# library(loo)
+# library(brms)
+# library(performance)
 
 ## NFL Verse ----
 library(nflverse)
@@ -108,6 +108,7 @@ shinyUI(
                     color = "primary"
                   ),
                   compact = FALSE,
+                  fixed = TRUE,
                   rightUi = tags$li(
                     class = "dropdown",
                     dropdownMenu(
@@ -148,7 +149,7 @@ shinyUI(
                   id = "sidebar",
                   skin = "dark",
                   elevation = 5,
-                  fixed = FALSE,
+                  fixed = TRUE,
                   minified = FALSE,
                   status = "primary",
                   compact = TRUE,

@@ -27,11 +27,15 @@ source(file = "./data-raw/gameDataLong.R")
 #load(file = "./data/playerOffenseData.rda")
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/playerOffenseData.rda"))
 
-# Load Historical Data ----
-load(file = "./data/seasonStandings.rda")
+## seasonStandings ----
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/seasonStandings.rda"))
 #seasonStandings <- tbl(con, "seasonStandings")
 
-load(file = "./data/modData.RData")
+## modData ----
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
+
+modDataLong <- modData |>
+  clean_homeaway(invert = c("result", "spread_line"))
 
 # Source files ============================================
 #source(file = "Testing Scripts/SummaryPlayerFunctions.R")
@@ -221,11 +225,11 @@ shinyServer(function(input, output, session) {
   ## Plot ====================================
   modPlotInputs <- modDataPlotInputServer("modDataPlotInput",
                                           teamsData,
-                                          modData)
+                                          modDataLong)
   
   modDataPlotServer("modPlot",
                     teamsData,
-                    modData,
+                    modDataLong,
                     modPlotInputs)
   
   # Prediction Tab  #########################################
