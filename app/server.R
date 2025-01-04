@@ -24,7 +24,8 @@ source(file = "./data-raw/gameDataLong.R")
 ## Player Data ----
 ### Offense ----
 #playerOffenseData <- tbl(con, "playerOffenseData")
-load(file = "./data/playerOffenseData.rda")
+#load(file = "./data/playerOffenseData.rda")
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/playerOffenseData.rda"))
 
 # Load Historical Data ----
 load(file = "./data/seasonStandings.rda")

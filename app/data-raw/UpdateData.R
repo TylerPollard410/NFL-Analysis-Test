@@ -91,6 +91,9 @@ rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 ## playerOffenseData ---------------------------
 source("./app/data-raw/playerOffenseData.R")
 save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
+fst::write_fst(playerOffenseData, 
+               path = "./app/data/playerOffenseData.fst",
+               compress = 100)
 
 #dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
 
