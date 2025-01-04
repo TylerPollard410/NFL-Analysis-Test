@@ -48,6 +48,7 @@ modDataPlotServer <- function(id,
                season_type %in% gameType(),
                #home_team %in% teams() | away_team %in% teams()) |>
                team %in% teams()) |>
+        filter(!is.na(result)) |>
         mutate(
           season = factor(season),
           week = factor(week)

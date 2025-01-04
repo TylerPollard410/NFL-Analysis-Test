@@ -40,7 +40,7 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
     ),
     radioGroupButtons(
       inputId = NS(id, "statType"),
-      label = "Table Statistic",
+      label = "Data Level Type",
       choices = c("Team", "Game"),
       status = "info"
     ),

@@ -716,21 +716,60 @@ modData <- gameData |>
     away_rush_net_epa_roll = away_off_rush_epa_roll + home_def_rush_epa_roll,
     away_penalty_net_epa_cum = away_off_penalty_epa_cum + home_def_penalty_epa_cum,
     away_penalty_net_epa_roll = away_off_penalty_epa_roll + home_def_penalty_epa_roll,
-    PFG_net = home_PFG - away_PAG,
-    PAG_net = away_PFG - home_PAG,
-    MOV_net = home_MOV - away_MOV,
-    SOS_net = home_SOS - away_SOS,
-    SRS_net = home_SRS - away_SRS,
-    OSRS_net = home_OSRS - away_DSRS,
-    DSRS_net = away_DSRS - home_DSRS
+    #home_PFG_net = home_PFG - away_PAG,
+    #home_PAG_net = away_PFG - home_PAG,
+    home_MOV_net = home_MOV - away_MOV,
+    home_SOS_net = home_SOS - away_SOS,
+    home_SRS_net = home_SRS - away_SRS,
+    home_OSRS_net = home_OSRS - away_DSRS,
+    home_DSRS_net = home_DSRS - away_OSRS,
+    #away_PFG_net = away_PFG - home_PAG,
+    #away_PAG_net = home_PFG - away_PAG,
+    away_MOV_net = away_MOV - home_MOV,
+    away_SOS_net = away_SOS - home_SOS,
+    away_SRS_net = away_SRS - home_SRS,
+    away_OSRS_net = away_OSRS - home_DSRS,
+    away_DSRS_net = away_DSRS - home_OSRS
   ) |>
   mutate(
     temp = ifelse(is.na(temp), 68, temp),
     wind = ifelse(is.na(wind), 0, wind)
   )
 
-modDataLong <- modData |>
-  clean_homeaway(invert = c("result", "spread_line"))
+# modDataLong <- modData |>
+#   clean_homeaway(invert = c("result", "spread_line"))
+# 
+# modData |> 
+#   filter(season %in% 2023:2024, 
+#          home_team %in% c("KC", "BAL") | away_team %in% c("KC", "BAL")) |> 
+#   select(1:36, 
+#          contains("PFG"),
+#          contains("PAG"),
+#          contains("MOV"),
+#          contains("S0S"),
+#          contains("_SRS"),
+#          contains("OSRS"),
+#          contains("DSRS"),
+#          -contains("odds"),
+#          -contains("prob")
+#   ) |>
+#   view()
+# 
+# modDataLong |> 
+#   filter(season %in% 2023:2024, 
+#          team %in% c("KC", "BAL") | opponent %in% c("KC", "BAL")) |> 
+#   select(1:36, 
+#          contains("PFG"),
+#          contains("PAG"),
+#          contains("MOV"),
+#          contains("S0S"),
+#          contains("_SRS"),
+#          contains("OSRS"),
+#          contains("DSRS"),
+#          -contains("odds"),
+#          -contains("prob")
+#   ) |>
+#   view()
 
 # save(modData, file = "./app/data/modData.RData")
 # save(seriesData, file = "./app/data/seriesData.RData")
