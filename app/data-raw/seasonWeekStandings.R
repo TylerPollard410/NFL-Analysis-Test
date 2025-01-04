@@ -35,7 +35,7 @@ seasonWeekStandings <- seasonWeekStandings |>
 newSeasons <- 2024
 #gameData <- gameData |> filter(season == 2024)
 
-tic()
+#tic()
 for(i in newSeasons){
   gameDataSeason <- gameData |>
     filter(season == i) |>
@@ -156,7 +156,7 @@ for(i in newSeasons){
     cat("Season", i, "Week", j, "\n")
   }
 }
-toc()
+#toc()
 
 # Save to data folder ----
 # save(
@@ -165,7 +165,7 @@ toc()
 # )
 
 # Remove supp Vars ----
-allSeasons <- 2006:most_recent_season()
+#allSeasons <- 2006:most_recent_season()
 rm(gameDataTemp,
    gameDataLongTemp,
    gameDataSeason,

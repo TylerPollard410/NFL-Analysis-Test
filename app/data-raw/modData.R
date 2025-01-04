@@ -42,9 +42,9 @@ require(nflverse)
 ## Tidyverse
 require(tidyverse)
 
-#source("./app/data-raw/gameData.R")
-# source("./app/data-raw/gameDataLong.R")
-# source("./app/data-raw/pbpData.R")
+source("./app/data-raw/gameData.R")
+source("./app/data-raw/gameDataLong.R")
+source("./app/data-raw/pbpData.R")
 
 #seasonsMod <- 2021:2024
 #gameData <- gameData #|> filter(season %in% seasonsMod)
