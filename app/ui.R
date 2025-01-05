@@ -37,6 +37,7 @@ library(smplot2)
 library(patchwork)
 library(glue)
 library(scales)
+library(plotly)
 
 ## Modeling ----
 library(pracma)

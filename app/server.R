@@ -225,11 +225,11 @@ shinyServer(function(input, output, session) {
   ## Plot ====================================
   modPlotInputs <- modDataPlotInputServer("modDataPlotInput",
                                           teamsData,
-                                          modDataLong)
+                                          modData)
   
   modDataPlotServer("modPlot",
                     teamsData,
-                    modDataLong,
+                    modData,
                     modPlotInputs)
   
   # Prediction Tab  #########################################

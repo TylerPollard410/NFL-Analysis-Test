@@ -54,17 +54,39 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
       inputId = NS(id, "fitLine"),
       label = "Fit line?",
       value = FALSE,
-      status = "info"
+      status = "info", 
+      inline = TRUE
     ),
     conditionalPanel(condition = "input.fitLine",
                      ns = NS(id),
-                     radioGroupButtons(
-                       inputId = NS(id, "corType"),
-                       label = "Correlation Type",
-                       choices = c("pearson", "kendall", "spearman"),
-                       status = "info"
-                     ))
-    #uiOutput(outputId = NS(id, "corTypeUI"))
+                     tagList(
+                       radioGroupButtons(
+                         inputId = NS(id, "fitLineType"),
+                         label = "Smoothing method",
+                         choices = c("auto", "lm", "glm", "gam", "loess"),
+                         selected = "auto",
+                         status = "info"
+                       ),
+                       materialSwitch(
+                         inputId = NS(id, "fitLineSE"),
+                         label = "Show standard error?",
+                         value = FALSE,
+                         status = "info", 
+                         inline = TRUE
+                       )
+                     )
+    )
+    # conditionalPanel(condition = "input.fitLine && input.fitLineType == 'lm'",
+    #                  ns = NS(id),
+    #                  tagList(
+    #                    radioGroupButtons(
+    #                      inputId = NS(id, "corType"),
+    #                      label = "Correlation Type",
+    #                      choices = c("pearson", "kendall", "spearman"),
+    #                      status = "info"
+    #                    )
+    #                  )
+    # )
   )
 }
 
@@ -72,11 +94,48 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
 # Server Module ----
 modDataPlotInputServer <- function(id,
                                    teamsData,
-                                   modDataLong){
+                                   modData){
   
-  xVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
+  
   moduleServer(id, function(input, output, session){
+    
+    modPlotData <- reactive({
+      # data <- modData |>
+      #   filter(season %in% seasons()[1]:seasons()[2],
+      #          season_type %in% gameType(),
+      #          home_team %in% teams() | away_team %in% teams()) |>
+      #   #team %in% teams()) |>
+      #   filter(!is.na(result)) |>
+      #   mutate(
+      #     season = factor(season),
+      #     week = factor(week)
+      #   ) |>
+      #   select(
+      #     season,
+      #     season_type,
+      #     week,
+      #     home_team,
+      #     away_team,
+      #     xVar(),
+      #     yVar(),
+      #     colorVar(),
+      #     facetVar()
+      #   ) |>
+      #   mutate(
+      #     across(where(is.numeric),
+      #            ~round(.x, 2))
+      #   )
+      
+      if(input$statType == "Team"){
+        modData |>
+          clean_homeaway(invert = c("result", "spread_line"))
+      }else{
+        modData
+      }
+    })
+    
     output$xVarUI <- renderUI({
+      xVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
       pickerInput(
         inputId = NS(id, "xVar"),
         label = "X variable", 
@@ -92,8 +151,8 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    yVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
     output$yVarUI <- renderUI({
+      yVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
       pickerInput(
         inputId = NS(id, "yVar"),
         label = "Y variable", 
@@ -109,8 +168,8 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    colorVarOptions <- modDataLong |> select(c(-contains("id"))) |> colnames()
     output$colorVarUI <- renderUI({
+      colorVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
       pickerInput(
         inputId = NS(id, "colorVar"),
         label = "Color by:", 
@@ -126,8 +185,12 @@ modDataPlotInputServer <- function(id,
       )
     })
     
-    facetVarOptions <- modDataLong |> select(c(season, week, where(is.character), -contains("id"))) |> colnames()
     output$facetVarUI <- renderUI({
+      facetVarOptions <- modPlotData() |> 
+        select(
+          c(season, week, where(is.character), 
+            -contains("id"))) |> 
+        colnames()
       pickerInput(
         inputId = NS(id, "facetVar"),
         label = "Facet by:", 
@@ -164,7 +227,9 @@ modDataPlotInputServer <- function(id,
       colorVar = reactive(input$colorVar),
       facetVar = reactive(input$facetVar),
       fitLine = reactive(input$fitLine),
-      corType = reactive(input$corType)
+      fitLineType = reactive(input$fitLineType),
+      fitLineSE = reactive(input$fitLineSE)
+      #corType = reactive(input$corType)
     )
   })
 }
