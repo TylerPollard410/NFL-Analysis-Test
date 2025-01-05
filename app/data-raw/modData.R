@@ -736,8 +736,8 @@ modData <- gameData |>
     wind = ifelse(is.na(wind), 0, wind)
   )
 
-# modDataLong <- modData |>
-#   clean_homeaway(invert = c("result", "spread_line"))
+modDataLong <- modData |>
+  clean_homeaway(invert = c("result", "spread_line"))
 # 
 # modData |> 
 #   filter(season %in% 2023:2024, 
