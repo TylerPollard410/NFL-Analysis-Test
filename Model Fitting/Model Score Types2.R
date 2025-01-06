@@ -266,56 +266,68 @@ stanvars <- stanvar(scode = stan_likelihood, block = "functions")
 formula_homeTD <- 
   bf(
     home_totalTD ~ 
-      home_OSRS_net +
-      home_DSRS_net +
+      0 + Intercept +
+      s(home_OSRS_net) +
+      #home_DSRS_net +
       home_off_epa_roll + away_def_epa_roll +
       home_off_epa_roll:away_def_epa_roll + 
-      home_off_n + home_off_td +
-      home_off_n:home_off_td +
+      #home_off_n + 
+      home_off_td +
+      #home_off_n:home_off_td +
       home_def_n + home_def_td +
-      home_def_n:home_def_td +
+      #home_def_n:home_def_td +
       (1|H|home_team) +
       (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull",
+                 link = "softit"
+                 )
 
 #### Away ----
 formula_awayTD <- 
   bf(
     away_totalTD ~ 
-      away_OSRS_net +
-      away_DSRS_net +
-      away_off_epa_roll + home_def_epa_roll +
-      away_off_epa_roll:home_def_epa_roll + 
-      away_off_n + away_off_td +
+      0 + Intercept +
+      #away_OSRS_net +
+      #away_DSRS_net +
+      #away_off_epa_roll + 
+      s(home_def_epa_roll) +
+      #away_off_epa_roll:home_def_epa_roll + 
+      #away_off_n + 
+      away_off_td +
       away_off_n:away_off_td +
-      away_def_n + away_def_td +
-      away_def_n:away_def_td +
+      away_def_n + #away_def_td +
+      #away_def_n:away_def_td +
       (1|H|home_team) +
       (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull",
+                 link = "softit")
 
 ### FG ----
 #### Home ----
 formula_homeFG <- 
   bf(
     home_fg_made ~ 
+      0 + Intercept +
       home_SRS_net +
       home_off_n + home_off_fg +
       home_off_n:home_off_fg +
       (1|H|home_team) + 
       (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull", 
+                 link = "softit")
 
 #### Away ----
 formula_awayFG <- 
   bf(
     away_fg_made ~ 
+      0 + Intercept +
       away_SRS_net +
       away_off_n + away_off_fg +
       away_off_n:away_off_fg +
       (1|H|home_team) + 
       (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull")
+  ) + brmsfamily(family = "discrete_weibull", 
+                 link = "softit")
 
 ### SF ----
 #### Home ----
@@ -408,7 +420,7 @@ formula_homeScore <-
   bf(
     home_score ~ 6*homeTD + 3*homeFG + 2*homeSF + homeXP + 2*homeTP,
     homeTD ~ 
-      home_OSRS_net +
+      s(home_OSRS_net) +
       home_DSRS_net +
       home_off_epa_roll + away_def_epa_roll +
       home_off_epa_roll:away_def_epa_roll + 
@@ -479,6 +491,51 @@ formula_awayScore <-
     nl = TRUE
   ) #+ brmsfamily(family = "discrete_weibull")
 
+#### Combined ----
+##### Home ----
+formula_homeScore <- 
+  bf(
+    home_score ~ 
+      0 + Intercept +
+      s(home_OSRS_net) +
+      #home_DSRS_net +
+      home_off_epa_roll + away_def_epa_roll +
+      home_off_epa_roll:away_def_epa_roll + 
+      #home_off_n + 
+      home_off_td +
+      #home_off_n:home_off_td +
+      home_def_n + home_def_td +
+      home_SRS_net +
+      home_off_n + home_off_fg +
+      home_off_n:home_off_fg +
+      (1|H|home_team) +
+      (1|A|away_team)
+  ) + brmsfamily(family = "discrete_weibull",
+                 link = "identity")
+
+##### Away ----
+formula_awayScore <- 
+  bf(
+    away_score ~
+      0 + Intercept +
+      #away_OSRS_net +
+      #away_DSRS_net +
+      #away_off_epa_roll + 
+      s(home_def_epa_roll) +
+      #away_off_epa_roll:home_def_epa_roll + 
+      #away_off_n + 
+      away_off_td +
+      away_off_n:away_off_td +
+      away_def_n + #away_def_td +
+      #away_def_n:away_def_td +
+      away_SRS_net +
+      away_off_n + away_off_fg +
+      away_off_n:away_off_fg +
+      (1|H|home_team) + 
+      (1|A|away_team)
+  ) + brmsfamily(family = "discrete_weibull",
+                 link = "identity")
+
 ## Fit ----
 # priorPoints <- c(
 #   set_prior(horseshoe(df = 1, par_ratio = 0.3), class = "b", resp = "hometotalTD"),
@@ -513,6 +570,11 @@ priorPoints <- c(
   # prior(normal(0,5), class = "b", resp = "awaytwoPtConv")
 )
 
+priorPoints <- c(
+  prior(normal(0,5), class = "b", resp = "homescore"),
+  prior(normal(0,5), class = "b", resp = "awayscore")
+)
+
 # Fit the model using the custom family for total scores
 # model_nfl_code <- stancode(
 #   formula_home + formula_away,
@@ -534,12 +596,12 @@ priorPoints <- c(
 
 system.time(
   model_nfl_fit <- brm(
-    formula_homeTD + formula_awayTD +
-      formula_homeFG + formula_awayFG +
+    # formula_homeTD + formula_awayTD +
+    #   formula_homeFG + formula_awayFG +
       # formula_homeSF + formula_awaySF +
       # formula_homeXP + formula_awayXP +
       # formula_homeTP + formula_awayTP +
-      #formula_homeScore + formula_awayScore +
+      formula_homeScore + formula_awayScore +
       set_rescor(rescor = FALSE),
     data = histModelData,
     #family = custom_family,
@@ -559,7 +621,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 10
+fit <- 18
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
@@ -681,7 +743,39 @@ FitR2Pred <- bind_rows(
 )
 FitR2Pred <- FitR2tempPred
 
+# logNormalFitsmooths <- conditional_smooths(logNormalFit,
+#                                            method = "posterior_predict")
+# plot(logNormalFitsmooths, 
+#      stype = "raster", 
+#      ask = FALSE,
+#      theme = theme(legend.position = "bottom"))
+# plot(logNormalFitsmooths, 
+#      stype = "contour", 
+#      ask = FALSE,
+#      theme = theme(legend.position = "bottom"))
 
+# condplots ----
+Fitsmooth <- conditional_smooths(Fit, method = "posterior_predict")
+Fitsmooth <- conditional_smooths(Fit, method = "posterior_epred")
+plot(Fitsmooth,
+     stype = "contour",
+     ask = FALSE)
+
+Fiteffects <- conditional_effects(Fit, 
+                                  effects = c(
+                                    "home_OSRS_net",
+                                    "home_off_epa_roll",
+                                    "away_off_td",
+                                    "home_def_epa_roll",
+                                    "away_SRS_net",
+                                    "away_off_n"
+                                  ),
+                                  method = "posterior_epred", 
+                                  re_formula = NULL,
+                                  robust = FALSE)
+plot(Fiteffects, 
+     points = TRUE, 
+     ask = FALSE)
 
 performance_score(Fit)
 performance::check_distribution(Fit)
@@ -1422,6 +1516,7 @@ successPerf <- bind_rows(
   successPerfTemp
 )
 successPerf #<- successPerfTemp
+tail(successPerf, 10)
 
 ## Predict Week ----
 testWeekData <- modData2 |>

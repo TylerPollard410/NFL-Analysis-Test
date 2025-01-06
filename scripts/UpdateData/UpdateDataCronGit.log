@@ -120,3 +120,8 @@ Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
 elapsed time is 555.322000 seconds 
+[main e22b962] Auto-update: 2025-01-06 02:10:41
+ 9 files changed, 3021 insertions(+), 1394 deletions(-)
+ create mode 100644 Model Fitting/Model Score Types2.R
+To github.com:TylerPollard410/NFL-Analysis-Test.git
+   8934fb3..e22b962  main -> main
