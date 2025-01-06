@@ -1084,7 +1084,7 @@ formulaFitHomeTD <-
        home_off_pass_epa_roll:away_def_pass_epa_roll +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "zero_inflated_poisson")
+  ) + brmsfamily(family = "negbinomial")
 
 #### FG ----
 formulaFitHomeFG <- 
@@ -1128,7 +1128,7 @@ formulaFitHomeFG <-
        home_off_to:away_def_to +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "zero_inflated_poisson")
+  ) + brmsfamily(family = "discrete_weibull")
 
 ### Away ----
 #### TD ----
@@ -1166,7 +1166,7 @@ formulaFitAwayTD <-
        away_off_to:home_def_to +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "zero_inflated_poisson")
+  ) + brmsfamily(family = "discrete_weibull")
 #### FG ----
 formulaFitAwayFG <- 
   bf(away_fg_made|trunc(ub = 10) ~ 0 + Intercept +
@@ -1188,7 +1188,7 @@ formulaFitAwayFG <-
        home_SRS:away_SRS +
        (1|home_team) +
        (1|away_team)
-  ) + brmsfamily(family = "zero_inflated_poisson")
+  ) + brmsfamily(family = "discrete_weibull")
 
 ## Forms from sig2 ----
 ### Home ----
@@ -1367,17 +1367,23 @@ priorPoints <- c(
 )
 priorPoints <- c(
   prior(normal(0,5), class = "b", resp = "hometotalTD"),
-  prior(normal(0,5), class = "b", resp = "homefgmade"),
-  prior(normal(0,5), class = "b", resp = "awaytotalTD"),
-  prior(normal(0,5), class = "b", resp = "awayfgmade")
+  #prior(normal(0,5), class = "b", resp = "homefgmade"),
+  prior(normal(0,5), class = "b", resp = "awaytotalTD")
+  #prior(normal(0,5), class = "b", resp = "awayfgmade")
 )
 
 # 10 mins
 system.time(
-  Fit <- brm(
-    formulaFitHomeTD + formulaFitHomeFG + #formulaFitHomeXPA2 + 
-      #formulaFitHomeXP2 + formulaFitHomeTP2 + #formulaFitHomeSafe +
-      formulaFitAwayTD + formulaFitAwayFG + #formulaFitAwayXPA2 +
+  code <- stancode(
+    formulaFitHomeTD + 
+      #formulaFitHomeFG +
+      #formulaFitHomeXPA2 + 
+      #formulaFitHomeXP2 + 
+      #formulaFitHomeTP2 + 
+      #formulaFitHomeSafe +
+      formulaFitAwayTD + 
+      #formulaFitAwayFG +
+      #formulaFitAwayXPA2 +
       #formulaFitAwayXP2 + formulaFitAwayTP2 + #formulaFitAwaySafe +
       set_rescor(FALSE),
     data = histModelData,
@@ -1395,6 +1401,7 @@ system.time(
     backend = "cmdstan"
   )
 )
+code
 
 # system.time(
 #   Fit2 <- brm(
