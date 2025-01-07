@@ -89,6 +89,8 @@ modData2 <- modData |>
     total,
     total_line,
     totalCover,
+    contains("over"),
+    contains("under"),
     location,
     div_game,
     roof,
@@ -128,6 +130,8 @@ predictorData <- histModelData1 |>
          -contains("pat_att"),
          -contains("TDs"),
          -contains("spread"), 
+         -contains("over"),
+         -contains("under"),
          -contains("moneyline"),
          -contains("offTD"),
          -total_line,
@@ -266,25 +270,113 @@ stanvars <- stanvar(scode = stan_likelihood, block = "functions")
 # Define the formula for total scores
 ### TD ----
 #### Home ----
-formula_homeTD <- 
+formula_spread <- 
   bf(
-    home_totalTD ~ 
+    spreadCover ~ 
       0 + Intercept +
-      s(home_OSRS_net, bs = "cr") +
-      #home_DSRS_net +
+      spread_line +
+      home_SRS +
+      away_SRS +
+      home_SRS:away_SRS +
+      
       home_off_epa_roll + away_def_epa_roll +
       home_off_epa_roll:away_def_epa_roll + 
-      #home_off_n + 
+      away_off_epa_roll + home_def_epa_roll +
+      away_off_epa_roll:home_def_epa_roll + 
+      
+      home_off_n + 
       home_off_td +
-      #home_off_n:home_off_td +
-      home_def_n + home_def_td +
-      #home_def_n:home_def_td +
-      (1|mm(home_team, away_team, id = "H"))
+      away_def_td +
+      home_off_n:home_off_td +
+      home_off_td:away_def_td +
+      
+      away_off_n + 
+      away_off_td +
+      home_def_td +
+      away_off_n:away_off_td +
+      away_off_td:home_def_td +
+      
+      home_off_fg +
+      home_off_n:home_off_fg +
+      
+      away_off_fg +
+      away_off_n:away_off_fg +
+      
+      home_off_punt + away_def_punt +
+      home_off_punt:away_def_punt +
+      
+      away_off_punt + home_def_punt +
+      away_off_punt:home_def_punt +
+      
+      home_off_to + away_def_to +
+      home_off_to:away_def_to +
+      
+      away_off_to + home_def_to +
+      away_off_to:home_def_to +
+      
+      (1|home_team) +
+      (1|away_team)
+    
+    #(1|mm(home_team, away_team, id = "H"))
     # (1|home_team) +
     # (1|away_team)
     # (1|H|home_team) +
     # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+  ) + brmsfamily(family = "bernoulli")
+
+formula_total <- 
+  bf(
+    totalCover ~ 
+      0 + Intercept +
+      total_line +
+      home_SRS +
+      away_SRS +
+      home_SRS:away_SRS +
+      
+      home_off_epa_roll + away_def_epa_roll +
+      home_off_epa_roll:away_def_epa_roll + 
+      away_off_epa_roll + home_def_epa_roll +
+      away_off_epa_roll:home_def_epa_roll + 
+      
+      home_off_n + 
+      home_off_td +
+      away_def_td +
+      home_off_n:home_off_td +
+      home_off_td:away_def_td +
+      
+      away_off_n + 
+      away_off_td +
+      home_def_td +
+      away_off_n:away_off_td +
+      away_off_td:home_def_td +
+      
+      home_off_fg +
+      home_off_n:home_off_fg +
+      
+      away_off_fg +
+      away_off_n:away_off_fg +
+      
+      home_off_punt + away_def_punt +
+      home_off_punt:away_def_punt +
+      
+      away_off_punt + home_def_punt +
+      away_off_punt:home_def_punt +
+      
+      home_off_to + away_def_to +
+      home_off_to:away_def_to +
+      
+      away_off_to + home_def_to +
+      away_off_to:home_def_to +
+      
+      (1|home_team) +
+      (1|away_team)
+    
+    #(1|mm(home_team, away_team, id = "H"))
+    # (1|home_team) +
+    # (1|away_team)
+    # (1|H|home_team) +
+    # (1|A|away_team)
+  ) + brmsfamily(family = "bernoulli")
 
 #### Away ----
 formula_awayTD <- 
@@ -598,10 +690,8 @@ priorPoints <- c(
 )
 
 priorPoints <- c(
-  prior(normal(0,5), class = "b", resp = "homescore"),
-  prior(normal(0,5), class = "b", resp = "awayscore"),
-  prior(normal(0,5), class = "b", resp = "homescore"),
-  prior(normal(0,5), class = "b", resp = "awayscore")
+  prior(normal(0,5), class = "b", resp = "spreadCover"),
+  prior(normal(0,5), class = "b", resp = "totalCover")
 )
 
 # Fit the model using the custom family for total scores
@@ -625,8 +715,8 @@ priorPoints <- c(
 
 system.time(
   model_nfl_fit <- brm(
-    formula_homeTD + formula_awayTD +
-      formula_homeFG + formula_awayFG +
+    formula_spread + formula_total +
+      #formula_homeFG + formula_awayFG +
       # formula_homeSF + formula_awaySF +
       # formula_homeXP + formula_awayXP +
       # formula_homeTP + formula_awayTP +
@@ -650,7 +740,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 31
+fit <- 52
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
@@ -794,12 +884,17 @@ plot(Fitsmooth,
 
 Fiteffects <- conditional_effects(Fit, 
                                   effects = c(
-                                    "home_OSRS_net",
-                                    "home_off_epa_roll",
-                                    "away_off_td",
+                                    "away_off_epa_roll",
                                     "home_def_epa_roll",
-                                    "away_SRS_net",
-                                    "away_off_n"
+                                    "home_off_punt",
+                                    "away_def_punt",
+                                    "away_off_n",
+                                    "away_off_fg",
+                                    "away_def_punt",
+                                    "away_off_punt",
+                                    "away_off_to",
+                                    "home_off_td:away_def_td",
+                                    "away_off_td:home_def_td"
                                   ),
                                   method = "posterior_predict", 
                                   re_formula = NULL,
@@ -1182,9 +1277,12 @@ predMetricsHA <- tibble(
 predMetricsHA
 
 
-#### Spread ----
+## Spread ----
 FittedSpread <- homefinalFit - awayfinalFit
-#Fitted <- posterior_predict(Fit)
+FittedSpread <- posterior_predict(Fit, 
+                                  resp = "spreadCover",
+                                  newdata = histModelData,
+                                  re_formula = NULL)
 FittedMeanSpread <- colMeans(FittedSpread)
 FittedMedSpread <- apply(FittedSpread, 2, function(x){quantile(x, 0.5)})
 FittedLCBSpread <- apply(FittedSpread, 2, function(x){quantile(x, 0.025)})
@@ -1192,18 +1290,105 @@ FittedUCBSpread <- apply(FittedSpread, 2, function(x){quantile(x, 0.975)})
 
 # Prediction
 PredsSpread <- homefinalPreds - awayfinalPreds
-# Preds <- posterior_predict(Fit, 
-#                            newdata = modelDataTestNA,
-#                            allow_new_levels = TRUE, 
-#                            re_formula = NULL
-# )
+PredsSpread <- posterior_predict(Fit,
+                                 resp = "spreadCover",
+                                 newdata = modelData,
+                                 allow_new_levels = TRUE,
+                                 re_formula = NULL
+)
 PredsMeanSpread <- colMeans(PredsSpread)
 PredsMedSpread <- apply(PredsSpread, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
 PredsLCBSpread <- apply(PredsSpread, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 PredsUCBSpread <- apply(PredsSpread, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-spreadTrain <- histModelData$result
-spreadTest <- modelData$result
+FittedSpreadData <- histModelData |>
+  #filter(!is.na(spreadCover)) |>
+  select(
+    season, week, home_team, away_team, result,
+    home_spread_prob, away_spread_prob, spreadCover
+    ) |>
+  mutate(
+    FittedSpreadProb = FittedMeanSpread,
+    FittedSpreadBet = ifelse(FittedSpreadProb > home_spread_prob, TRUE, FALSE),
+    FittedSpreadCorrect = spreadCover == FittedSpreadBet
+  )
+mean(FittedSpreadData$FittedSpreadCorrect, na.rm = TRUE)
+
+PredsSpreadData <- modelData |>
+  #filter(!is.na(spreadCover)) |>
+  select(
+    season, week, home_team, away_team, result,
+    home_spread_prob, away_spread_prob, spreadCover
+  ) |>
+  mutate(
+    PredsSpreadProb = PredsMeanSpread,
+    PredsSpreadBet = ifelse(PredsSpreadProb > home_spread_prob, TRUE, FALSE),
+    PredsSpreadCorrect = spreadCover == PredsSpreadBet
+  )
+mean(PredsSpreadData$PredsSpreadCorrect, na.rm = TRUE)
+
+
+## Total ----
+FittedTotal <- homefinalFit - awayfinalFit
+FittedTotal <- posterior_predict(Fit, 
+                                  resp = "totalCover",
+                                  newdata = histModelData,
+                                  re_formula = NULL)
+FittedMeanTotal <- colMeans(FittedTotal)
+FittedMedTotal <- apply(FittedTotal, 2, function(x){quantile(x, 0.5)})
+FittedLCBTotal <- apply(FittedTotal, 2, function(x){quantile(x, 0.025)})
+FittedUCBTotal <- apply(FittedTotal, 2, function(x){quantile(x, 0.975)})
+
+# Prediction
+PredsTotal <- homefinalPreds - awayfinalPreds
+PredsTotal <- posterior_predict(Fit,
+                                 resp = "totalCover",
+                                 newdata = modelData,
+                                 allow_new_levels = TRUE,
+                                 re_formula = NULL
+)
+PredsMeanTotal <- colMeans(PredsTotal)
+PredsMedTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
+PredsLCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
+PredsUCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
+
+FittedTotalData <- histModelData |>
+  #filter(!is.na(totalCover)) |>
+  select(
+    season, week, home_team, away_team, total,
+    over_prob, under_prob, totalCover
+  ) |>
+  mutate(
+    FittedTotalProb = FittedMeanTotal,
+    FittedTotalBet = ifelse(FittedTotalProb > over_prob, TRUE, FALSE),
+    FittedTotalCorrect = totalCover == FittedTotalBet
+  )
+mean(FittedTotalData$FittedTotalCorrect, na.rm = TRUE)
+
+PredsTotalData <- modelData |>
+  #filter(!is.na(totalCover)) |>
+  select(
+    season, week, home_team, away_team, total,
+    over_prob, under_prob, totalCover
+  ) |>
+  mutate(
+    PredsTotalProb = PredsMeanTotal,
+    PredsTotalBet = ifelse(PredsTotalProb > over_prob, TRUE, FALSE),
+    PredsTotalCorrect = totalCover == PredsTotalBet
+  )
+mean(PredsTotalData$PredsTotalCorrect, na.rm = TRUE)
+
+successPerf <- data.frame(
+  Fit = fit,
+  SpreadTrain = round(mean(FittedSpreadData$FittedSpreadCorrect, na.rm = TRUE), 3),
+  SpreadTest = round(mean(PredsSpreadData$PredsSpreadCorrect, na.rm = TRUE), 3),
+  TotalTrain = round(mean(FittedTotalData$FittedTotalCorrect, na.rm = TRUE), 3),
+  TotalTest = round(mean(PredsTotalData$PredsTotalCorrect, na.rm = TRUE), 3)
+)
+successPerf
+
+spreadTrain <- histModelData$spreadCover
+spreadTest <- modelData$spreadCover
 predMetricsSpreadTemp <- tibble(
   Fit = paste0("Fit", fit),
   Response = rep("Spread", 2),
@@ -1224,7 +1409,10 @@ predMetricsSpread #<- predMetricsSpreadTemp
 
 ##### Plot ----
 set.seed(52)
-spreadPPC <- ppc_dens_overlay(y = histModelData$result, 
+spreadPPC <- ppc_dens_overlay(y = histModelData |>
+                                filter(!is.na(spreadCover)) |>
+                                pull(spreadCover) |>
+                                as.numeric(), 
                               yrep = FittedSpread[sample(1:sims, 100, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPC TD")) +
   theme_bw()

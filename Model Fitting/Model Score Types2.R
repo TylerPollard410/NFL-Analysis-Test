@@ -190,6 +190,9 @@ homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
 
 # Fit historical ----
 
+ggplot(data = modData |> filter(season > 2023)) +
+  geom_histogram(aes(x = spread_line - result))
+
 iters <- 2000
 burn <- 1000
 chains <- 4
