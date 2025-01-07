@@ -20,7 +20,7 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
       label = "Game Type", 
       choices = c("Regular Season" = "REG",
                   "Playoffs" = "POST"),
-      selected = "REG",
+      selected = c("REG", "POST"),
       inline = FALSE, 
       status = "info",
       fill = TRUE
@@ -44,6 +44,7 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
       choices = c("Team", "Game"),
       status = "info"
     ),
+    uiOutput(outputId = NS(id, "testSplitWeekUI")),
     br(),
     hr(),
     uiOutput(outputId = NS(id, "xVarUI")),
@@ -99,48 +100,63 @@ modDataPlotInputServer <- function(id,
   
   moduleServer(id, function(input, output, session){
     
+    output$testSplitWeekUI <- renderUI({
+      fullData <- modData |> filter(!is.na(result))
+      testSeason <- input$seasons[2]
+      weekOptions <- fullData |> 
+        filter(season == testSeason) |> 
+        pull(week) |>
+        unique() |>
+        sort()
+      sliderInput(
+        inputId = NS(id, "testSplitWeek"),
+        label = "First week of test data",
+        min = head(weekOptions, 1),
+        max = tail(weekOptions, 1),
+        value = head(weekOptions, 1),
+        step = 1
+      )
+    })
+    
     modPlotData <- reactive({
-      # data <- modData |>
-      #   filter(season %in% seasons()[1]:seasons()[2],
-      #          season_type %in% gameType(),
-      #          home_team %in% teams() | away_team %in% teams()) |>
-      #   #team %in% teams()) |>
-      #   filter(!is.na(result)) |>
-      #   mutate(
-      #     season = factor(season),
-      #     week = factor(week)
-      #   ) |>
-      #   select(
-      #     season,
-      #     season_type,
-      #     week,
-      #     home_team,
-      #     away_team,
-      #     xVar(),
-      #     yVar(),
-      #     colorVar(),
-      #     facetVar()
-      #   ) |>
-      #   mutate(
-      #     across(where(is.numeric),
-      #            ~round(.x, 2))
-      #   )
+      req(input$testSplitWeek)
+      data <- modData |>
+        filter(!is.na(result)) |>
+        mutate(
+          split = ifelse(season == input$seasons[2] & week >= input$testSplitWeek, "Test", "Train"),
+          .after = week
+        )
       
       if(input$statType == "Team"){
-        modData |>
+        data |>
           clean_homeaway(invert = c("result", "spread_line"))
       }else{
-        modData
+        data
       }
     })
     
+    # modPlotData2 <- reactive({
+    #   #req(input$seasons, input$testSplitWeek)
+    #   modPlotData() |>
+    #     mutate(
+    #       split = ifelse(season == input$seasons[2] & week >= input$testSplitWeek, "Test", "Train"),
+    #       .after = week
+    #     )
+    # })
+    # 
     output$xVarUI <- renderUI({
       xVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
+      
+      # 1. Grab old selection
+      oldSelection <- isolate(input$xVar)
+      # 2. Keep only the old selection that is still valid
+      validSelection <- intersect(oldSelection, xVarOptions)
+      
       pickerInput(
         inputId = NS(id, "xVar"),
         label = "X variable", 
         choices = xVarOptions,
-        selected = NULL,
+        selected = validSelection,
         multiple = TRUE,
         options = pickerOptions(
           maxOptions = 1,
@@ -153,11 +169,15 @@ modDataPlotInputServer <- function(id,
     
     output$yVarUI <- renderUI({
       yVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
+      
+      oldSelection <- isolate(input$yVar)
+      validSelection <- intersect(oldSelection, yVarOptions)
+      
       pickerInput(
         inputId = NS(id, "yVar"),
         label = "Y variable", 
         choices = yVarOptions,
-        selected = NULL,
+        selected = validSelection,
         multiple = TRUE,
         options = pickerOptions(
           maxOptions = 1,
@@ -170,11 +190,15 @@ modDataPlotInputServer <- function(id,
     
     output$colorVarUI <- renderUI({
       colorVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
+      
+      oldSelection <- isolate(input$colorVar)
+      validSelection <- intersect(oldSelection, colorVarOptions)
+      
       pickerInput(
         inputId = NS(id, "colorVar"),
         label = "Color by:", 
         choices = colorVarOptions,
-        selected = NULL,
+        selected = validSelection,
         multiple = TRUE,
         options = pickerOptions(
           maxOptions = 1,
@@ -188,14 +212,18 @@ modDataPlotInputServer <- function(id,
     output$facetVarUI <- renderUI({
       facetVarOptions <- modPlotData() |> 
         select(
-          c(season, week, where(is.character), 
+          c(season, week, split, where(is.character), 
             -contains("id"))) |> 
         colnames()
+      
+      oldSelection <- isolate(input$facetVar)
+      validSelection <- intersect(oldSelection, facetVarOptions)
+      
       pickerInput(
         inputId = NS(id, "facetVar"),
         label = "Facet by:", 
         choices = facetVarOptions,
-        selected = NULL,
+        selected = validSelection,
         multiple = TRUE,
         options = pickerOptions(
           maxOptions = 1,
@@ -222,6 +250,7 @@ modDataPlotInputServer <- function(id,
       gameType = reactive(input$gameType),
       teams = reactive(input$teams),
       statType = reactive(input$statType),
+      testSplitWeek = reactive(input$testSplitWeek),
       xVar = reactive(input$xVar),
       yVar = reactive(input$yVar),
       colorVar = reactive(input$colorVar),

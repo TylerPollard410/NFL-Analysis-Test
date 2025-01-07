@@ -267,7 +267,7 @@ formula_homeTD <-
   bf(
     home_totalTD ~ 
       0 + Intercept +
-      s(home_OSRS_net) +
+      s(home_OSRS_net, bs = "cr") +
       #home_DSRS_net +
       home_off_epa_roll + away_def_epa_roll +
       home_off_epa_roll:away_def_epa_roll + 
@@ -276,11 +276,12 @@ formula_homeTD <-
       #home_off_n:home_off_td +
       home_def_n + home_def_td +
       #home_def_n:home_def_td +
-      (1|H|home_team) +
-      (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull",
-                 link = "softit"
-                 )
+      (1|mm(home_team, away_team, id = "H"))
+      # (1|home_team) +
+      # (1|away_team)
+      # (1|H|home_team) +
+      # (1|A|away_team)
+  ) + brmsfamily(family = "skew_normal")
 
 #### Away ----
 formula_awayTD <- 
@@ -290,17 +291,19 @@ formula_awayTD <-
       #away_OSRS_net +
       #away_DSRS_net +
       #away_off_epa_roll + 
-      s(home_def_epa_roll) +
+      s(home_def_epa_roll, bs = "cr") +
       #away_off_epa_roll:home_def_epa_roll + 
       #away_off_n + 
       away_off_td +
       away_off_n:away_off_td +
       away_def_n + #away_def_td +
       #away_def_n:away_def_td +
-      (1|H|home_team) +
-      (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull",
-                 link = "softit")
+      (1|mm(home_team, away_team, id = "H"))
+    # (1|home_team) +
+    # (1|away_team)
+    # (1|H|home_team) +
+    # (1|A|away_team)
+  ) + brmsfamily(family = "skew_normal")
 
 ### FG ----
 #### Home ----
@@ -311,10 +314,12 @@ formula_homeFG <-
       home_SRS_net +
       home_off_n + home_off_fg +
       home_off_n:home_off_fg +
-      (1|H|home_team) + 
-      (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull", 
-                 link = "softit")
+      (1|mm(home_team, away_team, id = "H"))
+    # (1|home_team) +
+    # (1|away_team)
+    # (1|H|home_team) +
+    # (1|A|away_team)
+  ) + brmsfamily(family = "skew_normal")
 
 #### Away ----
 formula_awayFG <- 
@@ -324,10 +329,12 @@ formula_awayFG <-
       away_SRS_net +
       away_off_n + away_off_fg +
       away_off_n:away_off_fg +
-      (1|H|home_team) + 
-      (1|A|away_team)
-  ) + brmsfamily(family = "discrete_weibull", 
-                 link = "softit")
+      (1|mm(home_team, away_team, id = "H"))
+    # (1|home_team) +
+    # (1|away_team)
+    # (1|H|home_team) +
+    # (1|A|away_team)
+  ) + brmsfamily(family = "skew_normal")
 
 ### SF ----
 #### Home ----
@@ -392,6 +399,23 @@ formula_awayTP <-
 
 ### Scores ----
 #### Separate ----
+formula_homeScore <-
+  bf(
+    home_score ~ 
+      0 + Intercept +
+      (1|H|home_team) + 
+      (1|A|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+
+formula_awayScore <-
+  bf(
+    away_score ~ 
+      0 + Intercept +
+      (1|H|home_team) + 
+      (1|A|away_team)
+  ) + brmsfamily(family = "discrete_weibull")
+
+
 formula_homeScore <- 
   bf(
     home_score ~ 
@@ -572,6 +596,8 @@ priorPoints <- c(
 
 priorPoints <- c(
   prior(normal(0,5), class = "b", resp = "homescore"),
+  prior(normal(0,5), class = "b", resp = "awayscore"),
+  prior(normal(0,5), class = "b", resp = "homescore"),
   prior(normal(0,5), class = "b", resp = "awayscore")
 )
 
@@ -596,12 +622,12 @@ priorPoints <- c(
 
 system.time(
   model_nfl_fit <- brm(
-    # formula_homeTD + formula_awayTD +
-    #   formula_homeFG + formula_awayFG +
+    formula_homeTD + formula_awayTD +
+      formula_homeFG + formula_awayFG +
       # formula_homeSF + formula_awaySF +
       # formula_homeXP + formula_awayXP +
       # formula_homeTP + formula_awayTP +
-      formula_homeScore + formula_awayScore +
+      # formula_homeScore + formula_awayScore +
       set_rescor(rescor = FALSE),
     data = histModelData,
     #family = custom_family,
@@ -616,15 +642,17 @@ system.time(
     prior = priorPoints,
     drop_unused_levels = FALSE,
     control = list(adapt_delta = 0.95),
-    backend = "cmdstan"
+    backend = "cmdstanr"
   )
 )
 
 Fit <- model_nfl_fit
-fit <- 18
+fit <- 31
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
+
+plot(Fit, ask = FALSE)
 
 Fit <- fit8
 #fitFormulas <- list()
@@ -770,7 +798,7 @@ Fiteffects <- conditional_effects(Fit,
                                     "away_SRS_net",
                                     "away_off_n"
                                   ),
-                                  method = "posterior_epred", 
+                                  method = "posterior_predict", 
                                   re_formula = NULL,
                                   robust = FALSE)
 plot(Fiteffects, 
@@ -963,7 +991,7 @@ awayfinalPredsSF <- posterior_predict(Fit,
                                       allow_new_levels = TRUE,
                                       re_formula = NULL
 )
-
+sims <- 3000
 homePPDbarsTD <- ppc_bars(y = modelData$home_totalTD, 
                           yrep = homefinalPredsTD[sample(1:sims, 100, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPD TD")) +
@@ -1517,6 +1545,41 @@ successPerf <- bind_rows(
 )
 successPerf #<- successPerfTemp
 tail(successPerf, 10)
+
+modelWeights <- model_weights(fit1, fit2, fit3, fit5, weights = "stacking")
+round(modelWeights, digits = 9)
+
+
+## Errors ----
+ppc_error_scatter_avg(histModelData$result, FittedSpread)
+ppc_error_scatter_avg(modelData$result, PredsSpread)
+ppc_error_scatter_avg(histModelData$total, FittedTotal)
+ppc_error_scatter_avg(modelData$total, PredsTotal)
+
+ppc_error_scatter_avg_vs_x(histModelData$result, FittedSpread, histModelData$home_SRS_net)
+ppc_error_scatter_avg_vs_x(modelData$result, PredsSpread, modelData$home_SRS_net)
+ppc_error_scatter_avg_vs_x(histModelData$total, FittedTotal, histModelData$home_SRS_net)
+ppc_error_scatter_avg_vs_x(modelData$total, PredsTotal, modelData$home_SRS_net)
+
+ppc_error_scatter_avg_vs_x(histModelData$result, FittedSpread, histModelData$week)
+ppc_error_scatter_avg_vs_x(modelData$result, PredsSpread, modelData$week)
+ppc_error_scatter_avg_vs_x(histModelData$total, FittedTotal, histModelData$week)
+ppc_error_scatter_avg_vs_x(modelData$total, PredsTotal, modelData$week)
+
+ppc_error_scatter_avg_grouped(histModelData$result, FittedSpread, 
+                              histModelData$home_team,
+                              facet_args = list(scales = "fixed"))
+ppc_error_scatter_avg_grouped(modelData$result, PredsSpread, 
+                              modelData$home_team,
+                              facet_args = list(scales = "fixed"))
+ppc_error_scatter_avg_grouped(histModelData$total, FittedTotal, histModelData$home_team)
+ppc_error_scatter_avg_grouped(modelData$total, PredsTotal, modelData$home_team)
+
+ppc_error_scatter_avg_grouped(histModelData$result, FittedSpread, histModelData$away_team)
+ppc_error_scatter_avg_grouped(modelData$result, PredsSpread, modelData$away_team)
+ppc_error_scatter_avg_grouped(histModelData$total, FittedTotal, histModelData$away_team)
+ppc_error_scatter_avg_grouped(modelData$total, PredsTotal, modelData$away_team)
+
 
 ## Predict Week ----
 testWeekData <- modData2 |>
