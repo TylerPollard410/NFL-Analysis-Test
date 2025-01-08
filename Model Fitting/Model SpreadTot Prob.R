@@ -1278,7 +1278,7 @@ predMetricsHA
 
 
 ## Spread ----
-FittedSpread <- homefinalFit - awayfinalFit
+#FittedSpread <- homefinalFit - awayfinalFit
 FittedSpread <- posterior_predict(Fit, 
                                   resp = "spreadCover",
                                   newdata = histModelData,
@@ -1289,7 +1289,7 @@ FittedLCBSpread <- apply(FittedSpread, 2, function(x){quantile(x, 0.025)})
 FittedUCBSpread <- apply(FittedSpread, 2, function(x){quantile(x, 0.975)})
 
 # Prediction
-PredsSpread <- homefinalPreds - awayfinalPreds
+#PredsSpread <- homefinalPreds - awayfinalPreds
 PredsSpread <- posterior_predict(Fit,
                                  resp = "spreadCover",
                                  newdata = modelData,
@@ -1329,7 +1329,7 @@ mean(PredsSpreadData$PredsSpreadCorrect, na.rm = TRUE)
 
 
 ## Total ----
-FittedTotal <- homefinalFit - awayfinalFit
+#FittedTotal <- homefinalFit - awayfinalFit
 FittedTotal <- posterior_predict(Fit, 
                                   resp = "totalCover",
                                   newdata = histModelData,
@@ -1340,7 +1340,7 @@ FittedLCBTotal <- apply(FittedTotal, 2, function(x){quantile(x, 0.025)})
 FittedUCBTotal <- apply(FittedTotal, 2, function(x){quantile(x, 0.975)})
 
 # Prediction
-PredsTotal <- homefinalPreds - awayfinalPreds
+#PredsTotal <- homefinalPreds - awayfinalPreds
 PredsTotal <- posterior_predict(Fit,
                                  resp = "totalCover",
                                  newdata = modelData,
@@ -1374,9 +1374,12 @@ PredsTotalData <- modelData |>
   mutate(
     PredsTotalProb = PredsMeanTotal,
     PredsTotalBet = ifelse(PredsTotalProb > over_prob, TRUE, FALSE),
-    PredsTotalCorrect = totalCover == PredsTotalBet
+    PredsTotalCorrect = totalCover == PredsTotalBet,
+    PredsTotalBet2 = ifelse(PredsTotalProb > .5, TRUE, FALSE),
+    PredsTotalCorrect2 = totalCover == PredsTotalBet2
   )
 mean(PredsTotalData$PredsTotalCorrect, na.rm = TRUE)
+mean(PredsTotalData$PredsTotalCorrect2, na.rm = TRUE)
 
 successPerf <- data.frame(
   Fit = fit,

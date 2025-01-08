@@ -76,6 +76,7 @@ modDataLong <- modData |>
 modData2 <- modData |> 
   filter(!is.na(result)) |>
   select(
+    game_id,
     season,
     season_type,
     week,
@@ -84,9 +85,13 @@ modData2 <- modData |>
     away_team,
     away_score,
     result,
-    total,
     spread_line,
+    spreadCover,
+    total,
     total_line,
+    totalCover,
+    contains("over"),
+    contains("under"),
     location,
     div_game,
     roof,
@@ -97,12 +102,12 @@ modData2 <- modData |>
     contains("away")
   ) |>
   mutate(
-    across(where(is.character),
+    across(c(where(is.character), -game_id),
            ~factor(.x))
   ) #|>
-
+brms::rd
 histModelData1 <- modData2 |> 
-  filter(season == 2023 | (season == 2024 & week <= 6))
+  filter(between(season, 2023, 2023) | (season == 2024 & week <= 6))
 modelData1 <- modData2 |> 
   filter(season == 2024 & week > 6) |>
   filter(!is.na(result), 
@@ -177,6 +182,24 @@ homeFGcorT <- t(homeFGcor)
 homeFGcorT2 <- homeFGcorT[order(abs(homeFGcorT)),]
 homeFGcorT2df <- data.frame(sort(abs(homeFGcorT2), decreasing = TRUE))
 
+awayTDcor <- cor(histModelData |> select(away_totalTD),
+                 histModelData |> select(c(where(is.numeric), -away_totalTD)),
+                 use = "pairwise.complete.obs",
+                 method = "kendall"
+)
+awayTDcorT <- t(awayTDcor)
+awayTDcorT2 <- awayTDcorT[order(abs(awayTDcorT)),]
+awayTDcorT2df <- data.frame(sort(abs(awayTDcorT2), decreasing = TRUE))
+
+awayFGcor <- cor(histModelData |> select(away_fg_made),
+                 histModelData |> select(c(where(is.numeric), -away_fg_made)),
+                 use = "pairwise.complete.obs",
+                 method = "kendall"
+)
+awayFGcorT <- t(awayFGcor)
+awayFGcorT2 <- awayFGcorT[order(abs(awayFGcorT)),]
+awayFGcorT2df <- data.frame(sort(abs(awayFGcorT2), decreasing = TRUE))
+
 homeFGAcor <- cor(histModelData |> select(home_fg_att),
                   histModelData |> select(c(where(is.numeric), -home_fg_att)),
                   use = "pairwise.complete.obs",
@@ -186,18 +209,62 @@ homeFGAcorT <- t(homeFGAcor)
 homeFGAcorT2 <- homeFGAcorT[order(abs(homeFGAcorT)),]
 homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
 
+histSRSdata <- histModelData |>
+  select(
+    game_id, season, season_type, week,
+    home_team, home_score, away_team, away_score,
+    result, spread_line, spreadCover,
+    contains("SRS")
+  ) #|>
+# mutate(
+#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
+#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
+#   .after = spreadCover
+# )
+
+modelSRSdata <- modelData |>
+  select(
+    game_id, season, season_type, week,
+    home_team, home_score, away_team, away_score,
+    result, spread_line, spreadCover,
+    contains("SRS")
+  ) #|>
+# mutate(
+#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
+#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
+#   .after = spreadCover
+# )
+
+SRSdata <- bind_rows(
+  histSRSdata |> mutate(split = "Train", .before = 1),
+  modelSRSdata |> mutate(split = "Test", .before = 1)
+) |>
+  mutate(
+    home_SRS_net2 = home_SRS_net + 2, 
+    .after = home_SRS_net
+  ) |>
+  mutate(
+    spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
+    spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
+    spreadCoverSRS2 = ifelse(home_SRS_net2 > spread_line, TRUE, FALSE),
+    spreadCoverSRSCorrect2 = spreadCoverSRS2 == spreadCover,
+    .after = spreadCover
+  )
+
+SRSdata |>
+  filter(!is.na(spreadCover)) |>
+  group_by(split) |>
+  summarise(
+    obsN = n(),
+    homeCoverSuccess = mean(spreadCover),
+    SRSCoverSuccess = mean(spreadCoverSRS),
+    CoverSuccess = mean(spreadCoverSRSCorrect),
+    SRSCoverSuccess2 = mean(spreadCoverSRS2),
+    CoverSuccess2 = mean(spreadCoverSRSCorrect2)
+  )
 
 
 # Fit historical ----
-
-ggplot(data = modData |> filter(season > 2023)) +
-  geom_histogram(aes(x = spread_line - result))
-
-iters <- 2000
-burn <- 1000
-chains <- 4
-sims <- (iters-burn)*chains
-
 ## Custom Family ----
 # Define a custom family for NFL scoring
 nfl_scoring <- custom_family(
@@ -268,76 +335,119 @@ stanvars <- stanvar(scode = stan_likelihood, block = "functions")
 #### Home ----
 formula_homeTD <- 
   bf(
-    home_totalTD ~ 
+    home_totalTD|trunc(ub = 10) ~ 
       0 + Intercept +
-      s(home_OSRS_net, bs = "cr") +
+      #s(home_OSRS_net, bs = "cr") +
       #home_DSRS_net +
-      home_off_epa_roll + away_def_epa_roll +
-      home_off_epa_roll:away_def_epa_roll + 
-      #home_off_n + 
+      home_off_net_epa_cum +
+      #home_off_net_epa_roll +
+      home_PFG +
+      #home_OSRS_net +
+      #away_DSRS_net +
+      home_off_scr +
       home_off_td +
-      #home_off_n:home_off_td +
-      home_def_n + home_def_td +
+      #home_pass_net_epa_cum +
+      home_pass_net_epa_roll +
+      # home_off_epa_roll + away_def_epa_roll +
+      # home_off_epa_roll:away_def_epa_roll + 
+      # #home_off_n + 
+      # home_off_td +
+      # #home_off_n:home_off_td +
+      # home_def_n + home_def_td 
       #home_def_n:home_def_td +
-      (1|mm(home_team, away_team, id = "H"))
+      # (1|mm(home_team, away_team, id = "H"))
       # (1|home_team) +
       # (1|away_team)
-      # (1|H|home_team) +
-      # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      (1|H|home_team) +
+      (1|A|away_team)
+    # ,
+    # shape ~  0 + Intercept + 
+    #   (1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "discrete_weibull")
 
 #### Away ----
 formula_awayTD <- 
   bf(
-    away_totalTD ~ 
+    away_totalTD|trunc(ub = 10) ~ 
       0 + Intercept +
+      away_off_pass_epa_cum +
+      #away_pass_net_epa_cum +
+      #away_off_epa_cum +
+      away_off_net_epa_cum +
+      away_off_scr +
+      away_off_td +
+      away_PFG +
       #away_OSRS_net +
       #away_DSRS_net +
       #away_off_epa_roll + 
-      s(home_def_epa_roll, bs = "cr") +
+      #s(home_def_epa_roll, bs = "cr") +
       #away_off_epa_roll:home_def_epa_roll + 
       #away_off_n + 
-      away_off_td +
-      away_off_n:away_off_td +
-      away_def_n + #away_def_td +
+      #away_off_td +
+      #away_off_n:away_off_td +
+      #away_def_n  #away_def_td +
       #away_def_n:away_def_td +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      # (1|mm(home_team, away_team, id = "H"))
+      # (1|home_team) +
+      # (1|away_team)
+      (1|H|home_team) +
+      (1|A|away_team)
+    # ,
+    # shape ~ 0 + Intercept + 
+    #   (1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "discrete_weibull")
 
 ### FG ----
 #### Home ----
 formula_homeFG <- 
   bf(
-    home_fg_made ~ 
+    home_fg_made|trunc(ub = 10) ~ 
       0 + Intercept +
-      home_SRS_net +
-      home_off_n + home_off_fg +
-      home_off_n:home_off_fg +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      overtime +
+      away_def_tds +
+      away_off_scr_1st +
+      away_SOS +
+      away_off_special_epa_roll +
+      wind +
+      temp +
+      # home_SRS_net +
+      # home_off_n + home_off_fg +
+      # home_off_n:home_off_fg 
+      # (1|mm(home_team, away_team, id = "H"))
+      # (1|home_team) +
+      # (1|away_team)
+      (1|H|home_team) +
+      (1|A|away_team)
+    # ,
+    # shape ~ 0 + Intercept + 
+    #   (1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "discrete_weibull")
 
 #### Away ----
 formula_awayFG <- 
   bf(
-    away_fg_made ~ 
+    away_fg_made|trunc(ub = 10) ~ 
       0 + Intercept +
-      away_SRS_net +
-      away_off_n + away_off_fg +
-      away_off_n:away_off_fg +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      overtime +
+      #home_OSRS_net +
+      #away_DSRS_net +
+      #home_off_td +
+      #home_PFG +
+      home_off_epa_cum +
+      home_net_epa_cum +
+      away_off_fg_pct_cum +
+      #away_SRS_net +
+      #away_off_n + away_off_fg +
+      #away_off_n:away_off_fg 
+      # (1|mm(home_team, away_team, id = "H"))
+      # (1|home_team) +
+      # (1|away_team)
+      (1|H|home_team) +
+      (1|A|away_team)
+    # ,
+    # shape ~ 0 + Intercept + 
+    #   (1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "discrete_weibull")
 
 ### SF ----
 #### Home ----
@@ -605,23 +715,36 @@ priorPoints <- c(
 )
 
 # Fit the model using the custom family for total scores
-# model_nfl_code <- stancode(
-#   formula_home + formula_away,
-#   data = histModelData,
-#   family = custom_family,
-#   save_pars = save_pars(all = TRUE),
-#   seed = 52,
-#   chains = chains, 
-#   cores = 4, 
-#   iter = iters,
-#   warmup = burn,
-#   stanvars = stanvars,
-#   #prior = priorPoints,
-#   drop_unused_levels = FALSE,
-#   control = list(adapt_delta = 0.95),
-#   backend = "cmdstan"
-# )
-# model_nfl_code
+model_nfl_code <- brm(
+  formula_homeTD + formula_awayTD +
+    formula_homeFG + formula_awayFG +
+    # formula_homeSF + formula_awaySF +
+    # formula_homeXP + formula_awayXP +
+    # formula_homeTP + formula_awayTP +
+    # formula_homeScore + formula_awayScore +
+    set_rescor(rescor = FALSE),
+  data = histModelData,
+  #family = custom_family,
+  save_pars = save_pars(all = TRUE),
+  seed = 52,
+  chains = chains, 
+  cores = parallel::detectCores(),
+  iter = iters,
+  warmup = burn,
+  init = 0,
+  #stanvars = stanvars,
+  #normalize = FALSE,
+  prior = priorPoints,
+  drop_unused_levels = FALSE,
+  control = list(adapt_delta = 0.95),
+  backend = "cmdstanr"
+)
+model_nfl_code
+
+iters <- 2000
+burn <- 1000
+chains <- 4
+sims <- (iters-burn)*chains
 
 system.time(
   model_nfl_fit <- brm(
@@ -642,6 +765,7 @@ system.time(
     warmup = burn,
     init = 0,
     #stanvars = stanvars,
+    #normalize = FALSE,
     prior = priorPoints,
     drop_unused_levels = FALSE,
     control = list(adapt_delta = 0.95),
@@ -650,19 +774,17 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 31
+fit <- 3
 assign(paste0("fit", fit), Fit)
-#assign(paste0("fitB", fit), Fit2)
-save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
+#save(fit2, file= paste0("~/Desktop/fit", fit, ".RData"))
 
 plot(Fit, ask = FALSE)
 
-Fit <- fit8
-#fitFormulas <- list()
-# for(i in 1:fit){
-#   fitFormulas[[paste0("Fit",i)]] <- get(paste0("fit", i))
-# }
-#fitFormulas[[paste0("Fit",fit)]] <- get(paste0("fit", fit))
+fitFormulas <- list()
+for(i in 1:fit){
+  fitFormulas[[paste0("Fit",i)]] <- get(paste0("fit", i))
+}
+fitFormulas[[paste0("Fit",fit)]] <- get(paste0("fit", fit))
 
 ## Diagnostics ----
 prior_summary(Fit)
@@ -763,31 +885,8 @@ FitR2 <- bind_rows(
 )
 FitR2 #<- FitR2temp
 
-FitR2tempPred <- bayes_R2(Fit, newdata = modelData) |>
-  bind_cols(Fit = paste0("Pred", fit)) |>
-  select(Fit, everything())
-FitR2tempPred
-
-FitR2Pred <- bind_rows(
-  FitR2tempPred,
-  FitR2Pred
-)
-FitR2Pred <- FitR2tempPred
-
-# logNormalFitsmooths <- conditional_smooths(logNormalFit,
-#                                            method = "posterior_predict")
-# plot(logNormalFitsmooths, 
-#      stype = "raster", 
-#      ask = FALSE,
-#      theme = theme(legend.position = "bottom"))
-# plot(logNormalFitsmooths, 
-#      stype = "contour", 
-#      ask = FALSE,
-#      theme = theme(legend.position = "bottom"))
-
 # condplots ----
 Fitsmooth <- conditional_smooths(Fit, method = "posterior_predict")
-Fitsmooth <- conditional_smooths(Fit, method = "posterior_epred")
 plot(Fitsmooth,
      stype = "contour",
      ask = FALSE)
@@ -852,6 +951,8 @@ homePPCbarsTD <- pp_check(Fit, resp = "hometotalTD", ndraws = 100, type = "bars"
 homePPCbarsFG <- pp_check(Fit, resp = "homefgmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC fg")) +
   theme_bw()
+
+
 homePPCbarsSF <- pp_check(Fit, resp = "homesafeties", ndraws = 100, type = "bars") +
   labs(title = paste0("Fit", fit, " Home PPC safe")) +
   theme_bw()
@@ -884,6 +985,8 @@ awayPPCbarsTD <- pp_check(Fit, resp = "awaytotalTD", ndraws = 100, type = "bars"
 awayPPCbarsFG <- pp_check(Fit, resp = "awayfgmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Away PPC fg")) +
   theme_bw()
+
+
 awayPPCbarsSF <- pp_check(Fit, resp = "awaysafeties", ndraws = 100, type = "bars") +
   labs(title = paste0("Fit", fit, " Away PPC safe")) +
   theme_bw()
@@ -996,19 +1099,19 @@ awayfinalPredsSF <- posterior_predict(Fit,
 )
 sims <- 3000
 homePPDbarsTD <- ppc_bars(y = modelData$home_totalTD, 
-                          yrep = homefinalPredsTD[sample(1:sims, 100, replace = FALSE), ]) + 
+                          yrep = homefinalPredsTD[sample(1:sims, 200, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPD TD")) +
   theme_bw()
 homePPDbarsFG <- ppc_bars(y = modelData$home_fg_made, 
-                          yrep = homefinalPredsFG[sample(1:sims, 100, replace = FALSE), ]) + 
+                          yrep = homefinalPredsFG[sample(1:sims, 200, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPD fg")) +
   theme_bw()
 homePPDbarsXP <- ppc_bars(y = modelData$home_pat_made,
-                          yrep = homefinalPredsXP[sample(1:sims, 100, replace = FALSE), ]) +
+                          yrep = homefinalPredsXP[sample(1:sims, 1000, replace = FALSE), ]) +
   labs(title = paste0("Fit", fit, " Home PPD xp")) +
   theme_bw()
 homePPDbarsTP <- ppc_bars(y = modelData$home_twoPtConv,
-                          yrep = homefinalPredsTP[sample(1:sims, 100, replace = FALSE), ]) +
+                          yrep = homefinalPredsTP[sample(1:sims, 1000, replace = FALSE), ]) +
   labs(title = paste0("Fit", fit, " Home PPD tp")) +
   theme_bw()
 homePPDbarsSF <- ppc_bars(y = modelData$home_safeties,
@@ -1018,11 +1121,11 @@ homePPDbarsSF <- ppc_bars(y = modelData$home_safeties,
 
 
 awayPPDbarsTD <- ppc_bars(y = modelData$away_totalTD, 
-                          yrep = awayfinalPredsTD[sample(1:sims, 100, replace = FALSE), ]) + 
+                          yrep = awayfinalPredsTD[sample(1:sims, 200, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Away PPD TD")) +
   theme_bw()
 awayPPDbarsFG <- ppc_bars(y = modelData$away_fg_made, 
-                          yrep = awayfinalPredsFG[sample(1:sims, 100, replace = FALSE), ]) + 
+                          yrep = awayfinalPredsFG[sample(1:sims, 200, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Away PPD fg")) +
   theme_bw()
 awayPPDbarsXP <- ppc_bars(y = modelData$away_pat_made,
@@ -1238,13 +1341,13 @@ spreadPPCbars
 
 set.seed(52)
 spreadPPD <- ppc_dens_overlay(y = modelData$result, 
-                              yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+                              yrep = PredsSpread[sample(1:sims, 1000, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPC TD")) +
   theme_bw()
 spreadPPD
 
 spreadPPDbars <- ppc_bars(y = modelData$result, 
-                          yrep = PredsSpread[sample(1:sims, 100, replace = FALSE), ]) + 
+                          yrep = PredsSpread[sample(1:sims, 1000, replace = FALSE), ]) + 
   labs(title = paste0("Fit", fit, " Home PPC TD")) +
   theme_bw()
 spreadPPDbars
@@ -1549,7 +1652,8 @@ successPerf <- bind_rows(
 successPerf #<- successPerfTemp
 tail(successPerf, 10)
 
-modelWeights <- model_weights(fit1, fit2, fit3, fit5, weights = "stacking")
+modelWeights <- model_weights(fit1, fit3, fit4, fit5, fit6, fit7,
+                              weights = "stacking")
 round(modelWeights, digits = 9)
 
 
