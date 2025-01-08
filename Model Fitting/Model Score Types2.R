@@ -1021,8 +1021,8 @@ awayPPCbarsXP
 awayPPCbarsTP
 
 ## Fitted
-homefinalFitTD <- posterior_predict(Fit, resp = "hometotalTD")
-homefinalFitFG <- posterior_predict(Fit, resp = "homefgmade")
+homefinalFitTD <- posterior_predict(Fit, resp = "hometotalTD", re_formula = NA)
+homefinalFitFG <- posterior_predict(Fit, resp = "homefgmade", re_formula = NA)
 homefinalFitXP <- posterior_predict(Fit, resp = "homepatmade")
 homefinalFitTP <- posterior_predict(Fit, resp = "hometwoPtConv")
 homefinalFitSF <- posterior_predict(Fit, resp = "homesafeties")
@@ -1032,13 +1032,13 @@ homefinalPredsTD <- posterior_predict(Fit,
                                       resp = "hometotalTD",
                                       newdata = modelData,
                                       allow_new_levels = TRUE,
-                                      re_formula = NULL
+                                      re_formula = NA
 )
 homefinalPredsFG <- posterior_predict(Fit,
                                       resp = "homefgmade",
                                       newdata = modelData,
                                       allow_new_levels = TRUE,
-                                      re_formula = NULL
+                                      re_formula = NA
 )
 homefinalPredsXP <- posterior_predict(Fit,
                                       resp = "homepatmade",
@@ -1060,8 +1060,8 @@ homefinalPredsSF <- posterior_predict(Fit,
 )
 
 ## Fitted
-awayfinalFitTD <- posterior_predict(Fit, resp = "awaytotalTD")
-awayfinalFitFG <- posterior_predict(Fit, resp = "awayfgmade")
+awayfinalFitTD <- posterior_predict(Fit, resp = "awaytotalTD", re_formula = NA)
+awayfinalFitFG <- posterior_predict(Fit, resp = "awayfgmade", re_formula = NA)
 awayfinalFitXP <- posterior_predict(Fit, resp = "awaypatmade")
 awayfinalFitTP <- posterior_predict(Fit, resp = "awaytwoPtConv")
 awayfinalFitSF <- posterior_predict(Fit, resp = "awaysafeties")
@@ -1071,13 +1071,13 @@ awayfinalPredsTD <- posterior_predict(Fit,
                                       resp = "awaytotalTD",
                                       newdata = modelData,
                                       allow_new_levels = TRUE,
-                                      re_formula = NULL
+                                      re_formula = NA
 )
 awayfinalPredsFG <- posterior_predict(Fit,
                                       resp = "awayfgmade",
                                       newdata = modelData,
                                       allow_new_levels = TRUE,
-                                      re_formula = NULL
+                                      re_formula = NA
 )
 awayfinalPredsXP <- posterior_predict(Fit,
                                       resp = "awaypatmade",

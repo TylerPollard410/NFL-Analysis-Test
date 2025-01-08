@@ -26,8 +26,8 @@ x dplyr::lag()    masks stats::lag()
 i Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 [1] "pbpData"
 [1] "No play-by-play data to update"
-[1] "pbpData updated 2025-01-07 00:42:38 EST with 904347 rows and 372 cols."
-elapsed time is 3.288000 seconds 
+[1] "pbpData updated 2025-01-07 04:23:24 EST with 904347 rows and 372 cols."
+elapsed time is 7.882000 seconds 
 Converged after 14 iterations.
 Season 2006 
 Converged after 16 iterations.
@@ -66,7 +66,7 @@ Converged after 13 iterations.
 Season 2023 
 Converged after 16 iterations.
 Season 2024 
-elapsed time is 13.316000 seconds 
+elapsed time is 10.518000 seconds 
 Reached maximum iterations =  200 without full convergence.
 Season 2024 Week 1 
 Reached maximum iterations =  200 without full convergence.
@@ -103,7 +103,7 @@ Converged after 16 iterations.
 Season 2024 Week 17 
 Converged after 16 iterations.
 Season 2024 Week 18 
-elapsed time is 15.635000 seconds 
+elapsed time is 19.665000 seconds 
 `summarise()` has grouped output by 'game_id', 'season', 'week', 'posteam',
 'home_team'. You can override using the `.groups` argument.
 `summarise()` has grouped output by 'season'. You can override using the
@@ -119,10 +119,4 @@ Joining with `by = join_by(season, week, team)`
 `.groups` argument.
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
-elapsed time is 525.044000 seconds 
-[main 1d0e659] Auto-update: 2025-01-07 02:10:07
- 10 files changed, 5676 insertions(+), 160 deletions(-)
- create mode 100644 Model Fitting/Model Score Types2 Long.R
- create mode 100644 Model Fitting/Model SpreadTot Prob.R
-To github.com:TylerPollard410/NFL-Analysis-Test.git
-   67eb516..1d0e659  main -> main
+elapsed time is 1161.318000 seconds 
