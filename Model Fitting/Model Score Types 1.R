@@ -106,6 +106,9 @@ modData2 <- modData |>
            ~factor(.x))
   ) |>
   mutate(
+    home_totalTD = as.inter
+  )
+  mutate(
     home_totalTDScore = 6*home_totalTD,
     home_fg_madeScore = 3*home_fg_made,
     home_pat_madeScore = home_pat_made,
@@ -280,8 +283,7 @@ stan_likelihood <- "
 stanvars <- stanvar(scode = stan_likelihood, block = "functions")
 
 # Define the formula for total scores
-### TD ----
-#### Home ----
+## Spread ----
 formula_spread <- 
   bf(
     result ~ 
@@ -336,6 +338,7 @@ formula_spread <-
     # (1|A|away_team)
   )
 
+## Total ----
 formula_total <- 
   bf(
     totalCover ~ 
@@ -390,58 +393,78 @@ formula_total <-
     # (1|A|away_team)
   ) + brmsfamily(family = "bernoulli")
 
+### TD ----
+#### Home ----
+formula_homeTD <- 
+  bf(
+    home_totalTD ~ inv_logit(homeTD),
+    homeTD ~ 0 + Intercept +
+      s(home_OSRS_net, bs = "cr") +
+      home_off_epa_roll + 
+      away_def_epa_roll + 
+      home_off_epa_roll:away_def_epa_roll + 
+      home_off_td +
+      home_def_n + 
+      home_def_td,
+    shape ~  0 + Intercept +
+      (1|mm(home_team,away_team, id = "H")),
+    nl = TRUE
+  ) + brmsfamily(family = "discrete_weibull", link = "identity")
+
 #### Away ----
 formula_awayTD <- 
   bf(
-    away_totalTD ~ 
-      0 + Intercept +
-      #away_OSRS_net +
-      #away_DSRS_net +
-      #away_off_epa_roll + 
-      s(home_def_epa_roll, bs = "cr") +
-      #away_off_epa_roll:home_def_epa_roll + 
-      #away_off_n + 
+    away_totalTD ~ inv_logit(awayTD),
+    awayTD ~ 0 + Intercept +
+      s(home_def_epa_roll, bs = "cr") + 
       away_off_td +
+      away_off_n +
       away_off_n:away_off_td +
-      away_def_n + #away_def_td +
-      #away_def_n:away_def_td +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      away_def_n,
+    shape ~  0 + Intercept +
+      (1|mm(home_team,away_team, id = "H")),
+    nl = TRUE
+  ) + brmsfamily(family = "discrete_weibull", link = "identity")
 
 ### FG ----
 #### Home ----
 formula_homeFG <- 
   bf(
-    home_fg_made ~ 
-      0 + Intercept +
-      home_SRS_net +
-      home_off_n + home_off_fg +
-      home_off_n:home_off_fg +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+    home_fg_made ~ bFG*mi(homeFGatt),
+    homeFGatt|mi() ~ 0 + Intercept +
+      home_SRS_net + 
+      home_off_n + 
+      home_off_fg + 
+      home_off_n:home_off_fg,
+    bFG ~ 1,
+    #location +
+    #(1 + location|mm(home_team,away_team))
+    #(1 | H | home_team) + (1 | A | away_team)
+    #,
+    # shape ~  0 + Intercept +
+    #   (1|mm(home_team,away_team, id = "H")),
+    #nl = TRUE
+    #(1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "gaussian")#, link = "logit")
 
 #### Away ----
 formula_awayFG <- 
   bf(
     away_fg_made ~ 
       0 + Intercept +
-      away_SRS_net +
-      away_off_n + away_off_fg +
-      away_off_n:away_off_fg +
-      (1|mm(home_team, away_team, id = "H"))
-    # (1|home_team) +
-    # (1|away_team)
-    # (1|H|home_team) +
-    # (1|A|away_team)
-  ) + brmsfamily(family = "skew_normal")
+      away_SRS_net + 
+      away_off_n + 
+      away_off_fg + 
+      away_off_n:away_off_fg #+
+    #location +
+    #(1 + location|mm(home_team,away_team))
+    #(1 | H | home_team) + (1 | A | away_team)
+    ,
+    shape ~  0 + Intercept +
+      (1|mm(home_team,away_team, id = "H"))
+    #(1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "discrete_weibull", link = "logit")
+
 
 ### SF ----
 #### Home ----
@@ -549,39 +572,61 @@ formula_awayScore <-
 ##### Home ----
 formula_homeScore <- 
   bf(
-    home_score ~ 6*homeTD + 3*homeFG + 2*homeSF + homeXP + 2*homeTP,
-    homeTD ~ 
-      s(home_OSRS_net) +
-      home_DSRS_net +
-      home_off_epa_roll + away_def_epa_roll +
+    home_score ~ 1,
+    #home_totalTD ~ inv_logit(homeTD),
+    mu1/7 ~
+      0 + Intercept +
+      s(home_OSRS_net, bs = "cr") +
+      home_off_epa_roll + 
+      away_def_epa_roll + 
       home_off_epa_roll:away_def_epa_roll + 
-      home_off_n + home_off_TD +
-      home_off_n:home_off_TD +
-      home_def_n + home_def_TD +
-      home_def_n:home_def_TD +
-      (1|home_team) +
-      (1|away_team),
-    homeFG ~ 
-      home_SRS_net +
-      home_off_n + home_off_fg +
-      home_off_n:home_off_fg +
-      (1|home_team) + 
-      (1|away_team),
-    homeSF ~ 
-      home_def_epa_roll + away_off_epa_roll + 
-      home_def_epa_roll:away_off_epa_roll +
-      (1|home_team) + 
-      (1|away_team),
-    homeXP|trials(homeTD) ~ 
-      home_off_pat_pct_roll + 
-      (1|home_team) + 
-      (1|away_team),
-    homeTP|trials(homeTD-homeXP) ~ 
-      home_off_pass_plays_cum + 
-      home_off_rush_plays_cum + + 
-      (1|home_team) + 
-      (1|away_team),
-    nl = TRUE
+      home_off_td +
+      home_def_n + 
+      home_def_td,
+    shape1 ~  #0 + Intercept +
+      (1|mm(home_team,away_team, id = "H")),
+    mu2/3 ~ 
+      0 + Intercept +
+      home_SRS_net + 
+      home_off_n + 
+      home_off_fg + 
+      home_off_n:home_off_fg #+
+    #location +
+    #(1 + location|mm(home_team,away_team))
+    #(1 | H | home_team) + (1 | A | away_team)
+    ,
+    shape2 ~ # 0 + Intercept +
+      (1|mm(home_team,away_team, id = "H"))
+    #nl = TRUE
+  ) #+ brmsfamily(family = "discrete_weibull")
+
+formula_homeScore <- 
+  bf(
+    home_score ~ 1,
+    #home_totalTD ~ inv_logit(homeTD),
+    mu1 ~ 0 + Intercept +
+      s(home_OSRS_net, bs = "cr") +
+      home_off_epa_roll + 
+      away_def_epa_roll + 
+      home_off_epa_roll:away_def_epa_roll + 
+      home_off_td +
+      home_def_n + 
+      home_def_td,
+    # shape1 ~  0 + Intercept +
+    #   (1|mm(home_team,away_team, id = "H")),
+    mu2 ~ 
+      0 + Intercept +
+      home_SRS_net + 
+      home_off_n + 
+      home_off_fg + 
+      home_off_n:home_off_fg #+
+    #location +
+    #(1 + location|mm(home_team,away_team))
+    #(1 | H | home_team) + (1 | A | away_team)
+    # ,
+    # shape2 ~  0 + Intercept +
+    #   (1|mm(home_team,away_team, id = "H"))
+    #nl = TRUE
   ) #+ brmsfamily(family = "discrete_weibull")
 
 ##### Away ----
@@ -690,15 +735,15 @@ priorPoints <- c(
 
 priorPoints <- c(
   prior(normal(0,5), class = "b", resp = "hometotalTD"),
-  prior(normal(0,5), class = "b", resp = "homefgmade"),
-  # prior(normal(0,5), class = "b", resp = "homesafeties"),
-  # prior(normal(0,5), class = "b", resp = "homepatmade"),
-  # prior(normal(0,5), class = "b", resp = "hometwoPtConv"),
-  prior(normal(0,5), class = "b", resp = "awaytotalTD"),
-  prior(normal(0,5), class = "b", resp = "awayfgmade")
-  # prior(normal(0,5), class = "b", resp = "awaysafeties"),
-  # prior(normal(0,5), class = "b", resp = "awaypatmade")
-  # prior(normal(0,5), class = "b", resp = "awaytwoPtConv")
+#prior(normal(0,5), class = "b", resp = "homefgmade"),
+# prior(normal(0,5), class = "b", resp = "homesafeties"),
+# prior(normal(0,5), class = "b", resp = "homepatmade"),
+# prior(normal(0,5), class = "b", resp = "hometwoPtConv"),
+prior(normal(0,5), class = "b", resp = "awaytotalTD"),
+#prior(normal(0,5), class = "b", resp = "awayfgmade")
+# prior(normal(0,5), class = "b", resp = "awaysafeties"),
+# prior(normal(0,5), class = "b", resp = "awaypatmade")
+# prior(normal(0,5), class = "b", resp = "awaytwoPtConv")
 )
 
 priorPoints <- c(
@@ -747,26 +792,29 @@ mix <- mixture(
   gaussian,
   gaussian,
   order = "none"
-  )
+)
 
 system.time(
   model_nfl_fit <- brm(
-    formula_spread, #+ formula_total +
-      #formula_homeFG + formula_awayFG +
-      # formula_homeSF + formula_awaySF +
-      # formula_homeXP + formula_awayXP +
-      # formula_homeTP + formula_awayTP +
-      # formula_homeScore + formula_awayScore +
-      #set_rescor(rescor = FALSE),
+    #formula_spread, #+ formula_total +
+    #formula_homeTD + formula_awayTD +
+    #formula_homeFG +# formula_awayFG +
+    # formula_homeSF + formula_awaySF +
+    # formula_homeXP + formula_awayXP +
+    # formula_homeTP + formula_awayTP +
+    formula_homeScore,# + formula_awayScore +
+    #set_rescor(rescor = FALSE),
     data = histModelData,
-    family = mix,
+    family = mixture(brmsfamily(family = "discrete_weibull", link = "logit"), 
+                     brmsfamily(family = "discrete_weibull", link = "logit"),
+                     order = "none"),
     save_pars = save_pars(all = TRUE),
     seed = 52,
     chains = chains, 
     cores = parallel::detectCores(),
     iter = iters,
     warmup = burn,
-    init = 0,
+    #init = 0,
     #stanvars = stanvars,
     #prior = priorPoints,
     drop_unused_levels = FALSE,
@@ -776,7 +824,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 51
+fit <- 61
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))
@@ -985,6 +1033,9 @@ performance::check_zeroinflation(Fit,)
 homePPCbarsTD <- pp_check(Fit, resp = "hometotalTD", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC TD")) +
   theme_bw()
+homePPCbarsTDnl <- pp_check(Fit, resp = "homeTD", ndraws = 100, type = "bars") + 
+  labs(title = paste0("Fit", fit, " Home PPC TD")) +
+  theme_bw()
 homePPCbarsFG <- pp_check(Fit, resp = "homefgmade", ndraws = 100, type = "bars") + 
   labs(title = paste0("Fit", fit, " Home PPC fg")) +
   theme_bw()
@@ -997,6 +1048,8 @@ homePPCbarsXP <- pp_check(Fit, resp = "homepatmade", ndraws = 100, type = "bars"
 homePPCbarsTP <- pp_check(Fit, resp = "hometwoPtConv", ndraws = 100, type = "bars") +
   labs(title = paste0("Fit", fit, " Home PPC tp")) +
   theme_bw()
+
+homeTDnl <- posterior_linpred(Fit, nlpar = "homeTD")
 
 # awayPPCTD <- pp_check(Fit, resp = "awaytotalTD", ndraws = 100) +
 #   labs(title = paste0("Fit", fit, " Away PPC TD")) +
@@ -1204,7 +1257,7 @@ homefinalFit <-
   3*homefinalFitFG
 
 ## Fitted
-#homefinalFit <- posterior_predict(Fit, resp = "homescore")
+homefinalFit <- posterior_predict(Fit, resp = "homescore")
 homefinalFitMean <- colMeans(homefinalFit)
 homefinalFitMed <- apply(homefinalFit, 2, function(x){quantile(x, 0.5)})
 homefinalFitLCB <- apply(homefinalFit, 2, function(x){quantile(x, 0.025)})
@@ -1227,16 +1280,42 @@ homefinalPreds <-
   7*homefinalPredsTD + 
   3*homefinalPredsFG
 
-# homefinalPreds <- posterior_predict(Fit,
-#                                     resp = "homescore",
-#                                     newdata = modelData,
-#                                     allow_new_levels = TRUE,
-#                                     re_formula = NULL
-# )
+homefinalPreds <- posterior_predict(Fit,
+                                    resp = "homescore",
+                                    newdata = modelData,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
+)
 homefinalPredsMean <- colMeans(homefinalPreds)
 homefinalPredsMed <- apply(homefinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
 homefinalPredsLCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 homefinalPredsUCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
+
+
+homePPCbars <- ppc_bars(y = histModelData$home_score, 
+                        yrep = homefinalFit[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD TD")) +
+  xlim(0,100) +
+  theme_bw()
+
+homePPCdens <- ppc_dens_overlay(y = histModelData$home_score, 
+                                yrep = homefinalFit[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD TD")) +
+  xlim(0,100) +
+  theme_bw()
+homePPCdens
+
+homePPDbars <- ppc_bars(y = modelData$home_score, 
+                          yrep = homefinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD TD")) +
+  theme_bw()
+
+homePPDdens <- ppc_dens_overlay(y = modelData$home_score, 
+                        yrep = homefinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
+  labs(title = paste0("Fit", fit, " Home PPD TD")) +
+  xlim(0,100) +
+  theme_bw()
+homePPDdens
 
 #### Away Score ----
 awayfinalFit <- 
