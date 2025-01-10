@@ -76,6 +76,7 @@ modDataLong <- modData |>
 modData2 <- modData |> 
   filter(!is.na(result)) |>
   select(
+    game_id,
     season,
     season_type,
     week,
@@ -101,12 +102,26 @@ modData2 <- modData |>
     contains("away")
   ) |>
   mutate(
-    across(where(is.character),
+    across(c(where(is.character), -game_id),
            ~factor(.x))
-  ) #|>
+  ) |>
+  mutate(
+    home_totalTDScore = 6*home_totalTD,
+    home_fg_madeScore = 3*home_fg_made,
+    home_pat_madeScore = home_pat_made,
+    home_safetiesScore = 2*home_safeties,
+    home_twoPtConvScore = 2*home_twoPtConv,
+    away_totalTDScore = 6*away_totalTD,
+    away_fg_madeScore = 3*away_fg_made,
+    away_pat_madeScore = away_pat_made,
+    away_safetiesScore = 2*away_safeties,
+    away_twoPtConvScore = 2*away_twoPtConv,
+    home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
+    away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
+  )
 
 histModelData1 <- modData2 |> 
-  filter(season == 2023 | (season == 2024 & week <= 6))
+  filter(between(season, 2023, 2023) | (season == 2024 & week <= 6))
 modelData1 <- modData2 |> 
   filter(season == 2024 & week > 6) |>
   filter(!is.na(result), 
@@ -130,12 +145,9 @@ predictorData <- histModelData1 |>
          -contains("pat_att"),
          -contains("TDs"),
          -contains("spread"), 
-         -contains("over"),
-         -contains("under"),
          -contains("moneyline"),
          -contains("offTD"),
          -total_line,
-         -totalCover,
          -location,
          -div_game,
          -roof)
@@ -184,14 +196,14 @@ homeFGcorT <- t(homeFGcor)
 homeFGcorT2 <- homeFGcorT[order(abs(homeFGcorT)),]
 homeFGcorT2df <- data.frame(sort(abs(homeFGcorT2), decreasing = TRUE))
 
-homeFGAcor <- cor(histModelData |> select(home_fg_att),
-                  histModelData |> select(c(where(is.numeric), -home_fg_att)),
+spreadCovercor <- cor(histModelData |> select(spreadCover),
+                  histModelData |> select(c(where(is.numeric), -spreadCover)),
                   use = "pairwise.complete.obs",
                   method = "kendall"
 )
-homeFGAcorT <- t(homeFGAcor)
-homeFGAcorT2 <- homeFGAcorT[order(abs(homeFGAcorT)),]
-homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
+spreadCovercorT <- t(spreadCovercor)
+spreadCovercorT2 <- spreadCovercorT[order(abs(spreadCovercorT)),]
+spreadCovercorT2df <- data.frame(sort(round(abs(spreadCovercorT2), 5), decreasing = TRUE))
 
 
 
@@ -274,7 +286,7 @@ formula_spread <-
   bf(
     spreadCover ~ 
       0 + Intercept +
-      spread_line +
+      #spread_line +
       home_SRS +
       away_SRS +
       home_SRS:away_SRS +
@@ -314,8 +326,8 @@ formula_spread <-
       away_off_to + home_def_to +
       away_off_to:home_def_to +
       
-      (1|home_team) +
-      (1|away_team)
+      (1|H|home_team) +
+      (1|A|away_team)
     
     #(1|mm(home_team, away_team, id = "H"))
     # (1|home_team) +
@@ -328,10 +340,10 @@ formula_total <-
   bf(
     totalCover ~ 
       0 + Intercept +
-      total_line +
-      home_SRS +
-      away_SRS +
-      home_SRS:away_SRS +
+      #total_line +
+      home_OSRS_net +
+      away_OSRS_net +
+      home_OSRS_net:away_OSRS_net +
       
       home_off_epa_roll + away_def_epa_roll +
       home_off_epa_roll:away_def_epa_roll + 
@@ -368,8 +380,8 @@ formula_total <-
       away_off_to + home_def_to +
       away_off_to:home_def_to +
       
-      (1|home_team) +
-      (1|away_team)
+      (1|H|home_team) +
+      (1|A|away_team)
     
     #(1|mm(home_team, away_team, id = "H"))
     # (1|home_team) +
@@ -740,7 +752,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 52
+fit <- 50
 assign(paste0("fit", fit), Fit)
 #assign(paste0("fitB", fit), Fit2)
 save(fit10, file= paste0("~/Desktop/fit", fit, ".RData"))

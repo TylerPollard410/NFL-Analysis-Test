@@ -104,10 +104,24 @@ modData2 <- modData |>
   mutate(
     across(c(where(is.character), -game_id),
            ~factor(.x))
-  ) #|>
+  ) |>
+  mutate(
+    home_totalTDScore = 6*home_totalTD,
+    home_fg_madeScore = 3*home_fg_made,
+    home_pat_madeScore = home_pat_made,
+    home_safetiesScore = 2*home_safeties,
+    home_twoPtConvScore = 2*home_twoPtConv,
+    away_totalTDScore = 6*away_totalTD,
+    away_fg_madeScore = 3*away_fg_made,
+    away_pat_madeScore = away_pat_made,
+    away_safetiesScore = 2*away_safeties,
+    away_twoPtConvScore = 2*away_twoPtConv,
+    home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
+    away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
+  )
 
 histModelData1 <- modData2 |> 
-  filter(season == 2023 | (season == 2024 & week <= 6))
+  filter(between(season, 2023, 2023) | (season == 2024 & week <= 6))
 modelData1 <- modData2 |> 
   filter(season == 2024 & week > 6) |>
   filter(!is.na(result), 
@@ -164,6 +178,25 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
 
 
 ## Correlations ----
+totalcor <- cor(histModelData |> select(total),
+                 histModelData |> select(c(where(is.numeric), -total)),
+                 use = "pairwise.complete.obs",
+                 method = "kendall"
+)
+totalcorT <- t(totalcor)
+totalcorT2 <- totalcorT[order(abs(totalcorT)),]
+totalcorT2df <- data.frame(sort(abs(totalcorT2), decreasing = TRUE))
+
+spreadcor <- cor(histModelData |> select(result),
+                histModelData |> select(c(where(is.numeric), -result)),
+                use = "pairwise.complete.obs",
+                method = "kendall"
+)
+spreadcorT <- t(spreadcor)
+spreadcorT2 <- spreadcorT[order(abs(spreadcorT)),]
+spreadcorT2df <- data.frame(sort(abs(spreadcorT2), decreasing = TRUE))
+
+
 homeTDcor <- cor(histModelData |> select(home_totalTD),
                  histModelData |> select(c(where(is.numeric), -home_totalTD)),
                  use = "pairwise.complete.obs",
@@ -251,15 +284,26 @@ SRSdata |>
 ### Total ----
 formula_total <-
   bf(
-    total ~ 0 + Intercept +
-      home_PFG + away_PFG +
-      home_PAG + away_PAG +
+    total ~ #0 + Intercept +
+      home_PFG + 
+      # away_PFG +
+      # home_PAG + 
+      # away_PAG +
       home_OSRS_net +
       away_OSRS_net +
-      (1|H|home_team) + (1|A|away_team),
-    shape ~ 0 + Intercept +
-      (1 | H | home_team) + (1 | A | away_team)
-  ) + brmsfamily(family = "com_poisson")
+      home_off_epa_roll + 
+      # away_def_epa_roll + 
+      # home_off_epa_roll:away_def_epa_roll + 
+      home_off_punt +
+      home_off_rush_epa_cum +
+      home_off_pat_att_roll +
+      # home_off_td +
+      # home_def_n + 
+      # home_def_td 
+      (1|H|home_team) + (1|A|away_team)
+    # shape ~ 0 + Intercept +
+    #   (1 | H | home_team) + (1 | A | away_team)
+  ) + brmsfamily(family = "cumulative")#, link = "probit")
 
 ### Home Score ----
 formula_homeScore <-
@@ -298,15 +342,16 @@ chains <- 4
 sims <- (iters-burn)*chains
 
 priorPoints <- c(
-  prior(normal(0,5), class = "b", resp = "total"),
-  prior(normal(0,5), class = "b", resp = "homescore"),
-  prior(normal(0,5), class = "b", resp = "awayscore")
+  prior(normal(0,5), class = "b") #, resp = "total")
+  #prior(normal(0,5), class = "b", resp = "homescore"),
+  #prior(normal(0,5), class = "b", resp = "awayscore")
 )
 
 system.time(
   model_nfl_fit <- brm(
-    formula_total + formula_homeScore + formula_awayScore +
-      set_rescor(rescor = FALSE),
+    formula_total #+ formula_homeScore + formula_awayScore +
+      #set_rescor(rescor = FALSE)
+    ,
     data = histModelData,
     #family = custom_family,
     save_pars = save_pars(all = TRUE),
@@ -326,7 +371,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 18
+fit <- 33
 assign(paste0("fit", fit), Fit)
 
 plot(Fit, ask = FALSE)
@@ -378,6 +423,7 @@ postSum <- posterior_summary(Fit)
 
 ### Bayes R2 -----
 FitR2temp <- bayes_R2(Fit)
+FitR2temp
 FitR2tempDF <- FitR2temp |>
   bind_cols(
     Fit = paste0("Fit", fit),
