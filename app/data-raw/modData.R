@@ -522,17 +522,18 @@ scoresData <- scoresData2 |>
   mutate(pat_pct_roll = pat_made_roll/pat_att_roll, .after = pat_pct_cum) |>
   mutate(fg_pct_roll = fg_made_roll/fg_att_roll, .after = fg_pct_cum) |>
   tk_augment_slidify(
-    .value   = c(pat_att, fg_att),
+    .value   = c(pat_att, fg_att,
+                 offTD, totalTD),
     # Multiple rolling windows
     .period  = 5,
     .f       = mean,
     .partial = TRUE,
     .align = "right",
-    .names = c("pat_att_roll", "fg_att_roll")
+    .names = c("pat_att_roll", "fg_att_roll", "offTD_roll", "totalTD_roll")
   ) |>
   ungroup() |>
   group_by(team) |>
-  fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll), .direction = "down") |>
+  fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll,offTD_roll,totalTD_roll), .direction = "down") |>
   mutate(
     pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
     pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
@@ -544,17 +545,21 @@ scoresData <- scoresData2 |>
     def_fumbles = lag(def_fumbles, default = 0)
   ) |>
   mutate(
+    totalTD_roll = lag(totalTD_roll),
+    offTD_roll = lag(offTD_roll),
     off_pat_att_roll = lag(pat_att_roll),
     off_pat_pct_cum = lag(pat_pct_cum, default = 1),
     off_pat_pct_roll = lag(pat_pct_roll, default = 1),
     off_fg_att_roll = lag(fg_att_roll),
     off_fg_pct_cum = lag(fg_pct_cum),
-    off_fg_pct_roll = lag(fg_pct_roll)
+    off_fg_pct_roll = lag(fg_pct_roll),
+    
   ) |> 
   ungroup() |>
   select(
     game_id, team, 
-    totalTD, offTD, special_teams_tds, def_tds,
+    totalTD, totalTD_roll, offTD, offTD_roll,
+    special_teams_tds, def_tds,
     fg_made, fg_att, 
     off_fg_att_roll, off_fg_pct_cum, off_fg_pct_roll,
     twoPtConv, twoPtAtt,

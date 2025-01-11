@@ -14,6 +14,7 @@ library(smplot2)
 library(patchwork)
 
 ## Modeling
+library(fitdistrplus)
 library(zoo)
 library(pracma)
 library(forecast)
@@ -151,10 +152,12 @@ predictorData <- histModelData1 |>
          -contains("spread"), 
          -contains("moneyline"),
          -contains("offTD"),
-         -total_line,
-         -location,
-         -div_game,
-         -roof)
+         -spread_line,
+         -total_line
+         #-location,
+         #-div_game,
+         #-roof
+         )
 preProcValues <- preProcess(predictorData,
                             method = c("center", "scale"))
 preProcValues
@@ -182,6 +185,13 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
 
 max(histModelData$home_totalTD)
 
+
+## Data Distributions ----
+fitd
+plotdist(modData2$total, histo = TRUE, demp = TRUE, breaks = 30)
+plotdist(modData2$total, histo = TRUE, demp = TRUE, discrete = TRUE)
+descdist(modData2$total, boot = 1000)
+descdist(modData2$total, boot = 1000, discrete = TRUE)
 
 ## Correlations ----
 homeTDcor <- cor(histModelData |> select(home_totalTD),
@@ -2400,7 +2410,7 @@ system.time(
 
 iterFit2 <- iterFit
 
-save(iterFit1,
+save(#iterFit1,
      homefinalIterFitTDComb2,
      homefinalIterFitfgComb2,
      homefinalIterFitComb2,
@@ -2416,7 +2426,7 @@ save(iterFit1,
      awayfinalIterPredsTDComb2,
      awayfinalIterPredsfgComb2,
      awayfinalIterPredsComb2,
-     file = "~/Desktop/NFL Analysis Data/iter data Multi3.RData")
+     file = "~/Desktop/NFL Analysis Data/iterData.RData")
 
 ## Diagnostics ----
 
