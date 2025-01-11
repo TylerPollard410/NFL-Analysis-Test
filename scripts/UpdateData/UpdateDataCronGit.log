@@ -120,3 +120,26 @@ Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
 elapsed time is 559.314000 seconds 
+[main 9edae43] Auto-update: 2025-01-11 02:10:44
+ 26 files changed, 620 insertions(+), 28946 deletions(-)
+ delete mode 100644 Model Fitting/Model 1.R
+ delete mode 100644 Model Fitting/Model 2.R
+ delete mode 100644 Model Fitting/Model HomeAway.R
+ delete mode 100644 Model Fitting/Model Iter.R
+ delete mode 100644 Model Fitting/Model Scores 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Scores SRS Sep 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Scores SRS Sep2 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Scores Sep 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Scores XGB 11Dec2024.R
+ delete mode 100644 Model Fitting/Model Scores.R
+ delete mode 100644 Model Fitting/Model Scores2 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Spread Logistic.R
+ delete mode 100644 Model Fitting/Model Spread.R
+ delete mode 100644 Model Fitting/Model SpreadLong.R
+ delete mode 100644 Model Fitting/Model Total 10Dec2024.R
+ delete mode 100644 Model Fitting/Model Total.R
+ delete mode 100644 Model Fitting/StandingsTest.R
+ delete mode 100644 Model Fitting/Strawman Model.R
+ delete mode 100644 Model Fitting/spread.R
+To github.com:TylerPollard410/NFL-Analysis-Test.git
+   dd353cb..9edae43  main -> main

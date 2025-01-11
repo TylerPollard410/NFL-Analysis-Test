@@ -150,7 +150,9 @@ modPreProcess <- modData2 |>
 modPreProcValues <- preProcess(modPreProcess,
                                method = c("center", "scale")#, "YeoJohnson")
 )
-modPreProcess2 <- predict(modPreProcValues, newdata = modPreProcess)
+modPreProcess2 <- predict(modPreProcValues, 
+                          newdata = modData2 |>
+                            filter(season >= 2021, !is.na(result)))
 
 histModelData1 <- modData2 |> 
   filter(between(season, 2023, 2023) | (season == 2024 & week <= 6))
@@ -221,8 +223,8 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
 
 
 ## Correlations ----
-totalcor <- cor(histModelData |> select(total),
-                histModelData |> select(c(where(is.numeric), -total)),
+totalcor <- cor(modPreProcess2 |> select(total),
+                 modPreProcess2 |> select(c(where(is.numeric), -total)),
                 use = "pairwise.complete.obs",
                 method = "kendall"
 )
@@ -439,6 +441,47 @@ ggplot(data = histModelDataPlot,
 formula_total <-
   bf(
     total ~ #0 + #Intercept +
+      home_PFG_roll +
+      away_PFG_roll +
+    
+      home_OSRS_roll +
+      away_OSRS_roll +
+      home_OSRS_roll_net +
+      away_OSRS_roll_net +
+      # home_OSRS_net +
+      # away_OSRS_net +
+      home_off_epa_roll +
+      home_off_epa_cum +
+      home_off_net_epa_cum + 
+      home_off_net_epa_roll +
+      home_pass_net_epa_cum +
+      home_pass_net_epa_roll +
+      home_off_rush_epa_cum +
+      home_off_rush_epa_roll +
+      
+      home_totalTD_roll +
+      home_off_pat_att_roll +
+      home_def_special_plays_cum +
+      
+      home_off_n +
+      home_off_punt +
+      home_off_td +
+      home_off_1st +
+      home_off_scr_2nd +
+      home_off_scr +
+      wind +
+      temp,# +
+      #(1|H|home_team) + (1|away_team),
+    shape ~ 
+      1 + (1|home_team) + (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull")#, link = "probit")
+
+#### Non-linear ----
+formula_totalNL <-
+  bf(
+    total ~ b1*exp(eta),
+    b1  ~ (1|H|home_team) + (1|A|away_team),
+    eta ~ 0 +
       home_OSRS_net +
       away_OSRS_net +
       home_off_epa_roll +
@@ -461,17 +504,16 @@ formula_total <-
       home_off_scr_2nd +
       home_off_scr +
       wind +
-      temp +
-      (1|H|home_team) + (1|away_team),
-    shape ~ #0 + Intercept +
-      1 + (1|H|home_team) #+ (1|A| away_team)
-  ) + brmsfamily(family = "discrete_weibull")#, link = "probit")
+      temp,# +
+      #(1|H|home_team) + (1|A|away_team),
+    shape ~ (1|H|home_team) + (1|A|away_team),
+    nl = TRUE
+  ) + brmsfamily("poisson", link = "log")
 
-#### Non-linear ----
-formula_totalNL <-
+formula_totalNL2 <-
   bf(
-    total ~ b1*inv_logit(eta),
-    b1  ~ (1|home_team) + (1|away_team),
+    total ~ b1 + inv_logit(eta),
+    b1  ~ (1|H|home_team) + (1|A|away_team),
     eta ~ 0 +
       home_OSRS_net +
       away_OSRS_net +
@@ -496,7 +538,31 @@ formula_totalNL <-
       home_off_scr +
       wind +
       temp,
-    shape ~ (1|home_team) + (1|away_team),
+    sigma ~ 
+      home_OSRS_net +
+      away_OSRS_net +
+      home_off_epa_roll +
+      home_off_epa_cum +
+      home_off_net_epa_cum + 
+      home_off_net_epa_roll +
+      home_pass_net_epa_cum +
+      home_pass_net_epa_roll +
+      home_off_rush_epa_cum +
+      home_off_rush_epa_roll +
+      
+      home_totalTD_roll +
+      home_off_pat_att_roll +
+      home_def_special_plays_cum +
+      
+      home_off_n +
+      home_off_punt +
+      home_off_td +
+      home_off_1st +
+      home_off_scr_2nd +
+      home_off_scr +
+      wind +
+      temp +
+      (1|H|home_team) + (1|A|away_team),
     nl = TRUE
   )
 
@@ -505,6 +571,10 @@ iters <- 2000
 burn <- 1000
 chains <- 4
 sims <- (iters-burn)*chains
+
+mean(histModelData$total)
+sd(histModelData$total)
+
 
 priorPoints <- c(
   prior(normal(0,5), class = "b") #, resp = "total")
@@ -517,11 +587,11 @@ priorPointsNL <- c(
 
 system.time(
   model_nfl_fit <- brm(
-    formula_totalNL #+ formula_homeScore + formula_awayScore +
+    formula_total #+ formula_homeScore + formula_awayScore +
     #set_rescor(rescor = FALSE)
     ,
     data = histModelData,
-    family = brmsfamily("discrete_weibull", link = "logit"),
+    #family = brmsfamily("discrete_weibull", link = "identity"),
     save_pars = save_pars(all = TRUE),
     seed = 52,
     chains = chains, 
@@ -531,7 +601,7 @@ system.time(
     init = 0,
     #stanvars = stanvars,
     #normalize = FALSE,
-    prior = priorPointsNL,
+    #prior = priorPoints,
     drop_unused_levels = FALSE,
     control = list(adapt_delta = 0.95),
     backend = "cmdstanr"
@@ -539,7 +609,7 @@ system.time(
 )
 
 Fit <- model_nfl_fit
-fit <- 32
+fit <- 60
 assign(paste0("fit", fit), Fit)
 
 plot(Fit, ask = FALSE)
@@ -1029,23 +1099,47 @@ predMetrics #<- predMetricsHA
 
 ### Total ----
 #### Fit ----
-totalLineTrain <- modData |>
-  filter(season == 2023 | (season == 2024 & week <= 6)) |>
-  pull(total_line)
+#Fit <- fit33
+
+# totalfinalFit <- posterior_predict(Fit, resp = "total")
+# totalfinalFitMean <- colMeans(totalfinalFit)
+# totalfinalFitMed <- apply(totalfinalFit, 2, function(x){quantile(x, 0.5)})
+# totalfinalFitLCB <- apply(totalfinalFit, 2, function(x){quantile(x, 0.025)})
+# totalfinalFitUCB <- apply(totalfinalFit, 2, function(x){quantile(x, 0.975)})
+
+totalfinalEFit <- posterior_epred(Fit, resp = "total")
+totalfinalEFitMean <- colMeans(totalfinalEFit)
+totalfinalEFitMed <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.5)})
+totalfinalEFitLCB <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.025)})
+totalfinalEFitUCB <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.975)})
+
+# totalLineTrain <- modData |>
+#   filter(season == 2023 | (season == 2024 & week <= 6)) |>
+#   pull(total_line)
 
 totalLineTrain <- histModelData$total_line
 
 FittedProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTrain))
+FittedProbsTotalE <- matrix(NA, nrow = sims, ncol = length(totalLineTrain))
 for(j in 1:length(totalLineTrain)){
   fitted <- totalfinalFit[, j]
   probs <- fitted > totalLineTrain[j]
+  fittedE <- totalfinalEFit[, j]
+  probsE <- fittedE > totalLineTrain[j]
   FittedProbsTotal[, j] <- probs
+  FittedProbsTotalE[, j] <- probsE
 }
 FittedBetTotal <- colMeans(FittedProbsTotal)
 FittedBetLogicalTotal <- FittedBetTotal > 0.5
 FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
+
+FittedBetTotalE <- colMeans(FittedProbsTotalE)
+FittedBetLogicalTotalE <- FittedBetTotalE > 0.5
+FittedLogicalTotalE <- totalTrain > totalLineTrain
+FittedProbTotalE <- mean(FittedBetLogicalTotalE == FittedLogicalTotalE, na.rm = TRUE)
+FittedProbTotalE
 
 totalDataTrain <- modData |> filter(season == 2023 | (season == 2024 & week <= 6)) |>
   select(season, week, #game_type,
@@ -1064,36 +1158,75 @@ totalDataTrain <- modData |> filter(season == 2023 | (season == 2024 & week <= 6
     totalCoverBet = ifelse(totalCoverProb > over_prob, TRUE,
                            ifelse(1 - totalCoverProb > under_prob, FALSE, NA)),
     # totalCoverBet = ifelse(totalCoverProb > .6, TRUE, ifelse(1 - totalCoverProb > .6, FALSE, NA)),
-    totalCoverSuccess = totalCoverBet == totalCover
+    totalCoverSuccess = totalCoverBet == totalCover,
+    
+    totalFitE = totalfinalEFitMean,
+    coverBetE = ifelse(totalFitE > total_line, TRUE, FALSE),
+    coverSuccessE = coverBetE == totalCover,
+    totalCoverProbE = FittedBetTotalE,
+    totalCoverBetE = ifelse(totalCoverProbE > over_prob, TRUE,
+                           ifelse(1 - totalCoverProbE > under_prob, FALSE, NA)),
+    # totalCoverBet = ifelse(totalCoverProb > .6, TRUE, ifelse(1 - totalCoverProb > .6, FALSE, NA)),
+    totalCoverSuccessE = totalCoverBetE == totalCover
   )
 sum(is.na(totalDataTrain$totalCoverSuccess))
 sum(!is.na(totalDataTrain$totalCoverSuccess))
+sum(is.na(totalDataTrain$totalCoverSuccessE))
+sum(!is.na(totalDataTrain$totalCoverSuccessE))
 
 totalSuccessTrain <- totalDataTrain |>
   summarise(
     totalProbTrain = mean(coverSuccess, na.rm = TRUE),
-    totalOddsProbTrain = mean(totalCoverSuccess, na.rm = TRUE)
+    totalOddsProbTrain = mean(totalCoverSuccess, na.rm = TRUE),
+    totalProbTrainE = mean(coverSuccessE, na.rm = TRUE),
+    totalOddsProbTrainE = mean(totalCoverSuccessE, na.rm = TRUE)
   )
 totalSuccessTrain
 
 #### Pred ----
-totalLineTest <- modData |>
-  filter(season == 2024 & week > 6) |>
-  filter(!is.na(result), 
-         !is.na(home_totalTD),
-         !is.na(away_totalTD),
-         !is.na(home_fg_made),
-         !is.na(away_fg_made)
-  ) |>
-  pull(total_line)
+# totalLineTest <- modData |>
+#   filter(season == 2024 & week > 6) |>
+#   filter(!is.na(result), 
+#          !is.na(home_totalTD),
+#          !is.na(away_totalTD),
+#          !is.na(home_fg_made),
+#          !is.na(away_fg_made)
+#   ) |>
+#   pull(total_line)
 
 totalLineTest <- modelData$total_line
 
+totalfinalPreds <- posterior_predict(Fit,
+                                     resp = "total",
+                                     newdata = modelData,
+                                     allow_new_levels = TRUE,
+                                     re_formula = NULL
+)
+totalfinalPredsMean <- colMeans(totalfinalPreds)
+totalfinalPredsMed <- apply(totalfinalPreds, 2, function(x){quantile(x, 0.5)})
+totalfinalPredsLCB <- apply(totalfinalPreds, 2, function(x){quantile(x, 0.025)})
+totalfinalPredsUCB <- apply(totalfinalPreds, 2, function(x){quantile(x, 0.975)})
+
+totalfinalEPreds <- posterior_epred(Fit,
+                                    resp = "total",
+                                    newdata = modelData,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
+)
+totalfinalEPredsMean <- colMeans(totalfinalEPreds)
+totalfinalEPredsMed <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.5)})
+totalfinalEPredsLCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.025)})
+totalfinalEPredsUCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.975)})
+
 PredsProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
+PredsProbsTotalE <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
 for(j in 1:length(totalLineTest)){
   fitted <- totalfinalPreds[, j]
   probs <- fitted > totalLineTest[j]
+  fittedE <- totalfinalEPreds[, j]
+  probsE <- fittedE > totalLineTest[j]
   PredsProbsTotal[, j] <- probs
+  PredsProbsTotalE[, j] <- probsE
 }
 PredsBetTotal <- colMeans(PredsProbsTotal)
 PredsBetLogicalTotal <- PredsBetTotal > 0.5
@@ -1101,46 +1234,67 @@ PredsLogicalTotal <- totalTest > totalLineTest
 PredsProbTotal <- mean(PredsBetLogicalTotal == PredsLogicalTotal, na.rm = TRUE)
 PredsProbTotal
 
-totalDataTest <- modData |> filter(season == 2024 & week > 6) |>
-  filter(!is.na(result), 
-         !is.na(home_totalTD),
-         !is.na(away_totalTD),
-         !is.na(home_fg_made),
-         !is.na(away_fg_made)
-  ) |>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score, result,
-         home_PFG, away_PFG, home_PAG, away_PAG,
-         home_OSRS_net, away_OSRS_net,
-         total, total_line,totalCover,
+PredsBetTotalE <- colMeans(PredsProbsTotalE)
+PredsBetLogicalTotalE <- PredsBetTotalE > 0.5
+PredsLogicalTotalE <- totalTest > totalLineTest
+PredsProbTotalE <- mean(PredsBetLogicalTotalE == PredsLogicalTotalE, na.rm = TRUE)
+PredsProbTotalE
+
+totalDataTest <- modData |> 
+  filter(season == 2024 & week > 6) |>
+  filter(!is.na(total)) |>
+  select(season, week, #game_type,
+         home_team, home_score, away_team, away_score,
+         home_OSRS_net, home_OSRS,
+         away_OSRS_net, away_OSRS,
+         result, total_line, totalCover,
          home_spread_odds, home_spread_prob,
          away_spread_prob, away_spread_prob,
          over_odds, over_prob,
          under_odds, under_prob) |>
   mutate(
-    totalPred = totalfinalPredsMean,
-    coverBet = ifelse(totalPred > total_line, TRUE, FALSE),
+    totalPreds = totalfinalPredsMean,
+    coverBet = ifelse(totalPreds > total_line, TRUE, FALSE),
     coverSuccess = coverBet == totalCover,
     totalCoverProb = PredsBetTotal,
     totalCoverBet = ifelse(totalCoverProb > over_prob, TRUE,
                            ifelse(1 - totalCoverProb > under_prob, FALSE, NA)),
-    # totalCoverBet = ifelse(totalCoverProb > .7, TRUE, 
-    #                         ifelse(1 - totalCoverProb > .7, FALSE, NA)),
-    totalCoverSuccess = totalCoverBet == totalCover
-  ) |>
-  relocate(
-    total, total_line, totalCover,
-    .before = totalPred
+    totalCoverBet2 = ifelse(totalCoverProb > .70, TRUE,
+                            ifelse(1 - totalCoverProb > .70, FALSE, NA)),
+    totalCoverSuccess = totalCoverBet == totalCover,
+    totalCoverSuccess2 = totalCoverBet2 == totalCover,
+    
+    totalPredsE = totalfinalEPredsMean,
+    coverBetE = ifelse(totalPredsE > total_line, TRUE, FALSE),
+    coverSuccessE = coverBetE == totalCover,
+    totalCoverProbE = PredsBetTotalE,
+    totalCoverBetE = ifelse(totalCoverProbE > over_prob, TRUE,
+                           ifelse(1 - totalCoverProbE > under_prob, FALSE, NA)),
+    totalCoverBet2E = ifelse(totalCoverProbE > .70, TRUE,
+                            ifelse(1 - totalCoverProbE > .70, FALSE, NA)),
+    totalCoverSuccessE = totalCoverBetE == totalCover,
+    totalCoverSuccess2E = totalCoverBet2E == totalCover,
   )
 sum(is.na(totalDataTest$totalCoverSuccess))
 sum(!is.na(totalDataTest$totalCoverSuccess))
+sum(is.na(totalDataTest$totalCoverSuccessE))
+sum(!is.na(totalDataTest$totalCoverSuccessE))
 
 totalSuccessTest <- totalDataTest |>
   summarise(
     totalProbTest = mean(coverSuccess, na.rm = TRUE),
-    totalOddsProbTest = mean(totalCoverSuccess, na.rm = TRUE)
+    totalOddsProbTest = mean(totalCoverSuccess, na.rm = TRUE),
+    totalOddsProbTest2 = mean(totalCoverSuccess, na.rm = TRUE),
+    totalProbTestE = mean(coverSuccessE, na.rm = TRUE),
+    totalOddsProbTestE = mean(totalCoverSuccessE, na.rm = TRUE),
+    totalOddsProbTest2E = mean(totalCoverSuccess2E, na.rm = TRUE)
   )
 totalSuccessTest
+
+
+totalSuccessTest <- totalSuccessTest |> 
+  select(-contains("2"))
+
 
 ## Success Perf ----
 successPerfTemp <- bind_rows( 
@@ -1168,6 +1322,9 @@ successPerf <- bind_rows(
 )
 successPerf #<- successPerfTemp
 
+successPerf |> arrange(desc(ProbTest))
+successPerf |> arrange(desc(OddsProbTest))
+
 ### Loo ----
 assign(paste0("loo", fit), loo(Fit))
 
@@ -1177,6 +1334,113 @@ loo_compare(
   loo_fits
 )
 
+totalfinalEFit <- posterior_epred(Fit, resp = "total")
+totalfinalEFitMean <- colMeans(totalfinalEFit)
+totalfinalEFitMed <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.5)})
+totalfinalEFitLCB <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.025)})
+totalfinalEFitUCB <- apply(totalfinalEFit, 2, function(x){quantile(x, 0.975)})
+
+totalfinalEPreds <- posterior_epred(Fit,
+                                     resp = "total",
+                                     newdata = modelData,
+                                     allow_new_levels = TRUE,
+                                     re_formula = NULL
+)
+totalfinalEPredsMean <- colMeans(totalfinalEPreds)
+totalfinalEPredsMed <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.5)})
+totalfinalEPredsLCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.025)})
+totalfinalEPredsUCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.975)})
+
+t <- predict(Fit, newdata = modelData, summary = TRUE, type = "response")
+overMat <- t(t(totalfinalPreds) > totalLineTest)
+overProbs <- colMeans(overMat)
+
+underMat <- t(t(totalfinalPreds) < totalLineTest)
+underProbs <- colMeans(underMat)
+
+overProbs[1:10]
+underProbs[1:10]
+
+
+overProbs2 <- overProbs > probtestdat$over_prob
+underProbs2 <- underProbs > probtestdat$under_prob
+
+probtestdat <- modData |> 
+  filter(season == 2024 & week > 6) |>
+  filter(!is.na(total)) |>
+  select(
+    home_team, home_score,
+    away_team, away_score,
+    total, total_line,
+    over_prob, under_prob
+  ) |>
+  mutate(
+    overProb = overProbs,
+    underProb = underProbs
+  ) |>
+  mutate(
+    totalResult = ifelse(total > total_line, "over",
+                       ifelse(total < total_line, "under", NA)),
+    totalBet = ifelse(overProb > over_prob, "over",
+                      ifelse(underProb > under_prob, "under", NA)),
+    totalSuccess = totalBet == totalResult
+  )
+
+table(probtestdat$totalSuccess, useNA = "always")
 
 
 
+overProbs2[1:10]
+underProbs2[1:10]
+
+totalDataTest2 <- modelData |> 
+  #filter(season == 2024 & week > 6) |>
+  filter(!is.na(total)) |>
+  select(season, week, #game_type,
+         home_team, home_score, away_team, away_score,
+         home_OSRS_net, home_OSRS,
+         away_OSRS_net, away_OSRS,
+         result, total_line, totalCover,
+         home_spread_odds, home_spread_prob,
+         away_spread_prob, away_spread_prob,
+         over_odds, over_prob,
+         under_odds, under_prob) |>
+  mutate(
+    #totalPreds = totalfinalPredsMean,
+    totalPreds = totalfinalPredsMed,
+    coverBet = ifelse(totalPreds > total_line, TRUE, FALSE),
+    coverSuccess = coverBet == totalCover,
+    totalCoverProb = PredsBetTotal,
+    totalCoverBet = ifelse(totalCoverProb > over_prob, TRUE,
+                           ifelse(1 - totalCoverProb > under_prob, FALSE, NA)),
+    totalCoverBet2 = ifelse(totalCoverProb > .70, TRUE,
+                            ifelse(1 - totalCoverProb > .70, FALSE, NA)),
+    totalCoverSuccess = totalCoverBet == totalCover,
+    totalCoverSuccess2 = totalCoverBet2 == totalCover,
+    
+    totalPredsE = totalfinalEPredsMed,
+    coverBetE = ifelse(totalPredsE > total_line, TRUE, FALSE),
+    coverSuccessE = coverBetE == totalCover,
+    totalCoverProbE = PredsBetTotalE,
+    totalCoverBetE = ifelse(totalCoverProbE > over_prob, TRUE,
+                            ifelse(1 - totalCoverProbE > under_prob, FALSE, NA)),
+    totalCoverBet2E = ifelse(totalCoverProbE > .70, TRUE,
+                             ifelse(1 - totalCoverProbE > .70, FALSE, NA)),
+    totalCoverSuccessE = totalCoverBetE == totalCover,
+    totalCoverSuccess2E = totalCoverBet2E == totalCover,
+  )
+
+totalSuccessTest2 <- totalDataTest2 |>
+  summarise(
+    totalProbTest = mean(coverSuccess, na.rm = TRUE),
+    totalOddsProbTest = mean(totalCoverSuccess, na.rm = TRUE),
+    totalOddsProbTest2 = mean(totalCoverSuccess, na.rm = TRUE),
+    totalProbTestE = mean(coverSuccessE, na.rm = TRUE),
+    totalOddsProbTestE = mean(totalCoverSuccessE, na.rm = TRUE),
+    totalOddsProbTest2E = mean(totalCoverSuccess2E, na.rm = TRUE)
+  )
+totalSuccessTest2
+
+
+totalSuccessTest <- totalSuccessTest |> 
+  select(-contains("2"))

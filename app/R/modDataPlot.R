@@ -63,9 +63,10 @@ modDataPlotServer <- function(id,
           .after = week
         ) |>
         mutate(
-          season = factor(season),
-          week = factor(week),
-          split = factor(split, levels = c("Train", "Test"))
+          season_fac = factor(season),
+          week_fac = factor(week),
+          split = factor(split, levels = c("Train", "Test")),
+          .after = week
         ) 
       
       if(statType() == "Team"){
