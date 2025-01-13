@@ -425,6 +425,7 @@ nflStatsWeek <- calculate_stats(seasons = allSeasons,
 scoresData <- nflStatsWeek |>
   select(season, week, team, 
          passing_tds, rushing_tds, special_teams_tds, def_tds,
+         fumble_recovery_tds, 
          passing_2pt_conversions, rushing_2pt_conversions,
          pat_att, pat_made, pat_pct,
          fg_att, fg_made, fg_pct, 
@@ -436,14 +437,30 @@ scoresData <- nflStatsWeek |>
   ) |>
   rowwise() |>
   mutate(
-    offTD = sum(passing_tds, rushing_tds),
-    totalTD = offTD + special_teams_tds + def_tds,
+    offTD = passing_tds + rushing_tds,
+    totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
     twoPtConv = passing_2pt_conversions + rushing_2pt_conversions,
     twoPtAtt = totalTD - pat_att,
     off_fumbles = sack_fumbles_lost + rushing_fumbles_lost + receiving_fumbles_lost,
     def_fumbles = def_fumbles_forced
   ) |>
   ungroup()
+
+# scoresTeam <- scoresData |>
+#   mutate(
+#    score =  6*offTD + 6*special_teams_tds + 6*def_tds + 6*fumble_recovery_tds +
+#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
+#   ) |>
+#   select(season, week, team, score)
+# teamScoreComp <- gameDataLong |> 
+#   arrange(season, week, team) |>
+#   #filter(!(season == 2024 & season_type == "POST")) |>
+#   filter(!is.na(result)) |>
+#   select(season, week, team, team_score)
+# 
+# teamScoreComp2 <- left_join(scoresTeam, teamScoreComp)
+# which(teamScoreComp2$score != teamScoreComp2$team_score)
+
 
 conversions <- pbpData |>
   #filter(season %in% seasonsMod) |>
@@ -482,13 +499,13 @@ scoresData2 <- conversions |>
   ) |>
   mutate(
     scoreDiff = team_score - teamScore,
-    special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds),
-    def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
+    special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds)#,
+    #def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
   ) |>
   rowwise() |>
   mutate(
     offTD = sum(passing_tds, rushing_tds),
-    totalTD = offTD + special_teams_tds + def_tds,
+    totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
     twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
     twoPtAtt = totalTD - pat_att
   ) |>

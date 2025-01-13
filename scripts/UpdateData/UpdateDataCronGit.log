@@ -122,3 +122,7 @@ Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
 elapsed time is 534.491000 seconds 
+[main b9a6926] Auto-update: 2025-01-12 02:10:15
+ 6 files changed, 295 insertions(+), 218 deletions(-)
+To github.com:TylerPollard410/NFL-Analysis-Test.git
+   c551043..b9a6926  main -> main
