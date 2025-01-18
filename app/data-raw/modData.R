@@ -444,7 +444,14 @@ scoresData <- nflStatsWeek |>
     off_fumbles = sack_fumbles_lost + rushing_fumbles_lost + receiving_fumbles_lost,
     def_fumbles = def_fumbles_forced
   ) |>
-  ungroup()
+  ungroup() |>
+  right_join(
+    gameDataLong |> select(game_id, season, week, team)
+  ) |>
+  select(game_id, everything()) |>
+  mutate(
+    rowID = row_number()
+  )
 
 # scoresTeam <- scoresData |>
 #   mutate(
@@ -452,157 +459,174 @@ scoresData <- nflStatsWeek |>
 #       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
 #   ) |>
 #   select(season, week, team, score)
-# teamScoreComp <- gameDataLong |> 
+# 
+# teamScoreComp <- gameDataLong |>
 #   arrange(season, week, team) |>
 #   #filter(!(season == 2024 & season_type == "POST")) |>
 #   filter(!is.na(result)) |>
-#   select(season, week, team, team_score)
+#   select(season, week, team, opponent, team_score, opponent_score)
 # 
 # teamScoreComp2 <- left_join(scoresTeam, teamScoreComp)
-# which(teamScoreComp2$score != teamScoreComp2$team_score)
+# diffs <- which(teamScoreComp2$score != teamScoreComp2$team_score)
+# teamScoreComp2 |> 
+#   mutate(
+#     diff = score - team_score,
+#     diffInd = diff != 0
+#   ) |>
+#   filter(diffInd)
 
 
-conversions <- pbpData |>
-  #filter(season %in% seasonsMod) |>
-  filter(!is.na(posteam)) |>
-  select(game_id, season, week, posteam, home_team, away_team,
-         extra_point_attempt, extra_point_result, extra_point_prob, 
-         #defensive_extra_point_attempt, defensive_extra_point_conv,
-         two_point_attempt, two_point_conv_result, two_point_conversion_prob
-         #defensive_two_point_attempt, defensive_two_point_conv
-  ) |>
-  group_by(game_id, season, week, posteam, home_team, away_team) |>
-  summarise(
-    extra_point_attempt = sum(extra_point_attempt, na.rm = TRUE),
-    extra_point_result = sum(extra_point_result == "good", na.rm = TRUE),
-    extra_point_prob = mean(extra_point_prob, na.rm = TRUE),
-    two_point_attempt = sum(two_point_attempt, na.rm = TRUE),
-    two_point_conv_result = sum(two_point_conv_result == "success", na.rm = TRUE),
-    two_point_conversion_prob = mean(two_point_conversion_prob, na.rm = TRUE)
-  ) |>
-  ungroup()
+# conversions <- pbpData |>
+#   #filter(season %in% seasonsMod) |>
+#   filter(!is.na(posteam)) |>
+#   select(game_id, season, week, posteam, home_team, away_team,
+#          extra_point_attempt, extra_point_result, extra_point_prob, 
+#          #defensive_extra_point_attempt, defensive_extra_point_conv,
+#          two_point_attempt, two_point_conv_result, two_point_conversion_prob
+#          #defensive_two_point_attempt, defensive_two_point_conv
+#   ) |>
+#   group_by(game_id, season, week, posteam, home_team, away_team) |>
+#   summarise(
+#     extra_point_attempt = sum(extra_point_attempt, na.rm = TRUE),
+#     extra_point_result = sum(extra_point_result == "good", na.rm = TRUE),
+#     extra_point_prob = mean(extra_point_prob, na.rm = TRUE),
+#     two_point_attempt = sum(two_point_attempt, na.rm = TRUE),
+#     two_point_conv_result = sum(two_point_conv_result == "success", na.rm = TRUE),
+#     two_point_conversion_prob = mean(two_point_conversion_prob, na.rm = TRUE)
+#   ) |>
+#   ungroup()
+# 
+# scoresData2 <- conversions |>
+#   rename(team = posteam) |>
+#   left_join(
+#     scoresData,
+#     by = join_by(season, week, team)
+#   ) |>
+#   mutate(
+#     teamScore = 6*offTD + 6*special_teams_tds + 6*def_tds +
+#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
+#     #teamPA = 6*oppTouchdown + 2*safety
+#   ) |>
+#   left_join(
+#     gameDataLong |> select(game_id, team, team_score, opponent_score),
+#     join_by(game_id, team)
+#   ) |>
+#   mutate(
+#     scoreDiff = team_score - teamScore,
+#     special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds)#,
+#     #def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
+#   ) |>
+#   rowwise() |>
+#   mutate(
+#     offTD = sum(passing_tds, rushing_tds),
+#     totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
+#     twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
+#     twoPtAtt = totalTD - pat_att
+#   ) |>
+#   mutate(
+#     teamScore = 6*totalTD + #6*offTD + 6*special_teams_tds + 6*def_tds +
+#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
+#     #teamPA = 6*oppTouchdown + 2*safety
+#   ) |>
+#   ungroup() 
+# 
+# diffs <- which(scoresData2$teamScore != scoresData2$team_score)
+# (scoresData2$teamScore - scoresData2$team_score)[diffs]
 
-scoresData2 <- conversions |>
-  rename(team = posteam) |>
-  left_join(
-    scoresData,
-    by = join_by(season, week, team)
-  ) |>
-  mutate(
-    teamScore = 6*offTD + 6*special_teams_tds + 6*def_tds +
-      3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
-    #teamPA = 6*oppTouchdown + 2*safety
-  ) |>
-  left_join(
-    gameDataLong |> select(game_id, team, team_score, opponent_score),
-    join_by(game_id, team)
-  ) |>
-  mutate(
-    scoreDiff = team_score - teamScore,
-    special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds)#,
-    #def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
-  ) |>
-  rowwise() |>
-  mutate(
-    offTD = sum(passing_tds, rushing_tds),
-    totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
-    twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
-    twoPtAtt = totalTD - pat_att
-  ) |>
-  mutate(
-    teamScore = 6*totalTD + #6*offTD + 6*special_teams_tds + 6*def_tds +
-      3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
-    #teamPA = 6*oppTouchdown + 2*safety
-  ) |>
-  ungroup() 
-
-diffs <- which(scoresData2$teamScore != scoresData2$team_score)
-#(scoresData2$teamScore - scoresData2$team_score)[diffs]
-
-scoresData <- scoresData2 |>
-  group_by(game_id) |>
-  mutate(
-    opponentScore = rev(teamScore)
-    #opponentPA = rev(teamPA)
-  ) |>
-  ungroup() |>
+scoresData3 <- scoresData |>
+  select(rowID, everything()) |>
+  # group_by(game_id) |>
+  # mutate(
+  #   opponentScore = rev(teamScore)
+  #   #opponentPA = rev(teamPA)
+  # ) |>
+  # ungroup() |>
   group_by(season, team) |>
-  mutate(
-    fg_pct_cum = cumsum(fg_made)/cumsum(fg_att),
-    pat_pct_cum = cumsum(pat_made)/cumsum(pat_att),
-    off_interceptions = cummean(off_interceptions),
-    def_interceptions = cummean(def_interceptions),
-    off_fumbles = cummean(off_fumbles),
-    def_fumbles = cummean(def_fumbles)
-  ) |>
-  relocate(fg_pct_cum, .after = fg_pct) |>
-  relocate(pat_pct_cum, .after = pat_pct) |>
+  # mutate(
+  #   fg_pct_cum = cumsum(fg_made)/cumsum(fg_att),
+  #   pat_pct_cum = cumsum(pat_made)/cumsum(pat_att),
+  #   off_interceptions_cum = cummean(off_interceptions),
+  #   def_interceptions_cum = cummean(def_interceptions),
+  #   off_fumbles_cum = cummean(off_fumbles),
+  #   def_fumbles_cum = cummean(def_fumbles)
+  # ) |>
+  # relocate(fg_pct_cum, .after = fg_pct) |>
+  # relocate(pat_pct_cum, .after = pat_pct) |>
+  # tk_augment_slidify(
+  #   .value   = c(pat_made, pat_att, fg_made, fg_att),
+  #   # Multiple rolling windows
+  #   .period  = 5,
+  #   .f       = sum,
+  #   .partial = TRUE,
+  #   .align = "right",
+  #   .names = c("pat_made_roll", "pat_att_roll", "fg_made_roll", "fg_att_roll")
+  # ) |>
+  # mutate(pat_pct_roll = pat_made_roll/pat_att_roll, .after = pat_pct_cum) |>
+  # mutate(fg_pct_roll = fg_made_roll/fg_att_roll, .after = fg_pct_cum) |>
   tk_augment_slidify(
-    .value   = c(pat_made, pat_att, fg_made, fg_att),
+    .value   = c(everything(), -c(1:3)), #c(-game_id, -season, -team, -rowID),
     # Multiple rolling windows
     .period  = 5,
-    .f       = sum,
+    .f       = ~mean(., na.rm = T),
     .partial = TRUE,
-    .align = "right",
-    .names = c("pat_made_roll", "pat_att_roll", "fg_made_roll", "fg_att_roll")
-  ) |>
-  mutate(pat_pct_roll = pat_made_roll/pat_att_roll, .after = pat_pct_cum) |>
-  mutate(fg_pct_roll = fg_made_roll/fg_att_roll, .after = fg_pct_cum) |>
-  tk_augment_slidify(
-    .value   = c(pat_att, fg_att,
-                 offTD, totalTD),
-    # Multiple rolling windows
-    .period  = 5,
-    .f       = mean,
-    .partial = TRUE,
-    .align = "right",
-    .names = c("pat_att_roll", "fg_att_roll", "offTD_roll", "totalTD_roll")
+    .align = "right"#,
+    #.names = c("pat_att_roll", "fg_att_roll", "offTD_roll", "totalTD_roll")
   ) |>
   ungroup() |>
+  mutate(
+    across(where(is.numeric), ~na_if(.x, NaN))
+  ) |> #arrange(rowID)
   group_by(team) |>
-  fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll,offTD_roll,totalTD_roll), .direction = "down") |>
   mutate(
-    pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
-    pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
-    fg_pct_cum = ifelse(is.nan(fg_pct_cum), 1, fg_pct_cum), 
-    fg_pct_roll = ifelse(is.nan(fg_pct_roll), 1, fg_pct_roll), 
-    off_interceptions = lag(off_interceptions, default = 0),
-    def_interceptions = lag(def_interceptions, default = 0),
-    off_fumbles = lag(off_fumbles, default = 0),
-    def_fumbles = lag(def_fumbles, default = 0)
+    across(contains("roll_5"), ~lag(.x, 1))
   ) |>
-  mutate(
-    totalTD_roll = lag(totalTD_roll),
-    offTD_roll = lag(offTD_roll),
-    off_pat_att_roll = lag(pat_att_roll),
-    off_pat_pct_cum = lag(pat_pct_cum, default = 1),
-    off_pat_pct_roll = lag(pat_pct_roll, default = 1),
-    off_fg_att_roll = lag(fg_att_roll),
-    off_fg_pct_cum = lag(fg_pct_cum),
-    off_fg_pct_roll = lag(fg_pct_roll),
-    
-  ) |> 
+  # fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll,offTD_roll,totalTD_roll), .direction = "down") |>
+  # mutate(
+  #   pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
+  #   pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
+  #   fg_pct_cum = ifelse(is.nan(fg_pct_cum), 1, fg_pct_cum), 
+  #   fg_pct_roll = ifelse(is.nan(fg_pct_roll), 1, fg_pct_roll), 
+  #   off_interceptions = lag(off_interceptions, default = 0),
+  #   def_interceptions = lag(def_interceptions, default = 0),
+  #   off_fumbles = lag(off_fumbles, default = 0),
+  #   def_fumbles = lag(def_fumbles, default = 0)
+  # ) |>
+  # mutate(
+  #   totalTD_roll = lag(totalTD_roll),
+  #   offTD_roll = lag(offTD_roll),
+  #   off_pat_att_roll = lag(pat_att_roll),
+  #   off_pat_pct_cum = lag(pat_pct_cum, default = 1),
+  #   off_pat_pct_roll = lag(pat_pct_roll, default = 1),
+  #   off_fg_att_roll = lag(fg_att_roll),
+  #   off_fg_pct_cum = lag(fg_pct_cum),
+  #   off_fg_pct_roll = lag(fg_pct_roll),
+  #   
+  # ) |> 
   ungroup() |>
-  select(
-    game_id, team, 
-    totalTD, totalTD_roll, offTD, offTD_roll,
-    special_teams_tds, def_tds,
-    fg_made, fg_att, 
-    off_fg_att_roll, off_fg_pct_cum, off_fg_pct_roll,
-    twoPtConv, twoPtAtt,
-    safeties = def_safeties,
-    pat_made, pat_att, 
-    off_pat_att_roll, off_pat_pct_cum, off_pat_pct_roll,
-    off_interceptions, 
-    def_interceptions,
-    off_fumbles, def_fumbles
-  )
+  arrange(rowID)
+
+scoresData <- scoresData3 |>
+  select(-c(rowID, season, week))
+  # select(
+  #   game_id, team, 
+  #   totalTD, totalTD_roll, offTD, offTD_roll,
+  #   special_teams_tds, def_tds,
+  #   fg_made, fg_att, 
+  #   off_fg_att_roll, off_fg_pct_cum, off_fg_pct_roll,
+  #   twoPtConv, twoPtAtt,
+  #   safeties = def_safeties,
+  #   pat_made, pat_att, 
+  #   off_pat_att_roll, off_pat_pct_cum, off_pat_pct_roll,
+  #   off_interceptions, 
+  #   def_interceptions,
+  #   off_fumbles, def_fumbles
+  # )
 
 ## Series ----
 seriesWeekData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
 #seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
 
-seriesWeekData2 <- gameDataLong |>
+seriesData <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(seriesWeekData) |>
   group_by(season, team) |>
@@ -610,38 +634,39 @@ seriesWeekData2 <- gameDataLong |>
     across(-c(game_id, week, opponent),
            ~cummean(.x))
   ) |>
-  group_by(season, team) |>
+  ungroup() |>
+  group_by(team) |>
   mutate(
-    across(-c(game_id, week, opponent),
+    across(-c(season, game_id, week, opponent),
            ~lag(.x))
   ) |>
   ungroup()
 
-seriesAvgs <- seriesWeekData |> 
-  group_by(season, team) |>
-  summarise(
-    across(-week,
-           ~mean(.x, na.rm = TRUE))
-  ) |> #arrange(season, team) 
-  ungroup() |>
-  group_by(team) |>
-  mutate(
-    across(-season,
-           ~lag(.x, default = 0))
-  ) |>
-  ungroup() |>
-  mutate(week = 1)
-
-seriesData <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
-  left_join(
-    bind_rows(
-      seriesAvgs,
-      seriesWeekData2 |>
-        select(-c(game_id, opponent)) |>
-        filter(week != 1)
-    )
-  )
+# seriesAvgs <- seriesWeekData |> 
+#   group_by(season, team) |>
+#   summarise(
+#     across(-week,
+#            ~mean(.x, na.rm = TRUE))
+#   ) |> #arrange(season, team) 
+#   ungroup() |>
+#   group_by(team) |>
+#   mutate(
+#     across(-season,
+#            ~lag(.x, default = 0))
+#   ) |>
+#   ungroup() |>
+#   mutate(week = 1)
+# 
+# seriesData <- gameDataLong |>
+#   select(game_id, season, week, team, opponent) |>
+#   left_join(
+#     bind_rows(
+#       seriesAvgs,
+#       seriesWeekData2 |>
+#         select(-c(game_id, opponent)) |>
+#         filter(week != 1)
+#     )
+#   )
 
 ## Weather -----
 # library(openmateo)

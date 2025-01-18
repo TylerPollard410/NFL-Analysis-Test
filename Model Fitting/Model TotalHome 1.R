@@ -1902,12 +1902,12 @@ save(#iterFit1,
 # Predict new data ----
 newData <- modData2 |>
   filter(season == 2024) |>
-  filter(season_type == "POST")
-filter(is.na(result))
+  filter(season_type == "POST") #|>
+  filter(!is.na(result))
 
-newData <- predict(preProcValues2, newData)
+newDataPre <- predict(preProcValues2, newData)
 
-newDataPre <- newData |> select(
+newDataPre <- newDataPre |> select(
   home_team, home_score,
   away_team, away_score,
   result, spread_line,
@@ -1921,9 +1921,9 @@ newDataPre <- newData |> select(
 )
 newDataPre
 
-totalNewPreds <- posterior_predict(model_nfl_fit,
+totalNewPreds <- posterior_predict(fit20,
                                    resp = "total",
-                                   newdata = newData,
+                                   newdata = newDataPre,
                                    allow_new_levels = TRUE,
                                    re_formula = NULL
 )
@@ -1932,13 +1932,24 @@ totalNewPredsMed <- apply(totalNewPreds, 2, function(x){quantile(x, 0.5)})
 totalNewPredsLCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.025)})
 totalNewPredsUCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.975)})
 
+totalNewEPreds <- posterior_predict(fit20,
+                                   resp = "total",
+                                   newdata = newDataPre,
+                                   allow_new_levels = TRUE,
+                                   re_formula = NULL
+)
+totalNewEPredsMean <- colMeans(totalNewEPreds)
+totalNewEPredsMed <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.5)})
+totalNewEPredsLCB <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.025)})
+totalNewEPredsUCB <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.975)})
+
 if(discrete){
-  totalPPDbars <- ppc_bars(y = modelData$total, 
-                           yrep = totalfinalPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
+  totalNewPPDbars <- ppc_bars(y = newData$total, 
+                           yrep = totalNewPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
     labs(title = paste0("Preds", fit, " Total PPD")) +
     theme_bw()
   assign("totalPPDbars",totalPPDbars, envir = .GlobalEnv)
-  print(totalPPDbars)
+  print(totalNewPPDbars)
 }
 
 totalPPDdens <- ppc_dens_overlay(y = modelData$total, 
@@ -1948,160 +1959,204 @@ totalPPDdens <- ppc_dens_overlay(y = modelData$total,
 assign("totalPPDdens",totalPPDdens, envir = .GlobalEnv)
 print(totalPPDdens)
 
-totalLineTest <- modelData1$total_line
-totalTest <- modelData1$total
-totalLineTestResult <- ifelse(totalTest > totalLineTest, "over",
-                              ifelse(totalTest < totalLineTest, "under", NA))
+totalNewLineTest <- newData$total_line
+totalNewTest <- newData$total
+totalNewLineTestResult <- ifelse(totalNewTest > totalNewLineTest, "over",
+                              ifelse(totalNewTest < totalNewLineTest, "under", NA))
 
-# PredsProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
-# PredsProbsTotalE <- matrix(NA, nrow = sims, ncol = length(totalLineTest))
-# for(j in 1:length(totalLineTest)){
-#   fitted <- totalfinalPreds[, j]
-#   probs <- fitted > totalLineTest[j]
-#   fittedE <- totalfinalEPreds[, j]
-#   probsE <- fittedE > totalLineTest[j]
+# PredsProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalNewLineTest))
+# PredsProbsTotalE <- matrix(NA, nrow = sims, ncol = length(totalNewLineTest))
+# for(j in 1:length(totalNewLineTest)){
+#   fitted <- totalNewfinalPreds[, j]
+#   probs <- fitted > totalNewLineTest[j]
+#   fittedE <- totalNewfinalEPreds[, j]
+#   probsE <- fittedE > totalNewLineTest[j]
 #   PredsProbsTotal[, j] <- probs
 #   PredsProbsTotalE[, j] <- probsE
 # }
 # PredsBetTotal <- colMeans(PredsProbsTotal)
 # PredsBetLogicalTotal <- PredsBetTotal > 0.5
-# PredsLogicalTotal <- totalTest > totalLineTest
+# PredsLogicalTotal <- totalNewTest > totalNewLineTest
 # PredsProbTotal <- mean(PredsBetLogicalTotal == PredsLogicalTotal, na.rm = TRUE)
 # PredsProbTotal
 # 
 # PredsBetTotalE <- colMeans(PredsProbsTotalE)
 # PredsBetLogicalTotalE <- PredsBetTotalE > 0.5
-# PredsLogicalTotalE <- totalTest > totalLineTest
+# PredsLogicalTotalE <- totalNewTest > totalNewLineTest
 # PredsProbTotalE <- mean(PredsBetLogicalTotalE == PredsLogicalTotalE, na.rm = TRUE)
 # PredsProbTotalE
 # 
-# totalDataTest <- modData |> 
+# totalNewDataTest <- modData |> 
 #   filter(season == 2024 & week > 6) |>
-#   filter(!is.na(total)) |>
+#   filter(!is.na(totalNew)) |>
 #   select(season, week, #game_type,
 #          home_team, home_score, away_team, away_score,
 #          home_OSRS_net, home_OSRS,
 #          away_OSRS_net, away_OSRS,
-#          result, total_line, totalCover,
+#          result, totalNew_line, totalNewCover,
 #          home_spread_odds, home_spread_prob,
 #          away_spread_prob, away_spread_prob,
 #          over_odds, over_prob,
 #          under_odds, under_prob) |>
 #   mutate(
-#     totalPreds = totalfinalPredsMean,
-#     coverBet = ifelse(totalPreds > total_line, TRUE, FALSE),
-#     coverSuccess = coverBet == totalCover,
-#     totalCoverProb = PredsBetTotal,
-#     totalCoverBet = ifelse(totalCoverProb > over_prob, TRUE,
-#                            ifelse(1 - totalCoverProb > under_prob, FALSE, NA)),
-#     totalCoverBet2 = ifelse(totalCoverProb > .70, TRUE,
-#                             ifelse(1 - totalCoverProb > .70, FALSE, NA)),
-#     totalCoverSuccess = totalCoverBet == totalCover,
-#     totalCoverSuccess2 = totalCoverBet2 == totalCover,
+#     totalNewPreds = totalNewfinalPredsMean,
+#     coverBet = ifelse(totalNewPreds > totalNew_line, TRUE, FALSE),
+#     coverSuccess = coverBet == totalNewCover,
+#     totalNewCoverProb = PredsBetTotal,
+#     totalNewCoverBet = ifelse(totalNewCoverProb > over_prob, TRUE,
+#                            ifelse(1 - totalNewCoverProb > under_prob, FALSE, NA)),
+#     totalNewCoverBet2 = ifelse(totalNewCoverProb > .70, TRUE,
+#                             ifelse(1 - totalNewCoverProb > .70, FALSE, NA)),
+#     totalNewCoverSuccess = totalNewCoverBet == totalNewCover,
+#     totalNewCoverSuccess2 = totalNewCoverBet2 == totalNewCover,
 #     
-#     totalPredsE = totalfinalEPredsMean,
-#     coverBetE = ifelse(totalPredsE > total_line, TRUE, FALSE),
-#     coverSuccessE = coverBetE == totalCover,
-#     totalCoverProbE = PredsBetTotalE,
-#     totalCoverBetE = ifelse(totalCoverProbE > over_prob, TRUE,
-#                             ifelse(1 - totalCoverProbE > under_prob, FALSE, NA)),
-#     totalCoverBet2E = ifelse(totalCoverProbE > .70, TRUE,
-#                              ifelse(1 - totalCoverProbE > .70, FALSE, NA)),
-#     totalCoverSuccessE = totalCoverBetE == totalCover,
-#     totalCoverSuccess2E = totalCoverBet2E == totalCover,
+#     totalNewPredsE = totalNewfinalEPredsMean,
+#     coverBetE = ifelse(totalNewPredsE > totalNew_line, TRUE, FALSE),
+#     coverSuccessE = coverBetE == totalNewCover,
+#     totalNewCoverProbE = PredsBetTotalE,
+#     totalNewCoverBetE = ifelse(totalNewCoverProbE > over_prob, TRUE,
+#                             ifelse(1 - totalNewCoverProbE > under_prob, FALSE, NA)),
+#     totalNewCoverBet2E = ifelse(totalNewCoverProbE > .70, TRUE,
+#                              ifelse(1 - totalNewCoverProbE > .70, FALSE, NA)),
+#     totalNewCoverSuccessE = totalNewCoverBetE == totalNewCover,
+#     totalNewCoverSuccess2E = totalNewCoverBet2E == totalNewCover,
 #   )
-# sum(is.na(totalDataTest$totalCoverSuccess))
-# sum(!is.na(totalDataTest$totalCoverSuccess))
-# sum(is.na(totalDataTest$totalCoverSuccessE))
-# sum(!is.na(totalDataTest$totalCoverSuccessE))
+# sum(is.na(totalNewDataTest$totalNewCoverSuccess))
+# sum(!is.na(totalNewDataTest$totalNewCoverSuccess))
+# sum(is.na(totalNewDataTest$totalNewCoverSuccessE))
+# sum(!is.na(totalNewDataTest$totalNewCoverSuccessE))
 # 
-# totalSuccessTest <- totalDataTest |>
+# totalNewSuccessTest <- totalNewDataTest |>
 #   summarise(
-#     totalProbTest = mean(coverSuccess, na.rm = TRUE),
-#     totalOddsProbTest = mean(totalCoverSuccess, na.rm = TRUE),
-#     totalOddsProbTest2 = mean(totalCoverSuccess, na.rm = TRUE),
-#     totalProbTestE = mean(coverSuccessE, na.rm = TRUE),
-#     totalOddsProbTestE = mean(totalCoverSuccessE, na.rm = TRUE),
-#     totalOddsProbTest2E = mean(totalCoverSuccess2E, na.rm = TRUE)
+#     totalNewProbTest = mean(coverSuccess, na.rm = TRUE),
+#     totalNewOddsProbTest = mean(totalNewCoverSuccess, na.rm = TRUE),
+#     totalNewOddsProbTest2 = mean(totalNewCoverSuccess, na.rm = TRUE),
+#     totalNewProbTestE = mean(coverSuccessE, na.rm = TRUE),
+#     totalNewOddsProbTestE = mean(totalNewCoverSuccessE, na.rm = TRUE),
+#     totalNewOddsProbTest2E = mean(totalNewCoverSuccess2E, na.rm = TRUE)
 #   )
-# totalSuccessTest
+# totalNewSuccessTest
 
-# totalfinalPredsResult <- ifelse(t(totalfinalPreds) > totalLineTest, "over",
-#                                 ifelse(t(totalfinalPreds) < totalLineTest, "under", NA))
-# totalfinalPredsResult <- t(totalfinalPredsResult)
+# totalNewfinalPredsResult <- ifelse(t(totalNewfinalPreds) > totalNewLineTest, "over",
+#                                 ifelse(t(totalNewfinalPreds) < totalNewLineTest, "under", NA))
+# totalNewfinalPredsResult <- t(totalNewfinalPredsResult)
 
 
-PredsOver <- t(t(totalfinalPreds) > totalLineTest)
+PredsOver <- t(t(totalNewPreds) > totalNewLineTest)
 PredsBetTotalOver <- colMeans(PredsOver)
 #PredsBetTotalOver <- colMeans(PredsProbsTotal)
 PredsBetLogicalTotalOver <- PredsBetTotalOver > 0.5
-PredsBetLogicalTotalOddsOver <- PredsBetTotalOver > modelData1$over_prob
-PredsLogicalTotalOver <- totalTest > totalLineTest
+PredsBetLogicalTotalOddsOver <- PredsBetTotalOver > newData$over_prob
+PredsLogicalTotalOver <- totalNewTest > totalNewLineTest
 PredsProbTotalOver <- mean(PredsBetLogicalTotalOver == PredsLogicalTotalOver, na.rm = TRUE)
 PredsProbTotalOddsOver <- mean(PredsBetLogicalTotalOddsOver == PredsLogicalTotalOver, na.rm = TRUE)
 # PredsProbTotalOver
 # PredsProbTotalOddsOver
 
-PredsUnder <- t(t(totalfinalPreds) < totalLineTest)
+PredsUnder <- t(t(totalNewPreds) < totalNewLineTest)
 PredsBetTotalUnder <- colMeans(PredsUnder)
 #PredsBetTotalUnder <- colMeans(PredsProbsTotal)
 PredsBetLogicalTotalUnder <- PredsBetTotalUnder > 0.5
-PredsBetLogicalTotalOddsUnder <- PredsBetTotalUnder > modelData1$under_prob
-PredsLogicalTotalUnder <- totalTest < totalLineTest
+PredsBetLogicalTotalOddsUnder <- PredsBetTotalUnder > newData$under_prob
+PredsLogicalTotalUnder <- totalNewTest < totalNewLineTest
 PredsProbTotalUnder <- mean(PredsBetLogicalTotalUnder == PredsLogicalTotalUnder, na.rm = TRUE)
 PredsProbTotalOddsUnder <- mean(PredsBetLogicalTotalOddsUnder == PredsLogicalTotalUnder, na.rm = TRUE)
 # PredsProbTotalUnder
 # PredsProbTotalOddsUnder
 
 
-PredsEOver <- t(t(totalfinalEPreds) > totalLineTest)
+PredsEOver <- t(t(totalNewEPreds) > totalNewLineTest)
 PredsEBetTotalOver <- colMeans(PredsEOver)
 #PredsEBetTotalOver <- colMeans(PredsEProbsTotal)
 PredsEBetLogicalTotalOver <- PredsEBetTotalOver > 0.5
-PredsEBetLogicalTotalOddsOver <- PredsEBetTotalOver > modelData1$over_prob
-PredsELogicalTotalOver <- totalTest > totalLineTest
+PredsEBetLogicalTotalOddsOver <- PredsEBetTotalOver > newData$over_prob
+PredsELogicalTotalOver <- totalNewTest > totalNewLineTest
 PredsEProbTotalOver <- mean(PredsEBetLogicalTotalOver == PredsELogicalTotalOver, na.rm = TRUE)
 PredsEProbTotalOddsOver <- mean(PredsEBetLogicalTotalOddsOver == PredsELogicalTotalOver, na.rm = TRUE)
 # PredsEProbTotalOver
 # PredsEProbTotalOddsOver
 
-PredsEUnder <- t(t(totalfinalEPreds) < totalLineTest)
+PredsEUnder <- t(t(totalNewEPreds) < totalNewLineTest)
 PredsEBetTotalUnder <- colMeans(PredsEUnder)
 #PredsEBetTotalUnder <- colMeans(PredsEProbsTotal)
 PredsEBetLogicalTotalUnder <- PredsEBetTotalUnder > 0.5
-PredsEBetLogicalTotalOddsUnder <- PredsEBetTotalUnder > modelData1$under_prob
-PredsELogicalTotalUnder <- totalTest < totalLineTest
+PredsEBetLogicalTotalOddsUnder <- PredsEBetTotalUnder > newData$under_prob
+PredsELogicalTotalUnder <- totalNewTest < totalNewLineTest
 PredsEProbTotalUnder <- mean(PredsEBetLogicalTotalUnder == PredsELogicalTotalUnder, na.rm = TRUE)
 PredsEProbTotalOddsUnder <- mean(PredsEBetLogicalTotalOddsUnder == PredsELogicalTotalUnder, na.rm = TRUE)
 # PredsEProbTotalUnder
 # PredsEProbTotalOddsUnder
 
-totalSuccessTest <- data.frame(
+totalNewSuccessTest <- data.frame(
   TestOver = PredsProbTotalOver,
   TestOddsOver = PredsProbTotalOddsOver,
-  TestOverE = PredsEProbTotalOver,
-  TestOddsOverE = PredsEProbTotalOddsOver,
+  #TestOverE = PredsEProbTotalOver,
+  #TestOddsOverE = PredsEProbTotalOddsOver,
   TestUnder = PredsProbTotalUnder,
-  TestOddsUnder = PredsProbTotalOddsUnder,
-  TestUnderE = PredsEProbTotalUnder,
-  TestOddsUnderE = PredsEProbTotalOddsUnder
+  TestOddsUnder = PredsProbTotalOddsUnder
+  #TestUnderE = PredsEProbTotalUnder,
+  #TestOddsUnderE = PredsEProbTotalOddsUnder
 ) |> 
   mutate(across(everything(), ~round(.x, 3)))
 
-PredsBetLogicalTotalOdds <- ifelse(PredsBetTotalOver > modelData1$over_prob, "over", 
-                                   ifelse(PredsBetTotalUnder > modelData1$under_prob, "under", NA))
-PredsBetLogicalTotalOddsProb <- mean(PredsBetLogicalTotalOdds == totalLineTestResult, na.rm = TRUE)
+PredsBetLogicalTotalOdds <- ifelse(PredsBetTotalOver > newData$over_prob, "over", 
+                                   ifelse(PredsBetTotalUnder > newData$under_prob, "under", NA))
+PredsBetLogicalTotalOddsProb <- mean(PredsBetLogicalTotalOdds == totalNewLineTestResult, na.rm = TRUE)
 PredsBetLogicalTotalOddsProbBets <- sum(!is.na(PredsBetLogicalTotalOdds))
-PredsEBetLogicalTotalOdds <- ifelse(PredsEBetTotalOver > modelData1$over_prob, "over", 
-                                    ifelse(PredsEBetTotalUnder > modelData1$under_prob, "under", NA))
-PredsEBetLogicalTotalOddsProb <- mean(PredsEBetLogicalTotalOdds == totalLineTestResult, na.rm = TRUE)
+PredsEBetLogicalTotalOdds <- ifelse(PredsEBetTotalOver > newData$over_prob, "over", 
+                                    ifelse(PredsEBetTotalUnder > newData$under_prob, "under", NA))
+PredsEBetLogicalTotalOddsProb <- mean(PredsEBetLogicalTotalOdds == totalNewLineTestResult, na.rm = TRUE)
 PredsEBetLogicalTotalOddsProbBets <- sum(!is.na(PredsEBetLogicalTotalOdds))
 
-TotalBetSuccessDFtemp <- data.frame(
-  Fit = paste0("Fit ", fit), 
-  Data = c("Train", "Test"),
-  BetNum = c(FittedBetLogicalTotalOddsProbBets, PredsBetLogicalTotalOddsProbBets),
-  BetProb = c(FittedBetLogicalTotalOddsProb, PredsBetLogicalTotalOddsProb),
-  BetNumE = c(FittedEBetLogicalTotalOddsProbBets, PredsEBetLogicalTotalOddsProbBets),
-  BetProbE = c(FittedEBetLogicalTotalOddsProb, PredsEBetLogicalTotalOddsProb)
+TotalNewBetSuccessDFtemp <- data.frame(
+  Fit = paste0("Fit ", fitnum), 
+  Data = "New",
+  BetNum = PredsBetLogicalTotalOddsProbBets,
+  BetProb = PredsBetLogicalTotalOddsProb
+  #BetNumE = c(FittedEBetLogicalTotalOddsProbBets, PredsEBetLogicalTotalOddsProbBets),
+  #BetProbE = c(FittedEBetLogicalTotalOddsProb, PredsEBetLogicalTotalOddsProb)
 )
+TotalNewBetSuccessDFtemp
+
+totalNewDataTest <- newData |>
+  #filter(season == 2024 & week > 6) |>
+  #filter(!is.na(totalNew)) |>
+  select(season, week, #game_type,
+         home_team, home_score, away_team, away_score,
+         home_OSRS_net, home_OSRS,
+         away_OSRS_net, away_OSRS,
+         home_offTD_roll, home_OSRS_ewma_net, home_off_punt,
+         home_off_epa_cum, home_off_rush_epa_cum,
+         result, spread_line,
+         home_spread_odds, home_spread_prob,
+         away_spread_prob, away_spread_prob,
+         total, total_line, totalCover,
+         over_odds, over_prob,
+         under_odds, under_prob) |>
+  mutate(
+    totalNewPredsMean = totalNewPredsMean,
+    PredsBetLogicalTotalOdds = PredsBetLogicalTotalOdds,
+    PredsBetLogicalTotalOddsSuccess = PredsBetLogicalTotalOdds == totalNewLineTestResult,
+    PredsBetTotalOver = PredsBetTotalOver,
+    PredsBetTotalUnder = PredsBetTotalUnder
+    # coverBet = ifelse(totalNewPreds > total_line, TRUE, FALSE),
+    # coverSuccess = coverBet == totalCover,
+    # totalNewCoverProb = PredsBetTotal,
+    # totalNewCoverBet = ifelse(totalNewCoverProb > over_prob, TRUE,
+    #                        ifelse(1 - totalNewCoverProb > under_prob, FALSE, NA)),
+    # totalNewCoverBet2 = ifelse(totalNewCoverProb > .70, TRUE,
+    #                         ifelse(1 - totalNewCoverProb > .70, FALSE, NA)),
+    # totalNewCoverSuccess = totalNewCoverBet == totalCover,
+    # totalNewCoverSuccess2 = totalNewCoverBet2 == totalCover,
+    # 
+    # totalNewPredsE = totalNewEPredsMean,
+    # coverBetE = ifelse(totalNewPredsE > total_line, TRUE, FALSE),
+    # coverSuccessE = coverBetE == totalCover,
+    # totalNewCoverProbE = PredsBetTotalE,
+    # totalNewCoverBetE = ifelse(totalNewCoverProbE > over_prob, TRUE,
+    #                         ifelse(1 - totalNewCoverProbE > under_prob, FALSE, NA)),
+    # totalNewCoverBet2E = ifelse(totalNewCoverProbE > .70, TRUE,
+    #                          ifelse(1 - totalNewCoverProbE > .70, FALSE, NA)),
+    # totalNewCoverSuccessE = totalNewCoverBetE == totalCover,
+    # totalNewCoverSuccess2E = totalNewCoverBet2E == totalCover
+  )
