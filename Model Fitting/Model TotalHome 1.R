@@ -110,12 +110,12 @@ modData2 <- modData |>
     home_totalTDScore = 6*home_totalTD,
     home_fg_madeScore = 3*home_fg_made,
     home_pat_madeScore = home_pat_made,
-    home_safetiesScore = 2*home_safeties,
+    home_safetiesScore = 2*home_def_safeties,
     home_twoPtConvScore = 2*home_twoPtConv,
     away_totalTDScore = 6*away_totalTD,
     away_fg_madeScore = 3*away_fg_made,
     away_pat_madeScore = away_pat_made,
-    away_safetiesScore = 2*away_safeties,
+    away_safetiesScore = 2*away_def_safeties,
     away_twoPtConvScore = 2*away_twoPtConv,
     home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
     away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
@@ -141,7 +141,8 @@ modPreProcess <- modData2 |>
     -contains("moneyline"),
     -contains("offTD"),
     -contains("Score"),
-    contains("roll")
+    contains("roll"),
+    contains("cum")
     # -total_line,
     # -spread_line,
     #-location,
@@ -173,20 +174,24 @@ predictorData <- histModelData1 |>
     -home_score, -away_score,
     -result, -total,
     -season, -week,
-    #-contains("totalTD"), 
+    -contains("totalTD"), 
     -contains("fg_made"), 
     -contains("fg_att"),
     -contains("twoPtConv"), 
     -contains("twoPtAtt"),
     -contains("safeties"),
     -contains("pat_made"),
-    #-contains("pat_att"),
+    -contains("pat_att"),
     -contains("TDs"),
     -contains("spread"), 
     -contains("moneyline"),
-    #-contains("offTD"),
+    -contains("offTD"),
+    contains("roll"),
+    contains("cum"),
+    -contains("conversions"),
     -total_line,
-    -spread_line#,
+    -spread_line,
+    -overtime
     #-location,
     #-div_game,
     #-roof
@@ -202,6 +207,7 @@ predictorData2 <- predict(preProcValues, predictorData)
 histModelData2 <- predict(preProcValues, histModelData1)
 modelData2 <- predict(preProcValues, modelData1)
 
+predictorData3 <- predict(preProcValues2, predictorData)
 histModelData3 <- predict(preProcValues2, histModelData1)
 modelData3 <- predict(preProcValues2, modelData1)
 
@@ -226,16 +232,21 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
 
 ## Correlations ----
 totalcor <- cor(histModelData |> select(total),
-                histModelData |> select(c(where(is.numeric), -total)),
+                predictorData3 |> select(c(where(is.numeric))),
                 #use = "pairwise.complete.obs",
                 method = "kendall"
 )
 totalcorT <- t(totalcor)
 totalcorT2 <- totalcorT[order(abs(totalcorT)),]
 totalcorT2df <- data.frame(Cor = totalcorT2[order(abs(totalcorT2), decreasing = TRUE)])
-totalSigCor <- totalcorT2df |> filter(Cor > .1)
+totalSigCor <- totalcorT2df |> filter(abs(Cor) > .1)
 totalSigCor
-totalCorVars <- row.names(totalSigCor)
+totalSigCor2 <- abs(totalSigCor)
+totalSigCor2 <- distinct(totalSigCor2)
+totalSigCor2
+totalCorVars <- row.names(totalSigCor2)
+which(totalCorVars == "total_line")
+totalSigCor |> slice(21:nrow(totalSigCor))
 totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(c(where(is.numeric))),
                                    method = "kendall")
 totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(total,totalCorVars),
@@ -495,31 +506,32 @@ ggplot(data = histModelDataPlot,
 formula_total <-
   bf(
     total ~ #0 + #Intercept +
-      #home_off_pat_att_roll +
-      home_offTD_roll +
-      #home_totalTD_roll +
-      #away_offTD_roll +
-      #home_OSRS_roll_net +
-      #home_PFG_roll +
-      #home_OSRS_roll +
+      home_offTD_roll_5 +
       home_OSRS_ewma_net +
-      #home_totalTD_roll +
-      #home_off_epa_roll +
       home_off_punt +
-      #home_off_scr +
       home_off_epa_cum +
-      #home_off_1st +
-      #home_off_net_epa_roll +
-      #home_off_td +
-      home_off_rush_epa_cum# +
-    #home_pass_net_epa_roll +
-    #home_off_n, # +
-    #(1|home_team) +
-    #(1|away_team)
-    #(1|mm(home_team, away_team))
-    #shape ~ 1 +
-    #(1|home_team) #+
-    #(1|away_team)
+      home_off_rush_epa_cum +
+      # home_off_net_epa_cum +
+      # home_OSRS_ewma_net +
+      # home_off_epa_roll +
+      # home_PFG_ewma +
+      # home_OSRS_roll +
+      home_pat_att_roll_5 
+    # home_off_net_epa_roll +
+    # home_offTD_roll_5 +
+    # home_OSRS_ewma +
+    # home_off_punt +
+    # home_PFG_roll +
+    # home_OSRS_net +
+    # home_off_pass_epa_roll +
+    # home_OSRS +
+    # home_OSRS_roll_net +
+    # home_off_epa_cum +
+    # home_off_1st +
+    # home_totalTD_roll_5 +
+    #home_pat_made_roll_5
+    # home_PFG +
+    # home_off_scr
   ) + brmsfamily(family = "discrete_weibull")
 
 #### Non-linear ----
@@ -619,6 +631,7 @@ get_prior(formula_total, data = histModelData)
 
 priorPoints <- c(
   prior(normal(0,5), class = "b") #, resp = "total")
+  #prior(horseshoe(df = 3), class = "b")
 )
 
 # priorPointsNL <- c(
@@ -1903,7 +1916,7 @@ save(#iterFit1,
 newData <- modData2 |>
   filter(season == 2024) |>
   filter(season_type == "POST") #|>
-  filter(!is.na(result))
+filter(!is.na(result))
 
 newDataPre <- predict(preProcValues2, newData)
 
@@ -1912,8 +1925,8 @@ newDataPre <- newDataPre |> select(
   away_team, away_score,
   result, spread_line,
   total, total_line,
-  home_off_pat_att_roll,
-  home_offTD_roll,
+  home_pat_att_roll_5,
+  home_offTD_roll_5,
   home_OSRS_ewma_net,
   home_off_punt,
   home_off_epa_cum,
@@ -1921,7 +1934,7 @@ newDataPre <- newDataPre |> select(
 )
 newDataPre
 
-totalNewPreds <- posterior_predict(fit20,
+totalNewPreds <- posterior_predict(fit5,
                                    resp = "total",
                                    newdata = newDataPre,
                                    allow_new_levels = TRUE,
@@ -1932,11 +1945,11 @@ totalNewPredsMed <- apply(totalNewPreds, 2, function(x){quantile(x, 0.5)})
 totalNewPredsLCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.025)})
 totalNewPredsUCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.975)})
 
-totalNewEPreds <- posterior_predict(fit20,
-                                   resp = "total",
-                                   newdata = newDataPre,
-                                   allow_new_levels = TRUE,
-                                   re_formula = NULL
+totalNewEPreds <- posterior_predict(fit5,
+                                    resp = "total",
+                                    newdata = newDataPre,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
 )
 totalNewEPredsMean <- colMeans(totalNewEPreds)
 totalNewEPredsMed <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.5)})
@@ -1945,7 +1958,7 @@ totalNewEPredsUCB <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.975)})
 
 if(discrete){
   totalNewPPDbars <- ppc_bars(y = newData$total, 
-                           yrep = totalNewPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
+                              yrep = totalNewPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
     labs(title = paste0("Preds", fit, " Total PPD")) +
     theme_bw()
   assign("totalPPDbars",totalPPDbars, envir = .GlobalEnv)
@@ -1962,7 +1975,7 @@ print(totalPPDdens)
 totalNewLineTest <- newData$total_line
 totalNewTest <- newData$total
 totalNewLineTestResult <- ifelse(totalNewTest > totalNewLineTest, "over",
-                              ifelse(totalNewTest < totalNewLineTest, "under", NA))
+                                 ifelse(totalNewTest < totalNewLineTest, "under", NA))
 
 # PredsProbsTotal <- matrix(NA, nrow = sims, ncol = length(totalNewLineTest))
 # PredsProbsTotalE <- matrix(NA, nrow = sims, ncol = length(totalNewLineTest))
@@ -2125,7 +2138,7 @@ totalNewDataTest <- newData |>
          home_team, home_score, away_team, away_score,
          home_OSRS_net, home_OSRS,
          away_OSRS_net, away_OSRS,
-         home_offTD_roll, home_OSRS_ewma_net, home_off_punt,
+         home_offTD_roll_5, home_OSRS_ewma_net, home_off_punt,
          home_off_epa_cum, home_off_rush_epa_cum,
          result, spread_line,
          home_spread_odds, home_spread_prob,
@@ -2160,3 +2173,6 @@ totalNewDataTest <- newData |>
     # totalNewCoverSuccessE = totalNewCoverBetE == totalCover,
     # totalNewCoverSuccess2E = totalNewCoverBet2E == totalCover
   )
+newData$total_line[8] <- 52.5
+newData$over_prob[8] <- .5349
+newData$under_prob[8] <- .5349
