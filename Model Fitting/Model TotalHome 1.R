@@ -186,16 +186,20 @@ predictorData <- histModelData1 |>
     -contains("spread"), 
     -contains("moneyline"),
     -contains("offTD"),
-    contains("roll"),
-    contains("cum"),
     -contains("conversions"),
-    total_line,
+    -contains("pct"),
+    -total_line,
+    -totalCover,
     -spread_line,
-    -overtime
+    -overtime,
+    -contains("over"),
+    -contains("under"),
+    contains("roll"),
+    contains("cum")
     #-location,
     #-div_game,
     #-roof
-  )
+  ) 
 preProcValues <- preProcess(predictorData,
                             method = c("center", "scale")#, "YeoJohnson")
 )
@@ -506,25 +510,18 @@ ggplot(data = histModelDataPlot,
 formula_total <-
   bf(
     total ~ #0 + #Intercept +
-      PC1 +
-      PC2 +
-      PC3 +
-      PC4 +
-      PC5 +
-      PC6 +
-      PC7
-      # home_offTD_roll_5 +
-      # home_OSRS_ewma_net +
-      # home_off_punt +
-      # home_off_epa_cum +
-      # home_off_rush_epa_cum +
-    # home_pat_att_roll_5
-      # home_off_net_epa_cum +
-      # home_OSRS_ewma_net +
-      # home_off_epa_roll +
-      # home_PFG_ewma +
-      # home_OSRS_roll +
-      # home_pat_att_roll_5 
+    home_offTD_roll_5 +
+    home_OSRS_ewma_net +
+    home_off_punt +
+    home_off_epa_cum +
+    home_off_rush_epa_cum +
+    home_pat_att_roll_5
+    # home_off_net_epa_cum +
+    # home_OSRS_ewma_net +
+    # home_off_epa_roll +
+    # home_PFG_ewma +
+    # home_OSRS_roll +
+    # home_pat_att_roll_5 
     # home_off_net_epa_roll +
     # home_offTD_roll_5 +
     # home_OSRS_ewma +
@@ -652,7 +649,7 @@ system.time(
     formula_total #+ formula_homeScore + formula_awayScore +
     #set_rescor(rescor = FALSE)
     ,
-    data = trainData2,
+    data = histModelData,
     #family = brmsfamily("discrete_weibull", link = "identity"),
     save_pars = save_pars(all = TRUE),
     seed = 52,
@@ -679,8 +676,8 @@ system.time(
 fitnum <- fitnum + 1
 fit_analysis(Fit = model_nfl_fit, 
              fit = fitnum, 
-             train_data = trainData2,
-             test_data = testData2,
+             train_data = histModelData,
+             test_data = modelData,
              discrete = TRUE, 
              group = F
 )
@@ -714,8 +711,7 @@ loo_fits <- list()
 # group <- FALSE
 
 fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
-                         discrete = TRUE, group = FALSE,
-                         ){
+                         discrete = TRUE, group = FALSE){
   # Fit <- model_nfl_fit
   # fit <- 1
   assign(paste0("fit", fit), Fit, envir = .GlobalEnv)
@@ -1592,17 +1588,65 @@ fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
 }
 
 
-successPerf |> arrange(desc(ProbTest))
-successPerf |> arrange(desc(OddsProbTest))
-
-### Loo ----
-assign(paste0("loo", fit), loo(Fit))
-
-#loo_fits <- list()
-loo_fits[[paste0("Fit",fit)]] <- get(paste0("loo", fit))
-loo_compare(
-  loo_fits
+CustomTotalBetSuccessDF <- data.frame()
+totalfinalPreds <- posterior_predict(fit7,
+                                     resp = "total",
+                                     newdata = modelData,
+                                     allow_new_levels = TRUE,
+                                     re_formula = NULL
 )
+totalPredOddsProbCalc(totalfinalPreds,
+                      test_data = modelData, 
+                      fit = "7A",
+                      probToBeat = 0.7)
+
+CustomTotalBetSuccessDF
+
+## Custom Odds Calculator -----
+totalPredOddsProbCalc <- function(totalfinalPreds, test_data = NULL, fit = fitnum,
+                                  probToBeat = 0.5){
+  
+  totalfinalPredsMean <- colMeans(totalfinalPreds)
+  
+  totalLineTest <- test_data$total_line
+  totalTest <- test_data$total
+  totalLineTestResult <- ifelse(totalTest > totalLineTest, "over",
+                                ifelse(totalTest < totalLineTest, "under", NA))
+  
+  PredsOver <- t(t(totalfinalPreds) > totalLineTest)
+  PredsBetTotalOver <- colMeans(PredsOver)
+  
+  PredsUnder <- t(t(totalfinalPreds) < totalLineTest)
+  PredsBetTotalUnder <- colMeans(PredsUnder)
+  
+  PredsBetVegas <- ifelse(PredsBetTotalOver > test_data$over_prob, "over", 
+                                     ifelse(PredsBetTotalUnder > test_data$under_prob, "under", NA))
+  PredsBetVegasProb <- mean(PredsBetVegas == totalLineTestResult, na.rm = TRUE)
+  PredsBetVegasProbBets <- sum(!is.na(PredsBetVegas))
+  
+  PredsBetCustom <- ifelse(PredsBetTotalOver > probToBeat, "over", 
+                          ifelse(PredsBetTotalUnder > probToBeat, "under", NA))
+  PredsBetCustomProb <- mean(PredsBetCustom == totalLineTestResult, na.rm = TRUE)
+  PredsBetCustomProbBets <- sum(!is.na(PredsBetCustom))
+  
+  
+  CustomTotalBetSuccessDFtemp <- data.frame(
+    Fit = paste0("Fit ", fit), 
+    Data = c("Test"),
+    CustomProb = probToBeat,
+    VegasBetNum = PredsBetVegasProbBets,
+    VegasBetProb = PredsBetVegasProb,
+    CustomBetNum = PredsBetCustomProbBets,
+    CustomBetProb = PredsBetCustomProb
+  )
+  print(CustomTotalBetSuccessDFtemp)
+  
+  CustomTotalBetSuccessDF <- bind_rows(
+    CustomTotalBetSuccessDFtemp,
+    CustomTotalBetSuccessDF
+  )
+  assign("CustomTotalBetSuccessDF", CustomTotalBetSuccessDF, envir = .GlobalEnv)
+}
 
 # Iterate ----
 # Initialize values
