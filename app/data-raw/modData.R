@@ -580,6 +580,11 @@ scoresData3 <- scoresData |>
   mutate(
     across(contains("roll_5"), ~lag(.x, 1))
   ) |>
+  mutate(
+    across(contains("roll_5"), 
+           ~ts_impute_vec(.x, period = 4))
+  ) |>
+  ungroup()
   # fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll,offTD_roll,totalTD_roll), .direction = "down") |>
   # mutate(
   #   pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 

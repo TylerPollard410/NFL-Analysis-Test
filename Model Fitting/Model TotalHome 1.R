@@ -189,7 +189,7 @@ predictorData <- histModelData1 |>
     contains("roll"),
     contains("cum"),
     -contains("conversions"),
-    -total_line,
+    total_line,
     -spread_line,
     -overtime
     #-location,
@@ -669,8 +669,8 @@ system.time(
 
 ### Run Fit Diagnostics ----
 fitnum <- fitnum + 1
-fit_analysis(Fit = model_nfl_fit, 
-             fit = fitnum, 
+fit_analysis(Fit = fit6, 
+             fit = 6, 
              discrete = TRUE, 
              group = F
 )
