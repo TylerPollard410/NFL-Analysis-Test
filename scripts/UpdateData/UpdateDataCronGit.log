@@ -26,8 +26,8 @@ x dplyr::lag()    masks stats::lag()
 i Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 [1] "pbpData"
 [1] "No play-by-play data to update"
-[1] "pbpData updated 2025-01-17 04:21:28 EST with 905325 rows and 372 cols."
-elapsed time is 2.786000 seconds 
+[1] "pbpData updated 2025-01-18 04:21:20 EST with 905325 rows and 372 cols."
+elapsed time is 3.428000 seconds 
 Converged after 14 iterations.
 Season 2006 
 Converged after 16 iterations.
@@ -66,7 +66,7 @@ Converged after 13 iterations.
 Season 2023 
 Converged after 16 iterations.
 Season 2024 
-elapsed time is 13.839000 seconds 
+elapsed time is 14.872000 seconds 
 Reached maximum iterations =  200 without full convergence.
 Season 2024 Week 1 
 Reached maximum iterations =  200 without full convergence.
@@ -105,7 +105,9 @@ Converged after 16 iterations.
 Season 2024 Week 18 
 Converged after 17 iterations.
 Season 2024 Week 19 
-elapsed time is 19.770000 seconds 
+Converged after 16 iterations.
+Season 2024 Week 20 
+elapsed time is 19.653000 seconds 
 `summarise()` has grouped output by 'game_id', 'season', 'week', 'posteam',
 'home_team'. You can override using the `.groups` argument.
 `summarise()` has grouped output by 'season'. You can override using the
@@ -114,15 +116,10 @@ Joining with `by = join_by(game_id, team)`
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, season, week, team, opponent)`
 Joining with `by = join_by(season, week, team)`
-`summarise()` has grouped output by 'game_id', 'season', 'week', 'posteam',
-'home_team'. You can override using the `.groups` argument.
 Joining with `by = join_by(season, week, team)`
-`summarise()` has grouped output by 'season'. You can override using the
-`.groups` argument.
+Registered S3 method overwritten by 'quantmod':
+  method            from
+  as.zoo.data.frame zoo 
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
-elapsed time is 560.723000 seconds 
-[main 1523957] Auto-update: 2025-01-18 02:10:47
- 4 files changed, 6 insertions(+), 6 deletions(-)
-To github.com:TylerPollard410/NFL-Analysis-Test.git
-   bd50acf..1523957  main -> main
+elapsed time is 539.534000 seconds 

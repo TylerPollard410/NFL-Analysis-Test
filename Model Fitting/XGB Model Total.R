@@ -104,11 +104,7 @@ modData2 <- modData |>
   ) |>
   mutate(
     div_game = factor(div_game)
-  ) |>
-  group_by(team) |>
-  mutate(
-    
-  )
+  ) 
 
 modPreProcess <- modData2 |>
   filter(season >= 2022, !is.na(result)) |>
@@ -176,6 +172,7 @@ predictorData <- trainData1 |>
     -contains("moneyline"),
     -contains("offTD"),
     -contains("conversions"),
+    -contains("pct"),
     -total_line,
     -totalCover,
     -spread_line,
@@ -224,12 +221,16 @@ range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range),
                          max(home_fg_made_range,away_fg_made_range))
 
 ## PCA ----
-pca <- prcomp(predictorData2 |> select(contains("PC")))#, center = TRUE, scale = TRUE)
+pca <- prcomp(predictorData |> select(where(is.numeric)), center = TRUE, scale = TRUE)
+pca
+summary(pca)
+screeplot(pca, type = "lines")
 screeplot(predictorData2 |> select(contains("PC")), type = "lines")
 
+
 ## Correlations ----
-totalcor <- cor(trainData |> select(total),
-                predictorData3 |> select(c(where(is.numeric))),
+totalcor <- cor(trainData2 |> select(total),
+                trainData2 |> select(c(where(is.numeric))),
                 #use = "pairwise.complete.obs",
                 method = "kendall"
 )
@@ -273,10 +274,12 @@ fitControl <- trainControl(## 10-fold CV
 )
 
 training_data <- trainData2 |>
-  select(total, contains("PC"))
-testing_data <- testData |>
-  select(total, home_team, away_team, totalCorVars)
+  select(total, contains("PC", ignore.case = F))
+testing_data <- testData2 |>
+  select(total, contains("PC", ignore.case = F))
 
+
+# xgbTree ----
 system.time(
   xbm <- train(total ~ .,
                data = training_data,
@@ -289,18 +292,18 @@ xbm
 summary(xbm)
 plot(xbm)
 
-predictionXBM <- predict(xbm, newdata = testing_data, type = "prob")
+predictionXBM <- predict(xbm, newdata = testing_data)
 postResample(predictionXBM, testing_data$total)
-caret::confusionMatrix(prediction, testing_data$total)
+caret::confusionMatrix(predictionXBM, testing_data$total)
 
-mean((predictionXBM > testData1$total_line & testData1$total > testData1$total_line) |
-       (predictionXBM < testData1$total_line & testData1$total < testData1$total_line))
+mean((predictionXBM > testData2$total_line & testData2$total > testData2$total_line) |
+       (predictionXBM < testData2$total_line & testData2$total < testData2$total_line))
 
 xgbVarImp <- varImp(xbm, scale = FALSE)
 plot(xgbVarImp, top = 40)
 
 
-
+# rf ----
 system.time(
   rfMod <- train(total ~ .,
                  data = training_data,
@@ -324,11 +327,36 @@ rfVarImp <- varImp(rfMod, scale = FALSE)
 plot(rfVarImp, top = 20)
 
 
+# brnn ----
+system.time(
+  brnn <- train(total ~ .,
+                data = training_data,
+                method = "brnn",
+                trControl = fitControl
+  )
+)
+
+brnn
+summary(brnn)
+plot(brnn)
+
+predictionBRNN <- predict(brnn, newdata = testing_data)
+postResample(predictionBRNN, testing_data$total)
+caret::confusionMatrix(predictionBRNN, testData2$total)
+
+mean((predictionBRNN > testData2$total_line & testData2$total > testData2$total_line) |
+       (predictionBRNN < testData2$total_line & testData2$total < testData2$total_line))
+
+brnnVarImp <- varImp(brnn, scale = FALSE)
+plot(brnnVarImp, top = 40)
+
+# Compare ----
 testing_data <- testing_data |>
   mutate(
-    total_line = testData1$total_line,
+    total_line = testData2$total_line,
     predXBM = predictionXBM,
     predRF = predictionRF,
+    predBRNN = predictionBRNN,
     outcome = ifelse(total > total_line, "over",
                      ifelse(total < total_line, "under", NA))
   ) |>
@@ -337,7 +365,8 @@ testing_data <- testing_data |>
     total_line,
     outcome,
     predXBM,
-    predRF
+    predRF,
+    predBRNN
   ) |>
   mutate(
     outXBM = ifelse(predXBM > total_line & outcome == "over", TRUE,
@@ -345,7 +374,10 @@ testing_data <- testing_data |>
                            ifelse(is.na(outcome), NA, FALSE))),
     outRF = ifelse(predRF > total_line & outcome == "over", TRUE,
                     ifelse(predRF < total_line & outcome == "under", TRUE,
-                           ifelse(is.na(outcome), NA, FALSE)))
+                           ifelse(is.na(outcome), NA, FALSE))),
+    outBRNN = ifelse(predBRNN > total_line & outcome == "over", TRUE,
+                   ifelse(predBRNN < total_line & outcome == "under", TRUE,
+                          ifelse(is.na(outcome), NA, FALSE)))
   )
 
 testing_data |>

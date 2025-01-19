@@ -506,17 +506,25 @@ ggplot(data = histModelDataPlot,
 formula_total <-
   bf(
     total ~ #0 + #Intercept +
-      home_offTD_roll_5 +
-      home_OSRS_ewma_net +
-      home_off_punt +
-      home_off_epa_cum +
-      home_off_rush_epa_cum +
+      PC1 +
+      PC2 +
+      PC3 +
+      PC4 +
+      PC5 +
+      PC6 +
+      PC7
+      # home_offTD_roll_5 +
+      # home_OSRS_ewma_net +
+      # home_off_punt +
+      # home_off_epa_cum +
+      # home_off_rush_epa_cum +
+    # home_pat_att_roll_5
       # home_off_net_epa_cum +
       # home_OSRS_ewma_net +
       # home_off_epa_roll +
       # home_PFG_ewma +
       # home_OSRS_roll +
-      home_pat_att_roll_5 
+      # home_pat_att_roll_5 
     # home_off_net_epa_roll +
     # home_offTD_roll_5 +
     # home_OSRS_ewma +
@@ -644,7 +652,7 @@ system.time(
     formula_total #+ formula_homeScore + formula_awayScore +
     #set_rescor(rescor = FALSE)
     ,
-    data = histModelData,
+    data = trainData2,
     #family = brmsfamily("discrete_weibull", link = "identity"),
     save_pars = save_pars(all = TRUE),
     seed = 52,
@@ -669,8 +677,10 @@ system.time(
 
 ### Run Fit Diagnostics ----
 fitnum <- fitnum + 1
-fit_analysis(Fit = fit6, 
-             fit = 6, 
+fit_analysis(Fit = model_nfl_fit, 
+             fit = fitnum, 
+             train_data = trainData2,
+             test_data = testData2,
              discrete = TRUE, 
              group = F
 )
@@ -703,7 +713,9 @@ loo_fits <- list()
 # discrete <- TRUE
 # group <- FALSE
 
-fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
+fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
+                         discrete = TRUE, group = FALSE,
+                         ){
   # Fit <- model_nfl_fit
   # fit <- 1
   assign(paste0("fit", fit), Fit, envir = .GlobalEnv)
@@ -837,7 +849,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #   labs(title = paste0("Fit", fit, " Spread PPC")) +
   #   theme_bw()
   if(discrete){
-    totalPPCbars <- ppc_bars(y = histModelData$total, 
+    totalPPCbars <- ppc_bars(y = train_data$total, 
                              yrep = totalfinalFit[sample(1:sims, 1000, replace = FALSE), ]) + 
       labs(title = paste0("Fit", fit, " Total PPC")) +
       theme_bw()
@@ -870,9 +882,9 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #   labs(title = paste0("Fit", fit, " Spread PPC")) +
   #   theme_bw()
   if(discrete){
-    totalPPCbarsG <- ppc_bars_grouped(y = histModelData$total, 
+    totalPPCbarsG <- ppc_bars_grouped(y = train_data$total, 
                                       yrep = totalfinalFit[sample(1:sims, 100, replace = FALSE), ],
-                                      group = histModelData$home_team) + 
+                                      group = train_data$home_team) + 
       labs(title = paste0("Fit", fit, " Total PPC")) +
       theme_bw()
     assign("totalPPCbarsG",totalPPCbarsG)
@@ -896,7 +908,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #                                   yrep = spreadfinalFit[sample(1:sims, 100, replace = FALSE), ]) + 
   #   labs(title = paste0("Fit", fit, " Spread PPC")) +
   #   theme_bw()
-  totalPPCdens <- ppc_dens_overlay(y = histModelData$total, 
+  totalPPCdens <- ppc_dens_overlay(y = train_data$total, 
                                    yrep = totalfinalFit[sample(1:sims, 100, replace = FALSE), ]) + 
     labs(title = paste0("Fit", fit, " Total PPC")) +
     theme_bw()
@@ -908,24 +920,24 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   # spreadPPCdens
   #totalPPCdens
   
-  # homePPCdensG <- ppc_dens_overlay_grouped(y = histModelData$home_score, 
+  # homePPCdensG <- ppc_dens_overlay_grouped(y = train_data$home_score, 
   #                                          yrep = homefinalFit[sample(1:sims, 100, replace = FALSE), ],
-  #                                          group = histModelData$home_team) + 
+  #                                          group = train_data$home_team) + 
   #   labs(title = paste0("Fit", fit, " Home PPC")) +
   #   theme_bw()
-  # awayPPCdensG <- ppc_dens_overlay_grouped(y = histModelData$away_score, 
+  # awayPPCdensG <- ppc_dens_overlay_grouped(y = train_data$away_score, 
   #                                          yrep = awayfinalFit[sample(1:sims, 100, replace = FALSE), ],
-  #                                          group = histModelData$home_team) + 
+  #                                          group = train_data$home_team) + 
   #   labs(title = paste0("Fit", fit, " Away PPC")) +
   #   theme_bw()
-  # spreadPPCdensG <- ppc_dens_overlay_grouped(y = histModelData$result, 
+  # spreadPPCdensG <- ppc_dens_overlay_grouped(y = train_data$result, 
   #                                            yrep = spreadfinalFit[sample(1:sims, 100, replace = FALSE), ],
-  #                                            group = histModelData$home_team) + 
+  #                                            group = train_data$home_team) + 
   #   labs(title = paste0("Fit", fit, " Spread PPC")) +
   #   theme_bw()
-  # totalPPCdensG <- ppc_dens_overlay_grouped(y = histModelData$total, 
+  # totalPPCdensG <- ppc_dens_overlay_grouped(y = train_data$total, 
   #                                           yrep = totalfinalFit[sample(1:sims, 100, replace = FALSE), ],
-  #                                           group = histModelData$home_team) + 
+  #                                           group = train_data$home_team) + 
   #   labs(title = paste0("Fit", fit, " Total PPC")) +
   #   theme_bw()
   
@@ -937,7 +949,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   ## Preds ----
   totalfinalPreds <- posterior_predict(Fit,
                                        resp = "total",
-                                       newdata = modelData,
+                                       newdata = test_data,
                                        allow_new_levels = TRUE,
                                        re_formula = NULL
   )
@@ -949,7 +961,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   
   # homefinalPreds <- posterior_predict(Fit,
   #                                     resp = "homescore",
-  #                                     newdata = modelData,
+  #                                     newdata = test_data,
   #                                     allow_new_levels = TRUE,
   #                                     re_formula = NULL
   # )
@@ -961,7 +973,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   # awayfinalPreds <- totalfinalPreds - homefinalPreds
   # awayfinalPreds <- posterior_predict(Fit,
   #                                     resp = "awayscore",
-  #                                     newdata = modelData,
+  #                                     newdata = test_data,
   #                                     allow_new_levels = TRUE,
   #                                     re_formula = NULL
   # )
@@ -978,20 +990,20 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   
   ### PPD ----
   #### Bars ----
-  # homePPDbars <- ppc_bars(y = modelData$home_score, 
+  # homePPDbars <- ppc_bars(y = test_data$home_score, 
   #                         yrep = homefinalPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Home PPD")) +
   #   theme_bw()
-  # awayPPDbars <- ppc_bars(y = modelData$away_score, 
+  # awayPPDbars <- ppc_bars(y = test_data$away_score, 
   #                         yrep = awayfinalPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Away PPD")) +
   #   theme_bw()
-  # spreadPPDbars <- ppc_bars(y = modelData$result, 
+  # spreadPPDbars <- ppc_bars(y = test_data$result, 
   #                           yrep = spreadfinalPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Spread PPD")) +
   #   theme_bw()
   if(discrete){
-    totalPPDbars <- ppc_bars(y = modelData$total, 
+    totalPPDbars <- ppc_bars(y = test_data$total, 
                              yrep = totalfinalPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
       labs(title = paste0("Preds", fit, " Total PPD")) +
       theme_bw()
@@ -1005,19 +1017,19 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #totalPPDbars
   
   #### Density ----
-  # homePPDdens <- ppc_dens_overlay(y = modelData$home_score, 
+  # homePPDdens <- ppc_dens_overlay(y = test_data$home_score, 
   #                                 yrep = homefinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Home PPD")) +
   #   theme_bw()
-  # awayPPDdens <- ppc_dens_overlay(y = modelData$away_score, 
+  # awayPPDdens <- ppc_dens_overlay(y = test_data$away_score, 
   #                                 yrep = awayfinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Away PPD")) +
   #   theme_bw()
-  # spreadPPDdens <- ppc_dens_overlay(y = modelData$result, 
+  # spreadPPDdens <- ppc_dens_overlay(y = test_data$result, 
   #                                   yrep = spreadfinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
   #   labs(title = paste0("Preds", fit, " Spread PPD")) +
   #   theme_bw()
-  totalPPDdens <- ppc_dens_overlay(y = modelData$total, 
+  totalPPDdens <- ppc_dens_overlay(y = test_data$total, 
                                    yrep = totalfinalPreds[sample(1:sims, 100, replace = FALSE), ]) + 
     labs(title = paste0("Preds", fit, " Total PPD")) +
     theme_bw()
@@ -1030,15 +1042,15 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #totalPPDdens
   
   ## Goodness of Fit ----
-  # homeTrain <- histModelData$home_score
-  # awayTrain <- histModelData$away_score
-  # spreadTrain <- histModelData$result
-  totalTrain <- histModelData$total
+  # homeTrain <- train_data$home_score
+  # awayTrain <- train_data$away_score
+  # spreadTrain <- train_data$result
+  totalTrain <- train_data$total
   
-  # homeTest <- modelData$home_score
-  # awayTest <- modelData$away_score
-  # spreadTest <- modelData$result
-  totalTest <- modelData$total
+  # homeTest <- test_data$home_score
+  # awayTest <- test_data$away_score
+  # spreadTest <- test_data$result
+  totalTest <- test_data$total
   
   predMetricsHA <- tibble(
     Fit = rep(paste0("Fit", fit), 1),
@@ -1098,7 +1110,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #   filter(season == 2023 | (season == 2024 & week <= 6)) |>
   #   pull(spread_line)
   # 
-  # spreadLineTrain <- histModelData$spread_line
+  # spreadLineTrain <- train_data$spread_line
   # 
   # FittedProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTrain))
   # for(j in 1:length(spreadLineTrain)){
@@ -1151,7 +1163,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #   ) |>
   #   pull(spread_line)
   # 
-  # spreadLineTest <- modelData$spread_line
+  # spreadLineTest <- test_data$spread_line
   # 
   # PredsProbsSpread <- matrix(NA, nrow = sims, ncol = length(spreadLineTest))
   # for(j in 1:length(spreadLineTest)){
@@ -1220,8 +1232,8 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   #   filter(season == 2023 | (season == 2024 & week <= 6)) |>
   #   pull(total_line)
   
-  totalLineTrain <- histModelData1$total_line
-  totalTrain <- histModelData1$total
+  totalLineTrain <- train_data$total_line
+  totalTrain <- train_data$total
   totalLineTrainResult <- ifelse(totalTrain > totalLineTrain, "over",
                                  ifelse(totalTrain < totalLineTrain, "under", NA))
   
@@ -1251,7 +1263,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   FittedBetTotalOver <- colMeans(FittedOver)
   #FittedBetTotalOver <- colMeans(FittedProbsTotal)
   FittedBetLogicalTotalOver <- FittedBetTotalOver > 0.5
-  FittedBetLogicalTotalOddsOver <- FittedBetTotalOver > histModelData1$over_prob
+  FittedBetLogicalTotalOddsOver <- FittedBetTotalOver > train_data$over_prob
   FittedLogicalTotalOver <- totalTrain > totalLineTrain
   FittedProbTotalOver <- mean(FittedBetLogicalTotalOver == FittedLogicalTotalOver, na.rm = TRUE)
   FittedProbTotalOddsOver <- mean(FittedBetLogicalTotalOddsOver == FittedLogicalTotalOver, na.rm = TRUE)
@@ -1262,7 +1274,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   FittedBetTotalUnder <- colMeans(FittedUnder)
   #FittedBetTotalUnder <- colMeans(FittedProbsTotal)
   FittedBetLogicalTotalUnder <- FittedBetTotalUnder > 0.5
-  FittedBetLogicalTotalOddsUnder <- FittedBetTotalUnder > histModelData1$under_prob
+  FittedBetLogicalTotalOddsUnder <- FittedBetTotalUnder > train_data$under_prob
   FittedLogicalTotalUnder <- totalTrain < totalLineTrain
   FittedProbTotalUnder <- mean(FittedBetLogicalTotalUnder == FittedLogicalTotalUnder, na.rm = TRUE)
   FittedProbTotalOddsUnder <- mean(FittedBetLogicalTotalOddsUnder == FittedLogicalTotalUnder, na.rm = TRUE)
@@ -1273,7 +1285,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   FittedEBetTotalOver <- colMeans(FittedEOver)
   #FittedEBetTotalOver <- colMeans(FittedEProbsTotal)
   FittedEBetLogicalTotalOver <- FittedEBetTotalOver > 0.5
-  FittedEBetLogicalTotalOddsOver <- FittedEBetTotalOver > histModelData1$over_prob
+  FittedEBetLogicalTotalOddsOver <- FittedEBetTotalOver > train_data$over_prob
   FittedELogicalTotalOver <- totalTrain > totalLineTrain
   FittedEProbTotalOver <- mean(FittedEBetLogicalTotalOver == FittedELogicalTotalOver, na.rm = TRUE)
   FittedEProbTotalOddsOver <- mean(FittedEBetLogicalTotalOddsOver == FittedELogicalTotalOver, na.rm = TRUE)
@@ -1284,7 +1296,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   FittedEBetTotalUnder <- colMeans(FittedEUnder)
   #FittedEBetTotalUnder <- colMeans(FittedEProbsTotal)
   FittedEBetLogicalTotalUnder <- FittedEBetTotalUnder > 0.5
-  FittedEBetLogicalTotalOddsUnder <- FittedEBetTotalUnder > histModelData1$under_prob
+  FittedEBetLogicalTotalOddsUnder <- FittedEBetTotalUnder > train_data$under_prob
   FittedELogicalTotalUnder <- totalTrain < totalLineTrain
   FittedEProbTotalUnder <- mean(FittedEBetLogicalTotalUnder == FittedELogicalTotalUnder, na.rm = TRUE)
   FittedEProbTotalOddsUnder <- mean(FittedEBetLogicalTotalOddsUnder == FittedELogicalTotalUnder, na.rm = TRUE)
@@ -1303,12 +1315,12 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   ) |> 
     mutate(across(everything(), ~round(.x, 3)))
   
-  FittedBetLogicalTotalOdds <- ifelse(FittedBetTotalOver > histModelData1$over_prob, "over", 
-                                      ifelse(FittedBetTotalUnder > histModelData1$under_prob, "under", NA))
+  FittedBetLogicalTotalOdds <- ifelse(FittedBetTotalOver > train_data$over_prob, "over", 
+                                      ifelse(FittedBetTotalUnder > train_data$under_prob, "under", NA))
   FittedBetLogicalTotalOddsProb <- mean(FittedBetLogicalTotalOdds == totalLineTrainResult, na.rm = TRUE)
   FittedBetLogicalTotalOddsProbBets <- sum(!is.na(FittedBetLogicalTotalOddsProb))
-  FittedEBetLogicalTotalOdds <- ifelse(FittedEBetTotalOver > histModelData1$over_prob, "over", 
-                                       ifelse(FittedEBetTotalUnder > histModelData1$under_prob, "under", NA))
+  FittedEBetLogicalTotalOdds <- ifelse(FittedEBetTotalOver > train_data$over_prob, "over", 
+                                       ifelse(FittedEBetTotalUnder > train_data$under_prob, "under", NA))
   FittedEBetLogicalTotalOddsProb <- mean(FittedEBetLogicalTotalOdds == totalLineTrainResult, na.rm = TRUE)
   FittedEBetLogicalTotalOddsProbBets <- sum(!is.na(FittedEBetLogicalTotalOddsProb))
   
@@ -1369,7 +1381,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   
   # totalfinalPreds <- posterior_predict(Fit,
   #                                      resp = "total",
-  #                                      newdata = modelData,
+  #                                      newdata = test_data,
   #                                      allow_new_levels = TRUE,
   #                                      re_formula = NULL
   # )
@@ -1380,7 +1392,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   
   totalfinalEPreds <- posterior_epred(Fit,
                                       resp = "total",
-                                      newdata = modelData,
+                                      newdata = test_data,
                                       allow_new_levels = TRUE,
                                       re_formula = NULL
   )
@@ -1389,8 +1401,8 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   totalfinalEPredsLCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.025)})
   totalfinalEPredsUCB <- apply(totalfinalEPreds, 2, function(x){quantile(x, 0.975)})
   
-  totalLineTest <- modelData1$total_line
-  totalTest <- modelData1$total
+  totalLineTest <- test_data$total_line
+  totalTest <- test_data$total
   totalLineTestResult <- ifelse(totalTest > totalLineTest, "over",
                                 ifelse(totalTest < totalLineTest, "under", NA))
   
@@ -1476,7 +1488,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   PredsBetTotalOver <- colMeans(PredsOver)
   #PredsBetTotalOver <- colMeans(PredsProbsTotal)
   PredsBetLogicalTotalOver <- PredsBetTotalOver > 0.5
-  PredsBetLogicalTotalOddsOver <- PredsBetTotalOver > modelData1$over_prob
+  PredsBetLogicalTotalOddsOver <- PredsBetTotalOver > test_data$over_prob
   PredsLogicalTotalOver <- totalTest > totalLineTest
   PredsProbTotalOver <- mean(PredsBetLogicalTotalOver == PredsLogicalTotalOver, na.rm = TRUE)
   PredsProbTotalOddsOver <- mean(PredsBetLogicalTotalOddsOver == PredsLogicalTotalOver, na.rm = TRUE)
@@ -1487,7 +1499,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   PredsBetTotalUnder <- colMeans(PredsUnder)
   #PredsBetTotalUnder <- colMeans(PredsProbsTotal)
   PredsBetLogicalTotalUnder <- PredsBetTotalUnder > 0.5
-  PredsBetLogicalTotalOddsUnder <- PredsBetTotalUnder > modelData1$under_prob
+  PredsBetLogicalTotalOddsUnder <- PredsBetTotalUnder > test_data$under_prob
   PredsLogicalTotalUnder <- totalTest < totalLineTest
   PredsProbTotalUnder <- mean(PredsBetLogicalTotalUnder == PredsLogicalTotalUnder, na.rm = TRUE)
   PredsProbTotalOddsUnder <- mean(PredsBetLogicalTotalOddsUnder == PredsLogicalTotalUnder, na.rm = TRUE)
@@ -1499,7 +1511,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   PredsEBetTotalOver <- colMeans(PredsEOver)
   #PredsEBetTotalOver <- colMeans(PredsEProbsTotal)
   PredsEBetLogicalTotalOver <- PredsEBetTotalOver > 0.5
-  PredsEBetLogicalTotalOddsOver <- PredsEBetTotalOver > modelData1$over_prob
+  PredsEBetLogicalTotalOddsOver <- PredsEBetTotalOver > test_data$over_prob
   PredsELogicalTotalOver <- totalTest > totalLineTest
   PredsEProbTotalOver <- mean(PredsEBetLogicalTotalOver == PredsELogicalTotalOver, na.rm = TRUE)
   PredsEProbTotalOddsOver <- mean(PredsEBetLogicalTotalOddsOver == PredsELogicalTotalOver, na.rm = TRUE)
@@ -1510,7 +1522,7 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   PredsEBetTotalUnder <- colMeans(PredsEUnder)
   #PredsEBetTotalUnder <- colMeans(PredsEProbsTotal)
   PredsEBetLogicalTotalUnder <- PredsEBetTotalUnder > 0.5
-  PredsEBetLogicalTotalOddsUnder <- PredsEBetTotalUnder > modelData1$under_prob
+  PredsEBetLogicalTotalOddsUnder <- PredsEBetTotalUnder > test_data$under_prob
   PredsELogicalTotalUnder <- totalTest < totalLineTest
   PredsEProbTotalUnder <- mean(PredsEBetLogicalTotalUnder == PredsELogicalTotalUnder, na.rm = TRUE)
   PredsEProbTotalOddsUnder <- mean(PredsEBetLogicalTotalOddsUnder == PredsELogicalTotalUnder, na.rm = TRUE)
@@ -1529,12 +1541,12 @@ fit_analysis <- function(Fit, fit, discrete = TRUE, group = FALSE){
   ) |> 
     mutate(across(everything(), ~round(.x, 3)))
   
-  PredsBetLogicalTotalOdds <- ifelse(PredsBetTotalOver > modelData1$over_prob, "over", 
-                                     ifelse(PredsBetTotalUnder > modelData1$under_prob, "under", NA))
+  PredsBetLogicalTotalOdds <- ifelse(PredsBetTotalOver > test_data$over_prob, "over", 
+                                     ifelse(PredsBetTotalUnder > test_data$under_prob, "under", NA))
   PredsBetLogicalTotalOddsProb <- mean(PredsBetLogicalTotalOdds == totalLineTestResult, na.rm = TRUE)
   PredsBetLogicalTotalOddsProbBets <- sum(!is.na(PredsBetLogicalTotalOdds))
-  PredsEBetLogicalTotalOdds <- ifelse(PredsEBetTotalOver > modelData1$over_prob, "over", 
-                                      ifelse(PredsEBetTotalUnder > modelData1$under_prob, "under", NA))
+  PredsEBetLogicalTotalOdds <- ifelse(PredsEBetTotalOver > test_data$over_prob, "over", 
+                                      ifelse(PredsEBetTotalUnder > test_data$under_prob, "under", NA))
   PredsEBetLogicalTotalOddsProb <- mean(PredsEBetLogicalTotalOdds == totalLineTestResult, na.rm = TRUE)
   PredsEBetLogicalTotalOddsProbBets <- sum(!is.na(PredsEBetLogicalTotalOdds))
   
