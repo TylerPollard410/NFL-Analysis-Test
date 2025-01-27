@@ -511,17 +511,7 @@ formula_total <-
   bf(
     total ~ #0 + #Intercept +
       home_totalTD_roll_5 +
-      home_fg_made_roll_5 +
-      #home_offTD_roll_5 +
-      home_OSRS_ewma_net +
-      home_off_punt +
-      home_off_epa_cum +
-      home_off_rush_epa_cum +
-      home_pat_att_roll_5
-    shape ~
-      home_totalTD_roll_5 +
-      home_fg_made_roll_5 +
-      #home_offTD_roll_5 +
+      home_offTD_roll_5 +
       home_OSRS_ewma_net +
       home_off_punt +
       home_off_epa_cum +
@@ -653,7 +643,7 @@ priorPoints <- c(
 # priorPointsNL <- c(
 #   #prior(normal(0,5), nlpar = "b1"),
 #   prior(normal(0,5), nlpar = "eta")
-# 
+# )
 
 system.time(
   model_nfl_fit <- brm(
@@ -696,7 +686,6 @@ fit_analysis(Fit = model_nfl_fit,
 
 FitR2
 
-
 totalPPCbars
 totalPPCdens
 totalPPDbars
@@ -709,11 +698,6 @@ successPerf |> filter(Data == "Test") |> arrange(desc(OddsOver)) |> head(5)
 successPerf |> filter(Data == "Test") |> arrange(desc(Under)) |> head(5)
 successPerf |> filter(Data == "Test") |> arrange(desc(OddsUnder)) |> head(5)
 loo_compare(loo_fits)
-
-for(i in 1:12){
-  looTemp <- loo(get(paste0("fit", i)), model_name = paste0("fit", i))
-  assign(paste0("loo", i), looTemp)
-}
 
 fitFormulas <- list()
 FitR2 <- data.frame()
@@ -729,7 +713,7 @@ loo_fits <- list()
 
 fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
                          discrete = TRUE, group = FALSE){
-  #Fit <- model_nfl_fit
+  # Fit <- model_nfl_fit
   # fit <- 1
   assign(paste0("fit", fit), Fit, envir = .GlobalEnv)
   
@@ -868,16 +852,6 @@ fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
       theme_bw()
     assign("totalPPCbars",totalPPCbars, envir = .GlobalEnv)
     print(totalPPCbars)
-  }
-  
-  if(discrete){
-    totalPPCroot <- ppc_rootogram(y = train_data$total, 
-                                  yrep = totalfinalFit[sample(1:sims, 1000, replace = FALSE), ],
-                                  style = "suspended") + 
-      labs(title = paste0("Fit", fit, " Total PPC")) +
-      theme_bw()
-    assign("totalPPCroot",totalPPCroot, envir = .GlobalEnv)
-    print(totalPPCroot)
   }
   # totalPPCbars <- ppc_bars(y = histModelData$total, 
   #                          yrep = totalfinalFit[sample(1:sims, 1000, replace = FALSE), ]) + 
@@ -1032,16 +1006,6 @@ fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
       theme_bw()
     assign("totalPPDbars",totalPPDbars, envir = .GlobalEnv)
     print(totalPPDbars)
-  }
-  
-  if(discrete){
-    totalPPDroot <- ppc_rootogram(y = test_data$total, 
-                                  yrep = totalfinalPreds[sample(1:sims, 1000, replace = FALSE), ],
-                                  style = "suspended") + 
-      labs(title = paste0("Fit", fit, " Total PPD")) +
-      theme_bw()
-    print(totalPPDroot)
-    assign("totalPPDroot",totalPPDroot, envir = .GlobalEnv)
   }
   
   # homePPDbars
@@ -1619,40 +1583,11 @@ fit_analysis <- function(Fit, fit, train_data = NULL, test_data = NULL,
   #successPerf #<- successPerfTemp
   
   ### Loo ----
-  loo_fits[[paste0("Fit",fit)]] <- loo(Fit,)
+  loo_fits[[paste0("Fit",fit)]] <- loo(Fit)
   loo_compare(loo_fits)
-  assign("loo_fits", loo_fits, envir = .GlobalEnv)
+  assign("loo_fits", loo_fits)
 }
 
-loo1 <- loo(fit1)
-loo2 <- loo(fit2)
-loo3 <- loo(fit3)
-loo4 <- loo(fit4)
-loo5 <- loo(fit5)
-loo6 <- loo(fit6)
-loo7 <- loo(fit7)
-loo8 <- loo(fit8)
-loo9 <- loo(fit9)
-loo10 <- loo(fit10)
-loo11 <- loo(fit11)
-loo12 <- loo(fit12)
-
-loo_fits <- list(
-  loo1,
-  loo2,
-  loo3,
-  loo4,
-  loo5,
-  loo6,
-  loo7,
-  loo8,
-  loo9,
-  loo10,
-  loo11,
-  loo12
-)
-
-loo_compare(loo_fits)
 
 CustomTotalBetSuccessDF <- data.frame()
 totalfinalPreds <- posterior_predict(fit8,
@@ -2059,7 +1994,7 @@ newDataPre <- newDataPre |> select(
 )
 newDataPre
 
-totalNewPreds <- posterior_predict(fit9,
+totalNewPreds <- posterior_predict(fit8,
                                    resp = "total",
                                    newdata = newDataPre,
                                    allow_new_levels = TRUE,
@@ -2071,17 +2006,27 @@ totalNewPredsLCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.025)})
 totalNewPredsUCB <- apply(totalNewPreds, 2, function(x){quantile(x, 0.975)})
 totalNewPredsCI <- newDataPre |>
   mutate(
-    PredsLCB = totalNewPredsLCB,
-    PredMean = totalNewPredsMean,
-    PredMed = totalNewPredsMed,
-    PredsUCB = totalNewPredsUCB,
-    .after = under_prob
-  )
+  PredsLCB = totalNewPredsLCB,
+  PredMean = totalNewPredsMean,
+  PredMed = totalNewPredsMed,
+  PredsUCB = totalNewPredsUCB,
+  .after = under_prob
+)
 
 totalPredOddsProbCalc(totalfinalPreds = totalNewPreds,
-                      test_data = newDataPre, fit = 9,
-                      probToBeat = .55
-                      )
+                      test_data = newDataPre, fit = 8,
+                      probToBeat = 0.6)
+
+totalNewEPreds <- posterior_predict(fit5,
+                                    resp = "total",
+                                    newdata = newDataPre,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
+)
+totalNewEPredsMean <- colMeans(totalNewEPreds)
+totalNewEPredsMed <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.5)})
+totalNewEPredsLCB <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.025)})
+totalNewEPredsUCB <- apply(totalNewEPreds, 2, function(x){quantile(x, 0.975)})
 
 totalNewPPDbars <- ppc_bars(y = newDataPre$total_line, 
                             yrep = totalNewPreds[sample(1:sims, 1000, replace = FALSE), ]) + 
@@ -2214,25 +2159,56 @@ PredsProbTotalOddsUnder <- mean(PredsBetLogicalTotalOddsUnder == PredsLogicalTot
 # PredsProbTotalOddsUnder
 
 
+PredsEOver <- t(t(totalNewEPreds) > totalNewLineTest)
+PredsEBetTotalOver <- colMeans(PredsEOver)
+#PredsEBetTotalOver <- colMeans(PredsEProbsTotal)
+PredsEBetLogicalTotalOver <- PredsEBetTotalOver > 0.5
+PredsEBetLogicalTotalOddsOver <- PredsEBetTotalOver > newData$over_prob
+PredsELogicalTotalOver <- totalNewTest > totalNewLineTest
+PredsEProbTotalOver <- mean(PredsEBetLogicalTotalOver == PredsELogicalTotalOver, na.rm = TRUE)
+PredsEProbTotalOddsOver <- mean(PredsEBetLogicalTotalOddsOver == PredsELogicalTotalOver, na.rm = TRUE)
+# PredsEProbTotalOver
+# PredsEProbTotalOddsOver
+
+PredsEUnder <- t(t(totalNewEPreds) < totalNewLineTest)
+PredsEBetTotalUnder <- colMeans(PredsEUnder)
+#PredsEBetTotalUnder <- colMeans(PredsEProbsTotal)
+PredsEBetLogicalTotalUnder <- PredsEBetTotalUnder > 0.5
+PredsEBetLogicalTotalOddsUnder <- PredsEBetTotalUnder > newData$under_prob
+PredsELogicalTotalUnder <- totalNewTest < totalNewLineTest
+PredsEProbTotalUnder <- mean(PredsEBetLogicalTotalUnder == PredsELogicalTotalUnder, na.rm = TRUE)
+PredsEProbTotalOddsUnder <- mean(PredsEBetLogicalTotalOddsUnder == PredsELogicalTotalUnder, na.rm = TRUE)
+# PredsEProbTotalUnder
+# PredsEProbTotalOddsUnder
+
 totalNewSuccessTest <- data.frame(
   TestOver = PredsProbTotalOver,
   TestOddsOver = PredsProbTotalOddsOver,
+  #TestOverE = PredsEProbTotalOver,
+  #TestOddsOverE = PredsEProbTotalOddsOver,
   TestUnder = PredsProbTotalUnder,
   TestOddsUnder = PredsProbTotalOddsUnder
+  #TestUnderE = PredsEProbTotalUnder,
+  #TestOddsUnderE = PredsEProbTotalOddsUnder
 ) |> 
   mutate(across(everything(), ~round(.x, 3)))
-totalNewSuccessTest
 
 PredsBetLogicalTotalOdds <- ifelse(PredsBetTotalOver > newData$over_prob, "over", 
                                    ifelse(PredsBetTotalUnder > newData$under_prob, "under", NA))
 PredsBetLogicalTotalOddsProb <- mean(PredsBetLogicalTotalOdds == totalNewLineTestResult, na.rm = TRUE)
 PredsBetLogicalTotalOddsProbBets <- sum(!is.na(PredsBetLogicalTotalOdds))
+PredsEBetLogicalTotalOdds <- ifelse(PredsEBetTotalOver > newData$over_prob, "over", 
+                                    ifelse(PredsEBetTotalUnder > newData$under_prob, "under", NA))
+PredsEBetLogicalTotalOddsProb <- mean(PredsEBetLogicalTotalOdds == totalNewLineTestResult, na.rm = TRUE)
+PredsEBetLogicalTotalOddsProbBets <- sum(!is.na(PredsEBetLogicalTotalOdds))
 
 TotalNewBetSuccessDFtemp <- data.frame(
   Fit = paste0("Fit ", fitnum), 
   Data = "New",
   BetNum = PredsBetLogicalTotalOddsProbBets,
   BetProb = PredsBetLogicalTotalOddsProb
+  #BetNumE = c(FittedEBetLogicalTotalOddsProbBets, PredsEBetLogicalTotalOddsProbBets),
+  #BetProbE = c(FittedEBetLogicalTotalOddsProb, PredsEBetLogicalTotalOddsProb)
 )
 TotalNewBetSuccessDFtemp
 
