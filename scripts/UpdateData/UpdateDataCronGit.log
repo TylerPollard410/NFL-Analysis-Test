@@ -26,8 +26,8 @@ x dplyr::lag()    masks stats::lag()
 i Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 [1] "pbpData"
 [1] "No play-by-play data to update"
-[1] "pbpData updated 2025-02-01 04:21:55 EST with 906389 rows and 372 cols."
-elapsed time is 3.001000 seconds 
+[1] "pbpData updated 2025-02-03 00:43:03 EST with 906389 rows and 372 cols."
+elapsed time is 2.617000 seconds 
 Converged after 14 iterations.
 Season 2006 
 Converged after 16 iterations.
@@ -66,7 +66,7 @@ Converged after 13 iterations.
 Season 2023 
 Converged after 16 iterations.
 Season 2024 
-elapsed time is 17.455000 seconds 
+elapsed time is 13.716000 seconds 
 Reached maximum iterations =  200 without full convergence.
 Season 2024 Week 1 
 Reached maximum iterations =  200 without full convergence.
@@ -109,7 +109,7 @@ Converged after 15 iterations.
 Season 2024 Week 20 
 Converged after 15 iterations.
 Season 2024 Week 21 
-elapsed time is 23.173000 seconds 
+elapsed time is 17.046000 seconds 
 `summarise()` has grouped output by 'game_id', 'season', 'week', 'posteam',
 'home_team'. You can override using the `.groups` argument.
 `summarise()` has grouped output by 'season'. You can override using the
@@ -124,4 +124,4 @@ Registered S3 method overwritten by 'quantmod':
   as.zoo.data.frame zoo 
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
-elapsed time is 639.072000 seconds 
+elapsed time is 576.011000 seconds 
