@@ -127,3 +127,7 @@ Registered S3 method overwritten by 'quantmod':
 Joining with `by = join_by(season, week, team)`
 Joining with `by = join_by(game_id, home_team, away_team)`
 elapsed time is 914.067000 seconds 
+[main bb3d2a2] Auto-update: 2025-02-14 02:16:32
+ 5 files changed, 8 insertions(+), 6 deletions(-)
+To github.com:TylerPollard410/NFL-Analysis-Test.git
+   8e99dab..bb3d2a2  main -> main

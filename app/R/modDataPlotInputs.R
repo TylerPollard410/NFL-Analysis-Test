@@ -11,7 +11,7 @@ modDataPlotInputUI <- function(id, teamsDataPickerInput){
       max = get_current_season(),
       step = 1,
       value = c(get_current_season(),get_current_season()),
-      limit = 5,
+      #limit = 5,
       behaviour = "drag",
       format = wNumbFormat(decimals = 0)
     ),

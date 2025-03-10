@@ -122,7 +122,7 @@ modData2 <- modData |>
   )
 
 modPreProcess <- modData2 |>
-  filter(season >= 2022, !is.na(result)) |>
+  filter(season >= 2020, !is.na(result)) |>
   select(
     #-game_id
     -home_score, -away_score,
