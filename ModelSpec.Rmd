@@ -1,0 +1,105 @@
+---
+title: "ModelSpec"
+author: "Tyler Pollard"
+date: "2025-03-14"
+header-includes:
+  #- \usepackage{float}
+  - \usepackage{floatrow}
+  - \usepackage{indentfirst}
+  - \usepackage{caption}
+  - \usepackage{array}
+  - \floatplacement{figure}{H}
+  - \usepackage{amsmath}
+  - \usepackage{multicol}
+  - \usepackage{longdivision}
+  - \usepackage{makecell}
+  - \usepackage{titlesec}
+geometry: "left=1in,right=1in,top=1in,bottom=1in"
+fontsize: 12pt
+linestretch: 1.0
+indent: true
+output: pdf_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=60), tidy = TRUE)
+```
+
+* Let $HTD$ be the number of home touchdowns for a game
+* Let $HXP$ be the number of home extra point kicks made for a game
+* Let $HTP$ be the number of home two conversations made for a game
+* Let $HFG$ be the number of home field goals made for a game
+* Let $HSF$ be the number of home defense safeties for a game
+* Let $ATD$ be the number of away touchdowns for a game
+* Let $AXP$ be the number of away extra point kicks made for a game
+* Let $ATP$ be the number of away two conversations made for a game
+* Let $AFG$ be the number of away field goals made for a game
+* Let $ASF$ be the number of away defense safeties for a game
+
+* Let $HS$ be the home score for a game
+* Let $AS$ be the away score for a game
+
+* Let $RT$ be the result (spread) of a game
+* Let $TT$ be the total points for a game
+
+* Let $s$ be the season
+* Let $w$ be the week
+* Let $g$ be the specific game between two teams
+* Let $t$ be the team (32 NFL teams)
+
+$$
+\begin{aligned}
+RT_{swgt} &= HS_{swgt} - AS_{swgt} \\
+TT_{swgt} &= HS_{swgt} + AS_{swgt} \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+HS_{swgt} &= 6HTD_{swgt} + HXP_{swgt} + 2HTP_{swgt} + 3HFG_{swgt} + 2HSF_{swgt} \\
+AS_{swgt} &= 6ATD_{swgt} + AXP_{swgt} + 2ATP_{swgt} + 3AFG_{swgt} + 2ASF_{swgt}
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+HTD_{swgt} &\sim Pois(\lambda_{TD,t}) \\
+HXP_{swgt} &\sim Bin(nAtt_{XP, swgt}, p_{XP,t}) \\
+HTP_{swgt} &\sim Bin(nAtt_{TP, swgt}, p_{TP,t}) \\
+HFG_{swgt} &\sim Bin(nAtt_{FG, swgt}, p_{FG,t}) \\
+HSF_{swgt} &\sim Pois(\lambda_{SF,t}) \\
+\\
+HTD_{swgt} &= nAtt_{XP, swgt} + nAtt_{TP, swgt} \\
+nAtt_{FG, swgt} &\sim Pois(\lambda_{FG, t}) \\
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+ATD_{swgt} &\sim Pois(\lambda_{TD,t}) \\
+AXP_{swgt} &\sim Bin(nAtt_{XP, swgt}, p_{XP,t}) \\
+ATP_{swgt} &\sim Bin(nAtt_{TP, swgt}, p_{TP,t}) \\
+AFG_{swgt} &\sim Bin(nAtt_{FG, swgt}, p_{FG,t}) \\
+ASF_{swgt} &\sim Pois(\lambda_{SF,t}) \\
+\\
+ATD_{swgt} &= nAtt_{XP, swgt} + nAtt_{TP, swgt} \\
+nAtt_{FG, swgt} &\sim Pois(\lambda_{FG, t}) \\
+\end{aligned}
+$$
+
+All 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
