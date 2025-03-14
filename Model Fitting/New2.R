@@ -872,8 +872,8 @@ assign(paste0("randEff_Team", teamFit), randEff_Team)
 ## Result ----
 formula_Res <- bf(
  result ~
-    home_SRS + away_SRS + location
-) + brmsfamily(family = "discrete_weibull")
+    home_SRS_net + (0 + location2 | home_team)
+) + brmsfamily(family = "gaussian", link = "identity")
 
 default_prior(formula_Res, histModelData)
 
@@ -885,22 +885,22 @@ priors_Res <- c(
   prior(inv_gamma(0.1, 0.1), class = "sd")
 )
 
-fit_Res_stancode <- stancode(
-  formula_Res,
-  data = histModelData,
-  #prior = priors_Res,
-  save_pars = save_pars(all = TRUE), 
-  chains = chains,
-  iter = iters,
-  warmup = burn,
-  cores = parallel::detectCores(),
-  #init = 0,
-  normalize = TRUE,
-  control = list(adapt_delta = 0.95),
-  backend = "rstan",
-  seed = 52
-)
-fit_Res_stancode
+# fit_Res_stancode <- stancode(
+#   formula_Res,
+#   data = histModelData,
+#   #prior = priors_Res,
+#   save_pars = save_pars(all = TRUE), 
+#   chains = chains,
+#   iter = iters,
+#   warmup = burn,
+#   cores = parallel::detectCores(),
+#   #init = 0,
+#   normalize = TRUE,
+#   control = list(adapt_delta = 0.95),
+#   backend = "rstan",
+#   seed = 52
+# )
+# fit_Res_stancode
 
 system.time(
   fit_Res <- brm(
@@ -921,9 +921,16 @@ system.time(
 )
 save(fit_Res, file = "~/Desktop/NfL Analysis Data/fit_Res_discrete_weibull.RData")
 
-plot(fit_Res)
+#plot(fit_Res)
 print(fit_Res, digits = 4)
-pp_check(fit_Res, ndraws = 100)
+
+#fit_Res <- fit_Res2
+
+pp_check(fit_Res, ndraws = 100, type = "dens_overlay")
+pp_check(fit_Res, newdata = modelData,
+         ndraws = 100, type = "dens_overlay")
+
+save(fit_Res, file = "_data/fit_Res.RData")
 
 ### Fixed Effects ----
 fixedEff_Res <- fixef(fit_Res)
@@ -942,6 +949,37 @@ fixedEff_Res <- data.frame(fixedEff_Res) |>
 print(fixedEff_Res, digits = 4)
 fixedSigEff_Res <- fixedEff_Res |> filter(p_val < 0.2)
 print(fixedSigEff_Res)
+
+randEff_Res <- ranef(fit_Res)
+randEff_Res
+
+### MAE ----
+fitResiduals_Res <- 
+  residuals(
+    fit_Res,
+    #Fit2,
+    method = "posterior_predict",
+    re_formula = NULL,
+    robust = FALSE,
+    probs = c(0.025, 0.975)) |>
+  data.frame()
+mean(abs(fitResiduals_Res$Estimate))
+
+predResiduals_Res <- 
+  residuals(
+    fit_Res,
+    newdata = modelData,
+    method = "posterior_predict",
+    re_formula = NULL,
+    robust = FALSE,
+    probs = c(0.025, 0.975)) |>
+  data.frame()
+mean(abs(predResiduals_Res$Estimate))
+
+ResFit <- 3
+assign(paste0("fit_Res", ResFit), fit_Res)
+assign(paste0("fixedEff_Res", ResFit), fixedEff_Res)
+assign(paste0("randEff_Res", ResFit), randEff_Res)
 
 # Posterior ----
 fit <- 1
