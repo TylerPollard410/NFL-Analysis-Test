@@ -1194,7 +1194,7 @@ homefinalFit <-
 
 
 ## Fitted
-#homefinalFit <- posterior_predict(Fit, resp = "homescore")
+homefinalFit <- posterior_predict(fit_Team, resp = "homescore")
 homefinalFitMean <- colMeans(homefinalFit)
 homefinalFitMed <- apply(homefinalFit, 2, function(x){quantile(x, 0.5)})
 homefinalFitLCB <- apply(homefinalFit, 2, function(x){quantile(x, 0.025)})
@@ -1218,12 +1218,12 @@ homefinalPreds <-
   3*homefinalPredsFG
 
 
-# homefinalPreds <- posterior_predict(Fit,
-#                                     resp = "homescore",
-#                                     newdata = modelData,
-#                                     allow_new_levels = TRUE,
-#                                     re_formula = NULL
-# )
+homefinalPreds <- posterior_predict(fit_Team,
+                                    resp = "homescore",
+                                    newdata = modelData,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
+)
 homefinalPredsMean <- colMeans(homefinalPreds)
 homefinalPredsMed <- apply(homefinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
 homefinalPredsLCB <- apply(homefinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
@@ -1249,7 +1249,7 @@ awayfinalFit <-
 
 
 ## Fitted
-#awayfinalFit <- posterior_predict(Fit, resp = "awayscore")
+awayfinalFit <- posterior_predict(fit_Team, resp = "awayscore")
 awayfinalFitMean <- colMeans(awayfinalFit)
 awayfinalFitMed <- apply(awayfinalFit, 2, function(x){quantile(x, 0.5)})
 awayfinalFitLCB <- apply(awayfinalFit, 2, function(x){quantile(x, 0.025)})
@@ -1273,18 +1273,18 @@ awayfinalPreds <-
   3*awayfinalPredsFG
 
 
-# awayfinalPreds <- posterior_predict(Fit,
-#                                     resp = "awayscore",
-#                                     newdata = modelData,
-#                                     allow_new_levels = TRUE,
-#                                     re_formula = NULL
-# )
+awayfinalPreds <- posterior_predict(fit_Team,
+                                    resp = "awayscore",
+                                    newdata = modelData,
+                                    allow_new_levels = TRUE,
+                                    re_formula = NULL
+)
 awayfinalPredsMean <- colMeans(awayfinalPreds)
 awayfinalPredsMed <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.5, na.rm = TRUE)})
 awayfinalPredsLCB <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 awayfinalPredsUCB <- apply(awayfinalPreds, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-
+fit <- 1
 predMetricsHA <- tibble(
   Fit = rep(paste0("Fit", fit), 2),
   Score = c("home", "away"),
@@ -1384,7 +1384,7 @@ spreadPPDbars
 ##### Prob Errors ----
 ##### Fit ----
 spreadLineTrain <- modData |>
-  filter(season %in% c(2022,2023) | (season == 2024 & week <= 6)) |>
+  filter(season %in% c(2020,2023) | (season == 2024 & week <= 6)) |>
   pull(spread_line)
 spreadLineTrain <- histModelData$spread_line
 
@@ -1402,15 +1402,17 @@ FittedLogicalSpread <- spreadTrain > spreadLineTrain
 FittedProbSpread <- mean(FittedBetLogicalSpread == FittedLogicalSpread, na.rm = TRUE)
 FittedProbSpread
 
-spreadDataTrain <- modData |> 
-  filter(season %in% c(2023,2023) | (season == 2024 & week <= 6)) |>
-  select(season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, spread_line, spreadCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
+spreadDataTrain <- 
+  # modData |> 
+  # filter(season %in% c(2020,2023) | (season == 2024 & week <= 6)) |>
+  # select(season, week, #game_type,
+  #        home_team, home_score, away_team, away_score,
+  #        result, spread_line, spreadCover,
+  #        home_spread_odds, home_spread_prob,
+  #        away_spread_prob, away_spread_prob,
+  #        over_odds, over_prob,
+  #        under_odds, under_prob) |>
+  histModelData |>
   mutate(
     # Mean
     spreadFit = FittedMeanSpread,
@@ -1463,20 +1465,22 @@ PredsLogicalSpread <- spreadTest > spreadLineTest
 PredsProbSpread <- mean(PredsBetLogicalSpread == PredsLogicalSpread, na.rm = TRUE)
 PredsProbSpread
 
-spreadDataTest <- modData |> filter(season == 2024 & week > 6) |>
-  filter(!is.na(result), 
-         !is.na(home_totalTD),
-         !is.na(away_totalTD),
-         !is.na(home_fg_made),
-         !is.na(away_fg_made)
-  ) |>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, spread_line,spreadCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
+spreadDataTest <- 
+  # modData |> filter(season == 2024 & week > 6) |>
+  # filter(!is.na(result), 
+  #        !is.na(home_totalTD),
+  #        !is.na(away_totalTD),
+  #        !is.na(home_fg_made),
+  #        !is.na(away_fg_made)
+  # ) |>
+  # select(game_id, season, week, #game_type,
+  #        home_team, home_score, away_team, away_score,
+  #        result, spread_line,spreadCover,
+  #        home_spread_odds, home_spread_prob,
+  #        away_spread_prob, away_spread_prob,
+  #        over_odds, over_prob,
+  #        under_odds, under_prob) |>
+  modelData |>
   mutate(
     spreadPred = PredsMeanSpread,
     coverBet = ifelse(spreadPred > spread_line, TRUE, FALSE),
@@ -1522,10 +1526,12 @@ PredsMedTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.5, na.rm = TRUE)
 PredsLCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.025, na.rm = TRUE)})
 PredsUCBTotal <- apply(PredsTotal, 2, function(x){quantile(x, 0.975, na.rm = TRUE)})
 
-totalTrain <- modData |>
+totalTrain <- histModelData$total
+  modData |>
   filter(season %in% c(2023,2023) | (season == 2024 & week <= 6)) |>
   pull(total)
-totalTest <- modData |>
+totalTest <- modelData$total
+  modData |>
   filter(season == 2024 & week > 6) |>
   filter(!is.na(result), 
          !is.na(home_totalTD),
@@ -1592,15 +1598,17 @@ FittedLogicalTotal <- totalTrain > totalLineTrain
 FittedProbTotal <- mean(FittedBetLogicalTotal == FittedLogicalTotal, na.rm = TRUE)
 FittedProbTotal
 
-totalDataTrain <- modData |> 
-  filter(season %in% c(2023,2023) | (season == 2024 & week <= 6)) |>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, total_line, totalCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
+totalDataTrain <-
+  # modData |> 
+  # filter(season %in% c(2023,2023) | (season == 2024 & week <= 6)) |>
+  # select(game_id, season, week, #game_type,
+  #        home_team, home_score, away_team, away_score,
+  #        result, total_line, totalCover,
+  #        home_spread_odds, home_spread_prob,
+  #        away_spread_prob, away_spread_prob,
+  #        over_odds, over_prob,
+  #        under_odds, under_prob) |>
+  histModelData |>
   mutate(
     totalFit = FittedMeanTotal,
     coverBet = ifelse(totalFit > total_line, TRUE, FALSE),
@@ -1650,20 +1658,22 @@ PredsLogicalTotal <- totalTest > totalLineTest
 PredsProbTotal <- mean(PredsBetLogicalTotal == PredsLogicalTotal, na.rm = TRUE)
 PredsProbTotal
 
-totalDataTest <- modData |> filter(season == 2024 & week > 6) |> 
-  filter(!is.na(result), 
-         !is.na(home_totalTD),
-         !is.na(away_totalTD),
-         !is.na(home_fg_made),
-         !is.na(away_fg_made)
-  )|>
-  select(game_id, season, week, #game_type,
-         home_team, home_score, away_team, away_score,
-         result, total_line, totalCover,
-         home_spread_odds, home_spread_prob,
-         away_spread_prob, away_spread_prob,
-         over_odds, over_prob,
-         under_odds, under_prob) |>
+totalDataTest <- 
+  # modData |> filter(season == 2024 & week > 6) |> 
+  # filter(!is.na(result), 
+  #        !is.na(home_totalTD),
+  #        !is.na(away_totalTD),
+  #        !is.na(home_fg_made),
+  #        !is.na(away_fg_made)
+  # )|>
+  # select(game_id, season, week, #game_type,
+  #        home_team, home_score, away_team, away_score,
+  #        result, total_line, totalCover,
+  #        home_spread_odds, home_spread_prob,
+  #        away_spread_prob, away_spread_prob,
+  #        over_odds, over_prob,
+  #        under_odds, under_prob) |>
+  modelData |>
   mutate(
     totalPred = PredsMeanTotal,
     coverBet = ifelse(totalPred > total_line, TRUE, FALSE),

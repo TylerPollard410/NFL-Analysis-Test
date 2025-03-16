@@ -20,6 +20,7 @@ library(pracma)
 library(timetk)
 
 ## nflverse
+library(espnscrapeR)
 library(nflverse)
 library(tidyverse)
 
@@ -61,7 +62,7 @@ source("./app/data-raw/gameDataLong.R")
 
 ## pbpData ------------------------------
 ### Initial
-#source("./app/data-raw/pbpData.R")
+source("./app/data-raw/pbpData.R")
 
 #dbWriteTable(con, name = "pbpData", value = pbpData)
 
