@@ -173,6 +173,13 @@ shinyServer(function(input, output, session) {
   #### Ranks ----
   # Betting Tab  ############################################
   ## Games ==================================================
+  gamesSeason <- reactive({
+    as.numeric(input$standingsSeason)
+  })
+  standingsStat <- reactive({
+    input$standingsStat
+  })
+  
   futureGameIDs <- gameData |>
     filter(!is.na(spread_line) & is.na(result)) |>
     pull(game_id)

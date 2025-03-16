@@ -78,6 +78,8 @@ modData2 <- modData |>
     season,
     season_type,
     week,
+    weekday,
+    time_of_day,
     home_team,
     home_score,
     away_team,
@@ -105,6 +107,28 @@ modData2 <- modData |>
     contains("away"),
     -contains("pat_pct"),
     -contains("fg_pct")
+    # off_n, 
+    # off_scr, 
+    # off_scr_1st, 
+    # off_scr_2nd, 
+    # off_scr_3rd, 
+    # off_scr_4th, 
+    # off_1st, 
+    # off_td, 
+    # off_fg,
+    # off_punt,
+    # off_to, 
+    # def_n, 
+    # def_scr,
+    # def_scr_1st, 
+    # def_scr_2nd, 
+    # def_scr_3rd,
+    # def_scr_4th, 
+    # def_1st, 
+    # def_td, 
+    # def_fg, 
+    # def_punt, 
+    # def_to
   ) |>
   mutate(
     across(c(where(is.character), -game_id),
@@ -164,6 +188,8 @@ modData3 <- modData2 |>
     winner,
     contains("moneyline"),
     contains("rest"),
+    weekday,
+    time_of_day,
     location,
     location2,
     div_game,
@@ -183,7 +209,45 @@ modData3 <- modData2 |>
     contains("epa"),
     contains("cum"),
     contains("net"),
-    contains("roll")
+    contains("roll"),
+    contains("off_n"), 
+    contains("off_scr"), 
+    contains("off_scr_1st"), 
+    contains("off_scr_2nd"), 
+    contains("off_scr_3rd"), 
+    contains("off_scr_4th"), 
+    contains("off_1st"), 
+    contains("off_td"), 
+    contains("off_fg"),
+    contains("off_punt"),
+    contains("off_to"), 
+    contains("def_n"), 
+    contains("def_scr"),
+    contains("def_scr_1st"), 
+    contains("def_scr_2nd"), 
+    contains("def_scr_3rd"),
+    contains("def_scr_4th"), 
+    contains("def_1st"), 
+    contains("def_td"), 
+    contains("def_fg"), 
+    contains("def_punt"), 
+    contains("def_to"),
+    -home_def_tds,
+    -away_def_tds
+    # contains("off"),
+    # contains("def"),
+    # -contains("totalTD"),
+    # -contains("offTD"),
+    # -contains("special_teams_tds"),
+    # -contains("fumble_recovery_tds"),
+    # -contains("def_tds"),
+    # -contains("pat_made"),
+    # -contains("pat_att"),
+    # -contains("twoPtConv"),
+    # -contains("twoPtAtt"),
+    # -contains("fg_made"),
+    # -contains("fg_att"),
+    # -contains("def_safeties")
   ) |>
   mutate(
     surface = as.character(surface),
@@ -342,7 +406,7 @@ mod_IDs <- modData4 |>
   filter(complete.cases(modData4)) |>
   pull(game_id)
 
-modData5 <- modData3|>
+modData5 <- modData3 |>
   filter(game_id %in% mod_IDs)
 modData5 <- modData5 |>
   #filter(game_id %in% mod_IDs) |>

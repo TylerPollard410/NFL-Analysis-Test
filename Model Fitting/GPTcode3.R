@@ -15,6 +15,7 @@ set.seed(123)
 
 # 1. Load & Prepare Data ------------------------------
 # Read in the feature-engineered CSV file (ensure "modData.csv" is in your working directory)
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 nfl_data <- read_csv("~/Desktop/modData.csv")
 
 # Include both regular season and postseason games.
@@ -48,7 +49,7 @@ drop_vars <- c("game_id", "season", "season_type", "week", "home_team", "away_te
                "time_id")
 
 # Define game-level variables (which we will exclude from XGBoost and later reintroduce in Bayesian modeling)
-game_level_vars <- c("location", "div_game", "roof", "surface", "temp", "wind")
+game_level_vars <- c("weekday", "time_of_day", "location", "div_game", "roof", "surface", "temp", "wind")
 
 # Candidate predictors for XGBoost: all numeric variables not in drop_vars and not in game_level_vars.
 all_candidates <- setdiff(names(nfl_data), drop_vars)
@@ -63,6 +64,7 @@ print(candidate_xgb_vars)
 # Remove Near-Zero Variance and Highly Correlated Predictors
 # Remove near-zero variance predictors
 nzv <- nearZeroVar(nfl_data[, candidate_xgb_vars], saveMetrics = TRUE)
+candidate_xgb_vars[nzv$nzv]
 candidate_xgb_vars <- candidate_xgb_vars[!nzv$nzv]
 
 cat("After near-zero variance removal:\n")
@@ -176,6 +178,7 @@ xgb_grid <- expand.grid(
 
 # Home score model using selected team-specific features
 home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
+home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
 system.time(
   home_model <- train(
     home_formula, 
@@ -187,6 +190,9 @@ system.time(
 )
 save(home_model, file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
 home_model
+varImp_home <- varImp(home_model)
+varImp_home
+
 pred_home_score <- predict(home_model, newdata = test_data)
 
 # Away score model using selected team-specific features
@@ -201,6 +207,9 @@ system.time(
   )
 )
 save(away_model, file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
+away_model
+varImp_away <- varImp(away_model)
+varImp_away
 
 # 4C. Generate Score Predictions on Test Data
 test_data <- test_data %>%

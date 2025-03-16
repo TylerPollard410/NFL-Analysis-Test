@@ -380,13 +380,30 @@ shinyUI(
                     ## Games Tab ==============================================
                     tabItem(
                       tabName = "bettingGamesTab",
-                      h4("Betting Game Lines"),
-                      fluidRow(
-                        align = "center",
-                        withSpinner(bettingGamesLinesUI("bettingGamesLines"),
-                                    type = 8)
-                      )
-                    ),
+                      
+                      tabsetPanel(
+                        ### Lines ----
+                        tabPanel(
+                          title = "Lines",
+                          br(),
+                          h3("Betting Game Lines"),
+                          fluidRow(
+                            align = "center",
+                            withSpinner(bettingGamesLinesUI("bettingGamesLines"),
+                                        type = 8)
+                          )
+                        ), # end Lines tabPanel
+                        
+                        ### Predictions ----
+                        tabPanel(
+                          title = "Predictions",
+                          br(),
+                          h3("Betting Predictions"),
+                          fluidRow(
+                          )
+                        ) # end Prediction tabPanel
+                      ) # end tabsetPanel
+                    ), #end bettingGamesTab
                     
                     ## Player Props =========================================
                     tabItem(
