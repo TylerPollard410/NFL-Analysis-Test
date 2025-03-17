@@ -189,6 +189,7 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
+save(home_model, file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
 save(home_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model.rda")
 home_model
 varImp_home <- varImp(home_model)
@@ -212,6 +213,7 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
+save(away_model, file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
 save(away_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model.rda")
 away_model
 varImp_away <- varImp(away_model)
@@ -232,6 +234,7 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
+save(result_model, file = "~/Desktop/NFL Analysis Data/xgb_result_model.RData")
 save(result_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model.rda")
 result_model
 varImp_result <- varImp(result_model)
@@ -252,9 +255,11 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
+save(total_model, file = "~/Desktop/NFL Analysis Data/xgb_total_model.RData")
 save(total_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model.rda")
 total_model
 varImp_total <- varImp(total_model)
+varImp_total
 best_total_vars <- varImp_total$importance > 0
 
 # 4C. Generate Score Predictions on Test Data

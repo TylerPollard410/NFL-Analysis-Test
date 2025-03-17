@@ -67,10 +67,10 @@ load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/ma
 
 # Data -----
 ## XGB ----
-load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_result_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_total_model.RData")
+load(file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model.rda")
+load(file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model.rda")
+load(file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model.rda")
+load(file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model.rda")
 
 xgb_home_model <- home_model
 xgb_away_model <- away_model
@@ -408,8 +408,30 @@ away_score_diff <- which(modScoreData2$away_score != modScoreData2$away_score2)
 modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
 
 ## Predict XGB scores ----
+varImp_home <- varImp(xgb_home_model)
+best_home_vars <- varImp_home$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_away <- varImp(xgb_away_model)
+best_away_vars <- varImp_away$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_result <- varImp(xgb_result_model)
+best_result_vars <- varImp_result$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_total <- varImp(xgb_total_model)
+best_total_vars <- varImp_total$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+
 modData4 <- modData3 |> 
-  select(c(game_id, union(best_vars_home, best_vars_away)))
+  select(c(game_id, 
+           union(best_home_vars, best_away_vars)))
 mod_IDs <- modData4 |>
   filter(complete.cases(modData4)) |>
   pull(game_id)
@@ -428,12 +450,12 @@ modData5 <- modData5 |>
   ) |>
   mutate(
     xgb_pred_result = xgb_pred_home_score - xgb_pred_away_score,
-    xgb_pred_result2 = predict(xgb_result_model, newdata = modData5),
+    #xgb_pred_result2 = predict(xgb_result_model, newdata = modData5),
     .after = result
   ) |>
   mutate(
     xgb_pred_total = xgb_pred_home_score + xgb_pred_away_score,
-    xgb_pred_total2 = predict(xgb_total_model, newdata = modData5),
+    #xgb_pred_total2 = predict(xgb_total_model, newdata = modData5),
     .after = total
   )
 
@@ -451,19 +473,29 @@ modelData1 <- modData5 |>
 ## XGB Best Vars ----
 xgb_home_model
 varImp_home <- varImp(xgb_home_model)
-best_home_vars <- varImp_home$importance > 0
+varImp_home
+best_home_vars <- varImp_home$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 away_model
 varImp_away <- varImp(away_model)
-best_away_vars <- varImp_away$importance > 0
+varImp_away
+best_away_vars <- varImp_away$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 result_model
 varImp_result <- varImp(result_model)
-best_result_vars <- varImp_result$importance > 0
+best_result_vars <- varImp_result$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 total_model
 varImp_total <- varImp(total_model)
-best_total_vars <- varImp_total$importance > 0
+best_total_vars <- varImp_total$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 
 ## Predictors ----
@@ -618,35 +650,49 @@ sims <- (iters-burn)*chains
 ## Model  ----
 formula_home <- bf(
   home_score ~
-    xgb_pred_home_score +
-    home_rest +
-    away_rest +
-    weekday +
-    time_of_day +
-    location2 +
-    div_game + 
-    roof + 
-    temp + 
-    wind + 
-    (1 | home_team) +
-    (1 | away_team)
+    home_OSRS_roll +
+    away_MOV_net +
+    home_off_epa_cum +
+    home_off_pass_epa_roll +
+    home_off_net_epa_cum +
+    home_pass_net_epa_roll +
+    away_MOV_roll_net +
+    away_def_n +
+    home_off_scr_2nd +
+    away_DSRS_roll +
+    home_net_epa_cum
+    # home_rest +
+    # away_rest +
+    # weekday +
+    # time_of_day +
+    # location2 +
+    # div_game + 
+    # roof + 
+    # temp + 
+    # wind
 ) + #mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
   brmsfamily(family = "negbinomial", link = "log")
 
 formula_away <- bf(
   away_score ~
-    xgb_pred_away_score +
-    home_rest +
-    away_rest +
-    weekday +
-    time_of_day +
-    location2 +
-    div_game + 
-    roof + 
-    temp + 
-    wind + 
-    (1 | home_team) +
-    (1 | away_team)
+    away_off_net_epa_cum +
+    away_OSRS_roll_net +
+    away_off_epa_cum +
+    away_MOV_roll_net +
+    away_pass_net_epa_cum +
+    away_PFG_roll +
+    away_def_special_epa_cum +
+    away_off_punt +
+    home_def_penalty_epa_roll
+    # home_rest +
+    # away_rest +
+    # weekday +
+    # time_of_day +
+    # location2 +
+    # div_game + 
+    # roof + 
+    # temp + 
+    # wind
 ) + #mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
   brmsfamily(family = "negbinomial", link = "log")
 
@@ -771,10 +817,11 @@ predResiduals_Team_away <-
   data.frame()
 mean(abs(predResiduals_Team_away$Estimate))
 
-teamFit <- 3
+teamFit <- 1
 assign(paste0("fit_Team", teamFit), fit_Team)
 assign(paste0("fixedEff_Team", teamFit), fixedEff_Team)
 assign(paste0("randEff_Team", teamFit), randEff_Team)
+
 
 # Posteriors ----
 ## Training ----
@@ -1301,7 +1348,7 @@ COV_pred_away <- mean(posteriorPredLCB_away < test_away_score &
                         test_away_score < posteriorPredUCB_away)
 
 performance_metrics_HA <- tibble(
-  Fit = rep(paste0("Fit", fit), 2),
+  Fit = rep(paste0("Fit", teamFit), 2),
   Score = c("home", "away"),
   MAE_fit = c(MAE_fit_home, MAE_fit_away),
   MAD_fit = c(MAD_fit_home, MAD_fit_away),
@@ -1494,6 +1541,7 @@ assign(paste0("randEff_result", fitResult), randEff_result)
 train_result <- histModelData$result
 
 set.seed(52)
+posteriorFit_result <- posteriorFit_home - posteriorFit_away
 posteriorFit_result <- posterior_predict(
   fit_result,
   resp = "result"
@@ -1507,6 +1555,7 @@ posteriorFitUCB_result <- apply(posteriorFit_result, 2, function(x){quantile(x, 
 test_result <- modelData$result
 
 set.seed(52)
+posteriorPred_result <- posteriorPred_home - posteriorPred_away
 posteriorPred_result <- posterior_predict(
   fit_result,
   resp = "result",
@@ -1529,21 +1578,21 @@ colorPPC <- "#b3cde0"
 fill2PPC <- "#011f4b"
 
 ### Bars ----
-# ppcBarsPlot_result <- ppc_bars(
-#   y = train_result,
-#   yrep = posteriorFitSamp_result
-# ) +
-#   labs(
-#     # title = "Simulated density of draws from the PPD vs Observed VMAX",
-#     # subtitle = "n = 1000 draws",
-#     x = "result",
-#     y = "Density"
-#   ) +
-#   #scale_x_continuous(limits = c(0, 250), breaks = seq(0, 250, 25)) +
-#   theme_bw() +
-#   theme(
-#     legend.position = "none"
-#   )
+ppcBarsPlot_result <- ppc_bars(
+  y = train_result,
+  yrep = posteriorFitSamp_result
+) +
+  labs(
+    # title = "Simulated density of draws from the PPD vs Observed VMAX",
+    # subtitle = "n = 1000 draws",
+    x = "result",
+    y = "Density"
+  ) +
+  #scale_x_continuous(limits = c(0, 250), breaks = seq(0, 250, 25)) +
+  theme_bw() +
+  theme(
+    legend.position = "none"
+  )
 
 ### Density -----
 ppcDensPlot_result <- ppc_dens_overlay(
@@ -1732,8 +1781,8 @@ ppcRangePlotGG_result <- ggplot() +
 
 #### Combined plot ----
 ppcCombPlot_result <- 
-  #(ppcBarsPlot_result + ppcDensPlot_result) /
-  (ppcDensPlot_result) /
+  (ppcBarsPlot_result + ppcDensPlot_result) /
+  #(ppcDensPlot_result) /
   (ppcMeanPlotGG_result + ppcSDPlotGG_result + ppcRangePlotGG_result) +
   plot_layout(
     guides = "collect",

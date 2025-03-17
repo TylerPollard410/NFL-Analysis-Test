@@ -399,9 +399,41 @@ modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
 ## Predict XGB scores ----
 load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
 load(file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_result_model.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_total_model.RData")
+
+xgb_home_model <- home_model
+xgb_away_model <- away_model
+xgb_result_model <- result_model
+xgb_total_model <- total_model
+
+varImp_home <- varImp(xgb_home_model)
+best_home_vars <- varImp_home$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_away <- varImp(xgb_away_model)
+best_away_vars <- varImp_away$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_result <- varImp(xgb_result_model)
+best_result_vars <- varImp_result$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+varImp_total <- varImp(xgb_total_model)
+best_total_vars <- varImp_total$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 modData4 <- modData3 |> 
-  select(c(game_id, union(best_vars_home, best_vars_away)))
+  select(
+    game_id, 
+    best_home_vars,
+    best_away_vars,
+    best_result_vars
+  )
 mod_IDs <- modData4 |>
   filter(complete.cases(modData4)) |>
   pull(game_id)
@@ -445,7 +477,10 @@ predictorData <- histModelData1 |>
     # xgb_pred_away_score,
     # xgb_pred_result,
     # xgb_pred_total,
-    union(best_vars_home, best_vars_away)
+    #union(best_home_vars, best_away_vars),
+    best_home_vars,
+    best_away_vars,
+    best_result_vars
   )
 
 ### Center, Scale ----
@@ -831,11 +866,6 @@ sims <- (iters-burn)*chains
 # [16] "away_net_epa_cum"        "away_MOV_roll"           "away_off_epa_cum"       
 # [19] "home_fg_made_roll_5" 
 
-histModelDataOLD <- histModelData
-histModelData <- histModelData |>
-  mutate(
-    result = factor(result, ordered = TRUE)
-  )
 
 ## Model ----
 formula_result <- bf(
@@ -881,29 +911,36 @@ formula_result <- bf(
     # away_MOV_roll +
     # away_net_epa_cum +
     # home_net_epa_cum +
-    div_game + 
-    roof + 
-    #surface + 
-    temp + 
-    wind + 
+    home_rest +
+    away_rest +
+    weekday +
+    time_of_day +
+    location2 +
+    div_game +
+    roof +
+    temp +
+    wind +
     (1 | home_team) +
     (1 | away_team)
 ) + 
-  #brmsfamily(family = "gaussian", link = "identity")
-mixture(brmsfamily(family = "gaussian", link = "identity"), nmix = 2)
+  brmsfamily(family = "student", link = "identity")
+#mixture(brmsfamily(family = "gaussian", link = "identity"), nmix = 2)
 #brmsfamily(family = "negbinomial", link = "log")
 
 default_prior(formula_result, histModelData)
 
 priors_result <- c(
   #prior(horseshoe(1), class = "b")
-  prior(normal(0, 5), class = "b", dpar = "mu1"),
-  prior(normal(0, 5), class = "b", dpar = "mu2"),
-  prior(student_t(3, 0, 10), class = "sigma1"),
-  prior(student_t(3, 0, 10), class = "sigma2"),
+  prior(normal(0, 5), class = "b"),
+  #prior(normal(0, 5), class = "b", dpar = "mu1"),
+  #prior(normal(0, 5), class = "b", dpar = "mu2"),
+  prior(student_t(3, 0, 10), class = "sigma"),
+  #prior(student_t(3, 0, 10), class = "sigma1"),
+  #prior(student_t(3, 0, 10), class = "sigma2"),
   #prior(inv_gamma(0.1, 0.1), class = "shape"),
-  prior(student_t(3, 0, 5), class = "sd", dpar = "mu1"),
-  prior(student_t(3, 0, 5), class = "sd", dpar = "mu2")
+  prior(student_t(3, 0, 5), class = "sd")
+  #prior(student_t(3, 0, 5), class = "sd", dpar = "mu1"),
+  #prior(student_t(3, 0, 5), class = "sd", dpar = "mu2")
 )
 
 get_prior(formula_result,
@@ -988,7 +1025,7 @@ predResiduals_result <-
   data.frame()
 mean(abs(predResiduals_result$Estimate))
 
-fitResult <- 3
+fitResult <- 4
 assign(paste0("fit_result", fitResult), fit_result)
 assign(paste0("fixedEff_result", fitResult), fixedEff_result)
 assign(paste0("randEff_result", fitResult), randEff_result)
