@@ -66,6 +66,17 @@ load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/ma
 
 
 # Data -----
+## XGB ----
+load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_result_model.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_total_model.RData")
+
+xgb_home_model <- home_model
+xgb_away_model <- away_model
+xgb_result_model <- result_model
+xgb_total_model <- total_model
+
 ## Clean ----
 modDataLong <- modData |>
   clean_homeaway(invert = c("result", "spread_line"))
@@ -397,9 +408,6 @@ away_score_diff <- which(modScoreData2$away_score != modScoreData2$away_score2)
 modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
 
 ## Predict XGB scores ----
-load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
-
 modData4 <- modData3 |> 
   select(c(game_id, union(best_vars_home, best_vars_away)))
 mod_IDs <- modData4 |>
@@ -411,19 +419,21 @@ modData5 <- modData3 |>
 modData5 <- modData5 |>
   #filter(game_id %in% mod_IDs) |>
   mutate(
-    xgb_pred_home_score = predict(home_model, newdata = modData5),
+    xgb_pred_home_score = predict(xgb_home_model, newdata = modData5),
     .after = home_score
   ) |>
   mutate(
-    xgb_pred_away_score = predict(away_model, newdata = modData5),
+    xgb_pred_away_score = predict(xgb_away_model, newdata = modData5),
     .after = away_score
   ) |>
   mutate(
     xgb_pred_result = xgb_pred_home_score - xgb_pred_away_score,
+    xgb_pred_result2 = predict(xgb_result_model, newdata = modData5),
     .after = result
   ) |>
   mutate(
     xgb_pred_total = xgb_pred_home_score + xgb_pred_away_score,
+    xgb_pred_total2 = predict(xgb_total_model, newdata = modData5),
     .after = total
   )
 
@@ -438,6 +448,24 @@ modelData1 <- modData5 |>
   filter(!is.na(result))
 
 # Pre-Process Data ----
+## XGB Best Vars ----
+xgb_home_model
+varImp_home <- varImp(xgb_home_model)
+best_home_vars <- varImp_home$importance > 0
+
+away_model
+varImp_away <- varImp(away_model)
+best_away_vars <- varImp_away$importance > 0
+
+result_model
+varImp_result <- varImp(result_model)
+best_result_vars <- varImp_result$importance > 0
+
+total_model
+varImp_total <- varImp(total_model)
+best_total_vars <- varImp_total$importance > 0
+
+
 ## Predictors ----
 predictorData <- histModelData1 |> 
   select(
@@ -475,239 +503,6 @@ modelDataYeo <- predict(preProcValuesYeo, modelData1)
 
 histModelData <- histModelData2
 modelData <- modelData2
-
-home_totalTD_range <- range(modData |> filter(!is.na(home_totalTD)) |> pull(home_totalTD))
-home_fg_att_range<- range(modData |> filter(!is.na(home_fg_att)) |> pull(home_fg_att))
-home_fg_made_range <- range(modData |> filter(!is.na(home_fg_made)) |> pull(home_fg_made))
-
-away_totalTD_range <- range(modData |> filter(!is.na(away_totalTD)) |> pull(away_totalTD))
-away_fg_att_range <- range(modData |> filter(!is.na(away_fg_att)) |> pull(away_fg_att))
-away_fg_made_range <- range(modData |> filter(!is.na(away_fg_made)) |> pull(away_fg_made))
-
-range_totalTD <- c(min(home_totalTD_range,away_totalTD_range), 
-                   max(home_totalTD_range,away_totalTD_range))
-range_fg_att_range <- c(min(home_fg_att_range,away_fg_att_range), 
-                        max(home_fg_att_range,away_fg_att_range))
-range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range), 
-                         max(home_fg_made_range,away_fg_made_range))
-
-
-## Correlations ----
-totalcor <- cor(histModelData |> select(total),
-                predictorData3 |> select(c(where(is.numeric))),
-                #use = "pairwise.complete.obs",
-                method = "kendall"
-)
-totalcorT <- t(totalcor)
-totalcorT2 <- totalcorT[order(abs(totalcorT)),]
-totalcorT2df <- data.frame(Cor = totalcorT2[order(abs(totalcorT2), decreasing = TRUE)])
-totalSigCor <- totalcorT2df |> filter(abs(Cor) > .1)
-totalSigCor
-totalSigCor2 <- abs(totalSigCor)
-totalSigCor2 <- distinct(totalSigCor2)
-totalSigCor2
-totalCorVars <- row.names(totalSigCor2)
-which(totalCorVars == "total_line")
-totalSigCor |> slice(21:nrow(totalSigCor))
-totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(c(where(is.numeric))),
-                                   method = "kendall")
-totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(total,totalCorVars),
-                                   method = "kendall")
-totalCorPlot <- corrplot::corrplot()
-totalCorMatP <- totalCorMat$p 
-
-totalCorVarsP <- apply(modPreProcess2 |> select(c(where(is.numeric), -total)),
-                       2, 
-                       FUN = function(x){
-                         cor.test(modPreProcess2$total, x, method = "kendall")$p.value
-                       })
-totalcor2 <- cor(histModelData |> select(total, totalCorVars),
-                 method = "kendall")
-corrplot::corrplot.mixed(totalcor2, 
-                         upper = 'ellipse', 
-                         order = 'hclust')
-
-
-spreadcor <- cor(histModelData |> select(result),
-                 histModelData |> select(c(where(is.numeric), -result)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-spreadcorT <- t(spreadcor)
-spreadcorT2 <- spreadcorT[order(abs(spreadcorT)),]
-spreadcorT2df <- data.frame(Cor = sort(round(abs(spreadcorT2), 4), decreasing = TRUE))
-
-
-homeTDcor <- cor(histModelData |> select(home_totalTD),
-                 histModelData |> select(c(where(is.numeric), -home_totalTD)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-homeTDcorT <- t(homeTDcor)
-homeTDcorT2 <- homeTDcorT[order(abs(homeTDcorT)),]
-homeTDcorT2df <- data.frame(sort(abs(homeTDcorT2), decreasing = TRUE))
-
-homeFGcor <- cor(histModelData |> select(home_fg_made),
-                 histModelData |> select(c(where(is.numeric), -home_fg_made)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-homeFGcorT <- t(homeFGcor)
-homeFGcorT2 <- homeFGcorT[order(abs(homeFGcorT)),]
-homeFGcorT2df <- data.frame(sort(abs(homeFGcorT2), decreasing = TRUE))
-
-homeFGAcor <- cor(histModelData |> select(home_fg_att),
-                  histModelData |> select(c(where(is.numeric), -home_fg_att)),
-                  use = "pairwise.complete.obs",
-                  method = "kendall"
-)
-homeFGAcorT <- t(homeFGAcor)
-homeFGAcorT2 <- homeFGAcorT[order(abs(homeFGAcorT)),]
-homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
-
-histSRSdata <- histModelData |>
-  select(
-    game_id, season, season_type, week,
-    home_team, home_score, away_team, away_score,
-    result, spread_line, spreadCover,
-    contains("SRS")
-  ) #|>
-# mutate(
-#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-#   .after = spreadCover
-# )
-
-modelSRSdata <- modelData |>
-  select(
-    game_id, season, season_type, week,
-    home_team, home_score, away_team, away_score,
-    result, spread_line, spreadCover,
-    contains("SRS")
-  ) #|>
-# mutate(
-#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-#   .after = spreadCover
-# )
-
-SRSdata <- bind_rows(
-  histSRSdata |> mutate(split = "Train", .before = 1),
-  modelSRSdata |> mutate(split = "Test", .before = 1)
-) |>
-  mutate(
-    home_SRS_net2 = home_SRS_net + 2, 
-    .after = home_SRS_net
-  ) |>
-  mutate(
-    spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-    spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-    spreadCoverSRS2 = ifelse(home_SRS_net2 > spread_line, TRUE, FALSE),
-    spreadCoverSRSCorrect2 = spreadCoverSRS2 == spreadCover,
-    .after = spreadCover
-  )
-
-SRSdata |>
-  filter(!is.na(spreadCover)) |>
-  group_by(split) |>
-  summarise(
-    obsN = n(),
-    homeCoverSuccess = mean(spreadCover),
-    SRSCoverSuccess = mean(spreadCoverSRS),
-    CoverSuccess = mean(spreadCoverSRSCorrect),
-    SRSCoverSuccess2 = mean(spreadCoverSRS2),
-    CoverSuccess2 = mean(spreadCoverSRSCorrect2)
-  )
-
-# Common Scores ----
-common_score <- expand.grid(
-  td = 0:10,
-  fg = 0:10
-) |>
-  mutate(
-    score = td*7 + fg*3,
-    .before = 1
-  ) |>
-  filter(score <= 80) |>
-  arrange(score, td, fg) |>
-  mutate(
-    obs_score_num = NA,
-    obs_score_perc = NA,
-    obs_score_fg_num = NA,
-    obs_score_fg_perc = NA,
-    .after = score
-  )
-
-for(i in 1:nrow(common_score)){
-  score_temp <- common_score$score[i]
-  score_fg <- common_score$fg[i]
-  score_match <- modDataLong$team_score == score_temp
-  fg_match <- modDataLong$team_fg_made == score_fg
-  
-  score_match_num <- sum(score_match)
-  score_match_perc <- mean(score_match)
-  score_fg_match_num <- sum(score_match & fg_match)
-  score_fg_match_perc <- mean(score_match & fg_match)
-  common_score$obs_score_num[i] <- score_match_num
-  common_score$obs_score_perc[i] <- round(score_match_perc, 4)
-  common_score$obs_score_fg_num[i] <- score_fg_match_num
-  common_score$obs_score_fg_perc[i] <- round(score_fg_match_perc, 4)
-}
-
-common_score_unique <- common_score 
-
-
-
-home_scores_df_base <- expand.grid(
-  home_score = 0:80,
-  home_totalTD = 0:10, 
-  home_pat_made = 0:10, 
-  home_twoPtConv = 0:5,
-  home_fg_made = 0:10,
-  home_def_safeties = 0:3
-  #away_score = 1:100,
-  #away_totalTD = 1:10, 
-  #away_pat_made = 1:10, 
-  #away_twoPtConv = 1:10,
-  #away_fg_made = 1:10,
-  #away_def_safeties = 1:10
-)
-
-home_scores_df <- home_scores_df_base |>
-  mutate(
-    home_score_totalTD = home_totalTD*6, 
-    home_score_pat_made = home_pat_made, 
-    home_score_twoPtConv = home_twoPtConv*2,
-    home_score_fg_made = home_fg_made*3,
-    home_score_def_safeties = home_def_safeties*2,
-    .after = home_score
-  ) |>
-  # mutate(
-  #   away_score_totalTD = away_totalTD*6, 
-  #   away_score_pat_made = away_pat_made, 
-  #   away_score_twoPtConv = away_twoPtConv*2,
-  #   away_score_fg_made = away_fg_made*3,
-  #   away_score_def_safeties = away_def_safeties*2,
-  #   .after = away_score
-  # ) |>
-  filter(
-    home_score == home_score_totalTD + home_score_pat_made + home_score_twoPtConv + home_score_fg_made + home_score_def_safeties
-    #away_score == away_score_totalTD + away_score_pat_made + away_score_twoPtConv + away_score_fg_made + away_score_def_safeties
-  ) |>
-  filter(
-    home_totalTD >= home_pat_made + home_twoPtConv
-    #away_totalTD <= away_pat_made + away_twoPtConv
-  ) |>
-  arrange(
-    home_score,
-    home_totalTD, 
-    home_pat_made, 
-    home_twoPtConv,
-    home_fg_made,
-    home_def_safeties
-  )
-home_scores_df2 <- home_scores_df |> filter(home)
-
 
 # Plots ----
 # [1] "game_id"                      "season"                       "season_type"                 

@@ -176,6 +176,7 @@ xgb_grid <- expand.grid(
   subsample = 0.8
 )
 
+### 1. Home ----
 # Home score model using selected team-specific features
 home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
 home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
@@ -188,15 +189,20 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
-save(home_model, file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
+save(home_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model.rda")
 home_model
 varImp_home <- varImp(home_model)
-varImp_home
+best_home_vars <- varImp_home$importance |>
+  filter(Overall > 0) |>
+  row.names()
 
 pred_home_score <- predict(home_model, newdata = test_data)
 
+### 2. Away ----
 # Away score model using selected team-specific features
 away_formula <- as.formula(paste("away_score ~", paste(best_vars, collapse = " + ")))
+away_formula <- as.formula(paste("away_score ~", paste(candidate_xgb_vars, collapse = " + ")))
+
 system.time(
   away_model <- train(
     away_formula, 
@@ -206,10 +212,50 @@ system.time(
     #tuneGrid = xgb_grid
   )
 )
-save(away_model, file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
+save(away_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model.rda")
 away_model
 varImp_away <- varImp(away_model)
-varImp_away
+best_away_vars <- varImp_away$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+### 3. Result ----
+# Spread score model using selected team-specific features
+result_formula <- as.formula(paste("result ~", paste(best_vars, collapse = " + ")))
+result_formula <- as.formula(paste("result ~", paste(candidate_xgb_vars, collapse = " + ")))
+system.time(
+  result_model <- train(
+    result_formula, 
+    data = train_data,
+    method = "xgbTree",
+    trControl = train_control
+    #tuneGrid = xgb_grid
+  )
+)
+save(result_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model.rda")
+result_model
+varImp_result <- varImp(result_model)
+best_result_vars <- varImp_result$importance |>
+  filter(Overall > 0) |>
+  row.names()
+
+### 4. Total ----
+# Spread score model using selected team-specific features
+total_formula <- as.formula(paste("total ~", paste(best_vars, collapse = " + ")))
+total_formula <- as.formula(paste("total ~", paste(candidate_xgb_vars, collapse = " + ")))
+system.time(
+  total_model <- train(
+    total_formula, 
+    data = train_data,
+    method = "xgbTree",
+    trControl = train_control
+    #tuneGrid = xgb_grid
+  )
+)
+save(total_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model.rda")
+total_model
+varImp_total <- varImp(total_model)
+best_total_vars <- varImp_total$importance > 0
 
 # 4C. Generate Score Predictions on Test Data
 test_data <- test_data %>%
