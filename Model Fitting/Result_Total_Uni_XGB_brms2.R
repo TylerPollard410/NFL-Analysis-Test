@@ -408,21 +408,25 @@ xgb_result_model <- result_model
 xgb_total_model <- total_model
 
 varImp_home <- varImp(xgb_home_model)
+varImp_home
 best_home_vars <- varImp_home$importance |>
   filter(Overall > 0) |>
   row.names()
 
 varImp_away <- varImp(xgb_away_model)
+varImp_away
 best_away_vars <- varImp_away$importance |>
   filter(Overall > 0) |>
   row.names()
 
 varImp_result <- varImp(xgb_result_model)
+varImp_result
 best_result_vars <- varImp_result$importance |>
   filter(Overall > 0) |>
   row.names()
 
 varImp_total <- varImp(xgb_total_model)
+varImp_total
 best_total_vars <- varImp_total$importance |>
   filter(Overall > 0) |>
   row.names()
@@ -432,7 +436,8 @@ modData4 <- modData3 |>
     game_id, 
     best_home_vars,
     best_away_vars,
-    best_result_vars
+    best_result_vars,
+    best_total_vars
   )
 mod_IDs <- modData4 |>
   filter(complete.cases(modData4)) |>
@@ -443,24 +448,28 @@ modData5 <- modData3 |>
 modData5 <- modData5 |>
   #filter(game_id %in% mod_IDs) |>
   mutate(
-    xgb_pred_home_score = predict(home_model, newdata = modData5),
+    xgb_pred_home_score = predict(xgb_home_model, newdata = modData5),
     .after = home_score
   ) |>
   mutate(
-    xgb_pred_away_score = predict(away_model, newdata = modData5),
+    xgb_pred_away_score = predict(xgb_away_model, newdata = modData5),
     .after = away_score
   ) |>
   mutate(
     xgb_pred_result = xgb_pred_home_score - xgb_pred_away_score,
+    xgb_pred_result2 = predict(xgb_result_model, newdata = modData5),
     .after = result
   ) |>
   mutate(
     xgb_pred_total = xgb_pred_home_score + xgb_pred_away_score,
+    xgb_pred_total2 = predict(xgb_total_model, newdata = modData5),
     .after = total
   )
 
 mean(abs(modData5$result - modData5$xgb_pred_result))
+mean(abs(modData5$result - modData5$xgb_pred_result2))
 mean(abs(modData5$total - modData5$xgb_pred_total))
+mean(abs(modData5$total - modData5$xgb_pred_total2))
 
 ## Split ----
 histModelData1 <- modData5 |> 
@@ -475,12 +484,24 @@ predictorData <- histModelData1 |>
   select(
     # xgb_pred_home_score,
     # xgb_pred_away_score,
-    # xgb_pred_result,
-    # xgb_pred_total,
+    xgb_pred_result,
+    xgb_pred_result2,
+    xgb_pred_total,
+    xgb_pred_total2,
     #union(best_home_vars, best_away_vars),
     best_home_vars,
     best_away_vars,
-    best_result_vars
+    best_result_vars,
+    best_total_vars,
+    home_rest,
+    away_rest,
+    #weekday,
+    #time_of_day
+    location2,
+    div_game,
+    roof,
+    temp,
+    wind
   )
 
 ### Center, Scale ----
@@ -504,245 +525,15 @@ predictorData2 <- predict(preProc_CS, predictorData)
 histModelData2 <- predict(preProc_CS, histModelData1)
 modelData2 <- predict(preProc_CS, modelData1)
 
+histModelData <- histModelData2
+modelData <- modelData2
+
 predictorDataYeo <- predict(preProcValuesYeo, predictorData)
 histModelDataYeo <- predict(preProcValuesYeo, histModelData1)
 modelDataYeo <- predict(preProcValuesYeo, modelData1)
 
-histModelData <- histModelData2
-modelData <- modelData2
-
-home_totalTD_range <- range(modData |> filter(!is.na(home_totalTD)) |> pull(home_totalTD))
-home_fg_att_range<- range(modData |> filter(!is.na(home_fg_att)) |> pull(home_fg_att))
-home_fg_made_range <- range(modData |> filter(!is.na(home_fg_made)) |> pull(home_fg_made))
-
-away_totalTD_range <- range(modData |> filter(!is.na(away_totalTD)) |> pull(away_totalTD))
-away_fg_att_range <- range(modData |> filter(!is.na(away_fg_att)) |> pull(away_fg_att))
-away_fg_made_range <- range(modData |> filter(!is.na(away_fg_made)) |> pull(away_fg_made))
-
-range_totalTD <- c(min(home_totalTD_range,away_totalTD_range), 
-                   max(home_totalTD_range,away_totalTD_range))
-range_fg_att_range <- c(min(home_fg_att_range,away_fg_att_range), 
-                        max(home_fg_att_range,away_fg_att_range))
-range_fg_made_range <- c(min(home_fg_made_range,away_fg_made_range), 
-                         max(home_fg_made_range,away_fg_made_range))
-
-
-## Correlations ----
-totalcor <- cor(histModelData |> select(total),
-                predictorData3 |> select(c(where(is.numeric))),
-                #use = "pairwise.complete.obs",
-                method = "kendall"
-)
-totalcorT <- t(totalcor)
-totalcorT2 <- totalcorT[order(abs(totalcorT)),]
-totalcorT2df <- data.frame(Cor = totalcorT2[order(abs(totalcorT2), decreasing = TRUE)])
-totalSigCor <- totalcorT2df |> filter(abs(Cor) > .1)
-totalSigCor
-totalSigCor2 <- abs(totalSigCor)
-totalSigCor2 <- distinct(totalSigCor2)
-totalSigCor2
-totalCorVars <- row.names(totalSigCor2)
-which(totalCorVars == "total_line")
-totalSigCor |> slice(21:nrow(totalSigCor))
-totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(c(where(is.numeric))),
-                                   method = "kendall")
-totalCorMat <- corrplot::cor.mtest(modPreProcess2 |> select(total,totalCorVars),
-                                   method = "kendall")
-totalCorPlot <- corrplot::corrplot()
-totalCorMatP <- totalCorMat$p 
-
-totalCorVarsP <- apply(modPreProcess2 |> select(c(where(is.numeric), -total)),
-                       2, 
-                       FUN = function(x){
-                         cor.test(modPreProcess2$total, x, method = "kendall")$p.value
-                       })
-totalcor2 <- cor(histModelData |> select(total, totalCorVars),
-                 method = "kendall")
-corrplot::corrplot.mixed(totalcor2, 
-                         upper = 'ellipse', 
-                         order = 'hclust')
-
-
-spreadcor <- cor(histModelData |> select(result),
-                 histModelData |> select(c(where(is.numeric), -result)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-spreadcorT <- t(spreadcor)
-spreadcorT2 <- spreadcorT[order(abs(spreadcorT)),]
-spreadcorT2df <- data.frame(Cor = sort(round(abs(spreadcorT2), 4), decreasing = TRUE))
-
-
-homeTDcor <- cor(histModelData |> select(home_totalTD),
-                 histModelData |> select(c(where(is.numeric), -home_totalTD)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-homeTDcorT <- t(homeTDcor)
-homeTDcorT2 <- homeTDcorT[order(abs(homeTDcorT)),]
-homeTDcorT2df <- data.frame(sort(abs(homeTDcorT2), decreasing = TRUE))
-
-homeFGcor <- cor(histModelData |> select(home_fg_made),
-                 histModelData |> select(c(where(is.numeric), -home_fg_made)),
-                 use = "pairwise.complete.obs",
-                 method = "kendall"
-)
-homeFGcorT <- t(homeFGcor)
-homeFGcorT2 <- homeFGcorT[order(abs(homeFGcorT)),]
-homeFGcorT2df <- data.frame(sort(abs(homeFGcorT2), decreasing = TRUE))
-
-homeFGAcor <- cor(histModelData |> select(home_fg_att),
-                  histModelData |> select(c(where(is.numeric), -home_fg_att)),
-                  use = "pairwise.complete.obs",
-                  method = "kendall"
-)
-homeFGAcorT <- t(homeFGAcor)
-homeFGAcorT2 <- homeFGAcorT[order(abs(homeFGAcorT)),]
-homeFGAcorT2df <- data.frame(sort(abs(homeFGAcorT2), decreasing = TRUE))
-
-histSRSdata <- histModelData |>
-  select(
-    game_id, season, season_type, week,
-    home_team, home_score, away_team, away_score,
-    result, spread_line, spreadCover,
-    contains("SRS")
-  ) #|>
-# mutate(
-#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-#   .after = spreadCover
-# )
-
-modelSRSdata <- modelData |>
-  select(
-    game_id, season, season_type, week,
-    home_team, home_score, away_team, away_score,
-    result, spread_line, spreadCover,
-    contains("SRS")
-  ) #|>
-# mutate(
-#   spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-#   spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-#   .after = spreadCover
-# )
-
-SRSdata <- bind_rows(
-  histSRSdata |> mutate(split = "Train", .before = 1),
-  modelSRSdata |> mutate(split = "Test", .before = 1)
-) |>
-  mutate(
-    home_SRS_net2 = home_SRS_net + 2, 
-    .after = home_SRS_net
-  ) |>
-  mutate(
-    spreadCoverSRS = ifelse(home_SRS_net > spread_line, TRUE, FALSE),
-    spreadCoverSRSCorrect = spreadCoverSRS == spreadCover,
-    spreadCoverSRS2 = ifelse(home_SRS_net2 > spread_line, TRUE, FALSE),
-    spreadCoverSRSCorrect2 = spreadCoverSRS2 == spreadCover,
-    .after = spreadCover
-  )
-
-SRSdata |>
-  filter(!is.na(spreadCover)) |>
-  group_by(split) |>
-  summarise(
-    obsN = n(),
-    homeCoverSuccess = mean(spreadCover),
-    SRSCoverSuccess = mean(spreadCoverSRS),
-    CoverSuccess = mean(spreadCoverSRSCorrect),
-    SRSCoverSuccess2 = mean(spreadCoverSRS2),
-    CoverSuccess2 = mean(spreadCoverSRSCorrect2)
-  )
-
-# Common Scores ----
-common_score <- expand.grid(
-  td = 0:10,
-  fg = 0:10
-) |>
-  mutate(
-    score = td*7 + fg*3,
-    .before = 1
-  ) |>
-  filter(score <= 80) |>
-  arrange(score, td, fg) |>
-  mutate(
-    obs_score_num = NA,
-    obs_score_perc = NA,
-    obs_score_fg_num = NA,
-    obs_score_fg_perc = NA,
-    .after = score
-  )
-
-for(i in 1:nrow(common_score)){
-  score_temp <- common_score$score[i]
-  score_fg <- common_score$fg[i]
-  score_match <- modDataLong$team_score == score_temp
-  fg_match <- modDataLong$team_fg_made == score_fg
-  
-  score_match_num <- sum(score_match)
-  score_match_perc <- mean(score_match)
-  score_fg_match_num <- sum(score_match & fg_match)
-  score_fg_match_perc <- mean(score_match & fg_match)
-  common_score$obs_score_num[i] <- score_match_num
-  common_score$obs_score_perc[i] <- round(score_match_perc, 4)
-  common_score$obs_score_fg_num[i] <- score_fg_match_num
-  common_score$obs_score_fg_perc[i] <- round(score_fg_match_perc, 4)
-}
-
-common_score_unique <- common_score 
-
-
-
-home_scores_df_base <- expand.grid(
-  home_score = 0:80,
-  home_totalTD = 0:10, 
-  home_pat_made = 0:10, 
-  home_twoPtConv = 0:5,
-  home_fg_made = 0:10,
-  home_def_safeties = 0:3
-  #away_score = 1:100,
-  #away_totalTD = 1:10, 
-  #away_pat_made = 1:10, 
-  #away_twoPtConv = 1:10,
-  #away_fg_made = 1:10,
-  #away_def_safeties = 1:10
-)
-
-home_scores_df <- home_scores_df_base |>
-  mutate(
-    home_score_totalTD = home_totalTD*6, 
-    home_score_pat_made = home_pat_made, 
-    home_score_twoPtConv = home_twoPtConv*2,
-    home_score_fg_made = home_fg_made*3,
-    home_score_def_safeties = home_def_safeties*2,
-    .after = home_score
-  ) |>
-  # mutate(
-  #   away_score_totalTD = away_totalTD*6, 
-  #   away_score_pat_made = away_pat_made, 
-  #   away_score_twoPtConv = away_twoPtConv*2,
-  #   away_score_fg_made = away_fg_made*3,
-  #   away_score_def_safeties = away_def_safeties*2,
-  #   .after = away_score
-  # ) |>
-  filter(
-    home_score == home_score_totalTD + home_score_pat_made + home_score_twoPtConv + home_score_fg_made + home_score_def_safeties
-    #away_score == away_score_totalTD + away_score_pat_made + away_score_twoPtConv + away_score_fg_made + away_score_def_safeties
-  ) |>
-  filter(
-    home_totalTD >= home_pat_made + home_twoPtConv
-    #away_totalTD <= away_pat_made + away_twoPtConv
-  ) |>
-  arrange(
-    home_score,
-    home_totalTD, 
-    home_pat_made, 
-    home_twoPtConv,
-    home_fg_made,
-    home_def_safeties
-  )
-home_scores_df2 <- home_scores_df |> filter(home)
-
+histModelData <- histModelDataYeo
+modelData <- modelDataYeo
 
 # Plots ----
 # [1] "game_id"                      "season"                       "season_type"                 
@@ -865,12 +656,21 @@ sims <- (iters-burn)*chains
 # [13] "home_net_epa_cum"        "away_MOV_roll_net"       "home_MOV_roll"          
 # [16] "away_net_epa_cum"        "away_MOV_roll"           "away_off_epa_cum"       
 # [19] "home_fg_made_roll_5" 
+home_result_diff_vars <- setdiff(best_home_vars, best_result_vars)
+home_result_diff_vars
+away_result_diff_vars <- setdiff(best_away_vars, best_result_vars)
+away_result_diff_vars
+home_away_result_new_vars <- union(home_result_diff_vars, away_result_diff_vars)
+home_away_result_new_vars
 
+varImp_result$importance |> slice(1:30)
+home_away_result_new_vars
 
 ## Model ----
+# #div_game + roof + temp + wind + (1 | home_team) + (1 | away_team)
 formula_result <- bf(
   result ~
-    xgb_pred_result +
+    xgb_pred_result2 +
     # home_off_pass_epa_roll +
     # home_off_net_epa_roll +
     # home_pass_net_epa_roll +
@@ -911,15 +711,15 @@ formula_result <- bf(
     # away_MOV_roll +
     # away_net_epa_cum +
     # home_net_epa_cum +
-    home_rest +
-    away_rest +
-    weekday +
-    time_of_day +
-    location2 +
-    div_game +
+    #home_rest +
+    #away_rest +
+    #weekday +
+    #time_of_day +
+    #location2 +
+    #div_game +
     roof +
     temp +
-    wind +
+    #wind +
     (1 | home_team) +
     (1 | away_team)
 ) + 
@@ -931,7 +731,7 @@ default_prior(formula_result, histModelData)
 
 priors_result <- c(
   #prior(horseshoe(1), class = "b")
-  prior(normal(0, 5), class = "b"),
+  prior(normal(0, 10), class = "b"),
   #prior(normal(0, 5), class = "b", dpar = "mu1"),
   #prior(normal(0, 5), class = "b", dpar = "mu2"),
   prior(student_t(3, 0, 10), class = "sigma"),
@@ -951,13 +751,13 @@ system.time(
   fit_result <- brm(
     formula_result,
     data = histModelData,
-    prior = priors_result,
+    #prior = priors_result,
     save_pars = save_pars(all = TRUE), 
     chains = chains,
     iter = iters,
     warmup = burn,
     cores = parallel::detectCores(),
-    init = 0,
+    #init = 0,
     normalize = TRUE,
     control = list(adapt_delta = 0.95),
     backend = "rstan",
@@ -967,17 +767,16 @@ system.time(
 
 
 print(fit_result, digits = 4)
+check_collinearity(fit_result)
 
 #fit_Team <- fit_Team2
-pp_check(fit_result, resp = "result", ndraws = 100, type = "bars")
+#pp_check(fit_result, resp = "result", ndraws = 100, type = "bars")
 pp_check(fit_result, resp = "result", ndraws = 100, type = "dens_overlay")
 
-pp_check(fit_result, newdata = modelData, 
-         resp = "result", ndraws = 100, type = "bars")
+# pp_check(fit_result, newdata = modelData, 
+#          resp = "result", ndraws = 100, type = "bars")
 pp_check(fit_result, newdata = modelData,
          resp = "result", ndraws = 100, type = "dens_overlay")
-
-save(fit_Team, file = "~/Desktop/NFL Analysis Data/fit_result.RData")
 
 ### Fixed Effects ----
 fixedEff_result <- fixef(fit_result)
@@ -1025,10 +824,16 @@ predResiduals_result <-
   data.frame()
 mean(abs(predResiduals_result$Estimate))
 
-fitResult <- 4
+fitResult <- 26
 assign(paste0("fit_result", fitResult), fit_result)
 assign(paste0("fixedEff_result", fitResult), fixedEff_result)
 assign(paste0("randEff_result", fitResult), randEff_result)
+
+save(fit_result, 
+     file = paste0("~/Desktop/NFL Analysis Data/fit_result",
+                   fitResult,
+                   ".RData")
+)
 
 # Posteriors ----
 ## Training ----
@@ -1058,6 +863,45 @@ posteriorPredMean_result <- colMeans(posteriorPred_result)
 posteriorPredMed_result <- apply(posteriorPred_result, 2, function(x){quantile(x, 0.5)})
 posteriorPredLCB_result <- apply(posteriorPred_result, 2, function(x){quantile(x, 0.025)})
 posteriorPredUCB_result <- apply(posteriorPred_result, 2, function(x){quantile(x, 0.975)})
+
+## LOO ----
+loo_result_4 <- loo(fit_result4)
+loo_result_5 <- loo(fit_result5)
+loo_result_6 <- loo(fit_result6)
+loo_result_7 <- loo(fit_result7)
+loo_result_8 <- loo(fit_result8)
+loo_result_9 <- loo(fit_result9)
+loo_result_10 <- loo(fit_result10)
+loo_result_11 <- loo(fit_result11)
+loo_result_12 <- loo(fit_result12)
+loo_result_20 <- loo(fit_result20)
+loo_result_21 <- loo(fit_result21)
+loo_result_22 <- loo(fit_result22)
+loo_result_23 <- loo(fit_result23)
+loo_result_24 <- loo(fit_result24)
+loo_result_25 <- loo(fit_result25)
+loo_result_26 <- loo(fit_result26)
+loo_result_list <- list(
+  loo_result_4,
+  loo_result_5,
+  loo_result_6,
+  loo_result_7,
+  loo_result_8,
+  loo_result_9,
+  loo_result_10,
+  loo_result_11,
+  loo_result_12,
+  loo_result_20,
+  loo_result_21,
+  loo_result_22,
+  loo_result_23,
+  loo_result_24,
+  loo_result_25,
+  loo_result_26
+)
+
+loo_compare_result <- loo_compare(loo_result_list)
+loo_compare_result
 
 # Goodness of Fit ##########################################################
 ## PPC ----
@@ -1369,9 +1213,10 @@ train_result_bet_df <- histModelData |>
     .after = actual_cover
   ) |>
   mutate(
-    xgb_home_score = predict(home_model, newdata = histModelData),
-    xgb_away_score = predict(away_model, newdata = histModelData),
+    xgb_home_score = predict(xgb_home_model, newdata = histModelData),
+    xgb_away_score = predict(xgb_away_model, newdata = histModelData),
     xgb_result = xgb_home_score - xgb_away_score,
+    #xgb_result2 = predict(xgb_result_model, newdata = histModelData),
     xgb_spread_line = spread_line,
     xgb_diff = xgb_result - xgb_spread_line,
     xgb_cover = case_when(
@@ -1381,6 +1226,18 @@ train_result_bet_df <- histModelData |>
     ),
     xgb_correct_cover = actual_cover == xgb_cover,
     .after = correct_cover
+  ) |>
+  mutate(
+    xgb_result2 = predict(xgb_result_model, newdata = histModelData),
+    xgb_spread_line2 = spread_line,
+    xgb_diff2 = xgb_result2 - xgb_spread_line2,
+    xgb_cover2 = case_when(
+      xgb_result2 > spread_line ~ "Home",
+      xgb_result2 < spread_line ~ "Away",
+      .default = NA
+    ),
+    xgb_correct_cover2 = actual_cover == xgb_cover2,
+    .after = xgb_correct_cover
   )
 
 ### Accuracy ----
@@ -1466,6 +1323,12 @@ train_result_acc_prob_xgb <-
   mean(train_result_bet_df$xgb_correct_cover, na.rm = TRUE)*100
 train_result_acc_prob_xgb
 
+table(train_result_bet_df$xgb_correct_cover2, useNA = "ifany")
+
+train_result_acc_prob_xgb2 <-
+  mean(train_result_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
+train_result_acc_prob_xgb2
+
 ### Compare ----
 # Output
 print(paste("Model Accuracy Percent Posterior Mean:", 
@@ -1481,6 +1344,8 @@ print(paste("Model Accuracy Percent Posterior Threshold:",
             "with", train_result_thresh*100, "% threshold"))
 print(paste("Model Accuracy Percent XGBoost:", 
             round(train_result_acc_prob_xgb, 2), "%"))
+print(paste("Model Accuracy Percent XGBoost:", 
+            round(train_result_acc_prob_xgb2, 2), "%"))
 
 ## Test ----
 test_result_bet_df <- modelData |>
@@ -1528,6 +1393,18 @@ test_result_bet_df <- modelData |>
     ),
     xgb_correct_cover = actual_cover == xgb_cover,
     .after = correct_cover
+  ) |>
+  mutate(
+    xgb_result2 = predict(xgb_result_model, newdata = modelData),
+    xgb_spread_line2 = spread_line,
+    xgb_diff2 = xgb_result2 - xgb_spread_line2,
+    xgb_cover2 = case_when(
+      xgb_result2 > spread_line ~ "Home",
+      xgb_result2 < spread_line ~ "Away",
+      .default = NA
+    ),
+    xgb_correct_cover2 = actual_cover == xgb_cover2,
+    .after = xgb_correct_cover
   )
 
 ### Accuracy ----
@@ -1613,6 +1490,12 @@ test_result_acc_prob_xgb <-
   mean(test_result_bet_df$xgb_correct_cover, na.rm = TRUE)*100
 test_result_acc_prob_xgb
 
+table(train_result_bet_df$xgb_correct_cover2, useNA = "ifany")
+
+test_result_acc_prob_xgb2 <-
+  mean(test_result_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
+test_result_acc_prob_xgb2
+
 ### Compare ----
 # Output
 print(paste("Model Accuracy Percent Posterior Mean:", 
@@ -1628,6 +1511,8 @@ print(paste("Model Accuracy Percent Posterior Threshold:",
             "with", test_result_thresh*100, "% threshold"))
 print(paste("Model Accuracy Percent XGBoost:", 
             round(test_result_acc_prob_xgb, 2), "%"))
+print(paste("Model Accuracy Percent XGBoost:", 
+            round(test_result_acc_prob_xgb2, 2), "%"))
 
 ## Comparison Table ----
 accuracy_metrics_result_temp <- tibble(
@@ -1692,8 +1577,8 @@ sims <- (iters-burn)*chains
 
 ## Model ----
 formula_total <- bf(
-  total ~
-    xgb_pred_total +
+  total|trunc(lb = 3) ~
+    xgb_pred_total2 +
     # home_off_pass_epa_roll + 
     # home_off_net_epa_roll +
     # home_pass_net_epa_roll +
@@ -1742,9 +1627,11 @@ formula_total <- bf(
     (1 | home_team) +
     (1 | away_team)
 ) + 
-  #brmsfamily(family = "student", link = "identity")
-#mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
-brmsfamily(family = "negbinomial", link = "log")
+  brmsfamily(family = "student", link = "identity")
+  #brmsfamily(family = "shifted_lognormal", link = "identity")
+  #brmsfamily(family = "skew_normal", link = "identity")
+  #mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
+  #brmsfamily(family = "negbinomial", link = "log")
 
 default_prior(formula_total, histModelData)
 
@@ -1766,7 +1653,7 @@ system.time(
     iter = iters,
     warmup = burn,
     cores = parallel::detectCores(),
-    init = 0,
+    #init = 0,
     normalize = TRUE,
     control = list(adapt_delta = 0.95),
     backend = "rstan",
@@ -1833,10 +1720,16 @@ predResiduals_total <-
   data.frame()
 mean(abs(predResiduals_total$Estimate))
 
-fitTotal <- 2
+fitTotal <- 5
 assign(paste0("fit_total", fitTotal), fit_total)
 assign(paste0("fixedEff_total", fitTotal), fixedEff_total)
 assign(paste0("randEff_total", fitTotal), randEff_total)
+
+save(fit_total, 
+     file = paste0("~/Desktop/NFL Analysis Data/fit_total",
+                   fitTotal,
+                   ".RData")
+)
 
 # Posteriors ----
 ## Training ----
@@ -1866,6 +1759,50 @@ posteriorPredMed_total <- apply(posteriorPred_total, 2, function(x){quantile(x, 
 posteriorPredLCB_total <- apply(posteriorPred_total, 2, function(x){quantile(x, 0.025)})
 posteriorPredUCB_total <- apply(posteriorPred_total, 2, function(x){quantile(x, 0.975)})
 
+## LOO ----
+loo_total_1 <- loo(fit_total1)
+loo_total_2 <- loo(fit_total2)
+loo_total_3 <- loo(fit_total3)
+loo_total_4 <- loo(fit_total4)
+loo_total_5 <- loo(fit_total5)
+loo_total_6 <- loo(fit_total6)
+loo_total_7 <- loo(fit_total7)
+loo_total_8 <- loo(fit_total8)
+loo_total_9 <- loo(fit_total9)
+loo_total_10 <- loo(fit_total10)
+loo_total_11 <- loo(fit_total11)
+loo_total_12 <- loo(fit_total12)
+loo_total_20 <- loo(fit_total20)
+loo_total_21 <- loo(fit_total21)
+loo_total_22 <- loo(fit_total22)
+loo_total_23 <- loo(fit_total23)
+loo_total_24 <- loo(fit_total24)
+loo_total_25 <- loo(fit_total25)
+loo_total_26 <- loo(fit_total26)
+loo_total_list <- list(
+  loo_total_1,
+  loo_total_2,
+  loo_total_3,
+  loo_total_4,
+  loo_total_5
+  # loo_total_6,
+  # loo_total_7,
+  # loo_total_8,
+  # loo_total_9,
+  # loo_total_10,
+  # loo_total_11,
+  # loo_total_12,
+  # loo_total_20,
+  # loo_total_21,
+  # loo_total_22,
+  # loo_total_23,
+  # loo_total_24,
+  # loo_total_25,
+  # loo_total_26
+)
+
+loo_compare_total <- loo_compare(loo_total_list)
+loo_compare_total
 
 # Goodness of Fit ##########################################################
 ## PPC ----
@@ -1917,6 +1854,8 @@ ppcDensPlot_total <- ppc_dens_overlay(
 meanFunc <- function(y){mean(y)}
 sdFunc <- function(y){sd(y)}
 rangeFunc <- function(y){max(y) - min(y)}
+minFunc <- function(y){min(y)}
+maxFunc <- function(y){max(y)}
 
 ##### Mean ----
 set.seed(52) # for reproducibility
@@ -2080,6 +2019,114 @@ ppcRangePlotGG_total <- ggplot() +
     legend.direction = "horizontal"
   )
 
+##### Min ----
+set.seed(52) # for reproducibility
+min_total <- minFunc(train_total)
+
+ppcMinStat_total <- ppc_stat_data(
+  y = train_total,
+  yrep = posteriorFit_total,
+  group = NULL,
+  stat = c("minFunc")
+) |>
+  mutate(
+    minProbLow = value < min_total,
+    minProbHigh = value > min_total
+  )
+
+ppcMinPlotGG_total <- ggplot() +
+  geom_histogram(
+    data = ppcMinStat_total |> filter(variable != "y"),
+    aes(x = value, color = "Posterior"),
+    fill = fillPPC
+  ) +
+  geom_vline(
+    data = ppcMinStat_total |> filter(variable == "y"),
+    aes(xintercept = value, color = "Observed"),
+    linewidth = 1
+  ) +
+  scale_x_continuous(
+    name = "total"
+  ) +
+  scale_y_continuous(
+    name = "Number of Posterior Draws",
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  scale_color_manual(
+    name = "Data",
+    values = c(
+      "Posterior" = colorPPC,
+      "Observed" = "black"
+    ),
+    breaks = c("Posterior", "Observed")
+  ) +
+  labs(title = "Min",
+       subtitle = paste("p-value =", round(mean(ppcMinStat_total$minProbLow[-1]), 4))
+  ) +
+  theme_bw() +
+  guides(color = guide_legend(byrow = TRUE)) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    legend.key.spacing.y = unit(5, "points"),
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  )
+
+##### Max ----
+set.seed(52) # for reproducibility
+max_total <- maxFunc(train_total)
+
+ppcMaxStat_total <- ppc_stat_data(
+  y = train_total,
+  yrep = posteriorFit_total,
+  group = NULL,
+  stat = c("maxFunc")
+) |>
+  mutate(
+    maxProbLow = value < max_total,
+    maxProbHigh = value > max_total
+  )
+
+ppcMaxPlotGG_total <- ggplot() +
+  geom_histogram(
+    data = ppcMaxStat_total |> filter(variable != "y"),
+    aes(x = value, color = "Posterior"),
+    fill = fillPPC
+  ) +
+  geom_vline(
+    data = ppcMaxStat_total |> filter(variable == "y"),
+    aes(xintercept = value, color = "Observed"),
+    linewidth = 1
+  ) +
+  scale_x_continuous(
+    name = "total"
+  ) +
+  scale_y_continuous(
+    name = "Number of Posterior Draws",
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  scale_color_manual(
+    name = "Data",
+    values = c(
+      "Posterior" = colorPPC,
+      "Observed" = "black"
+    ),
+    breaks = c("Posterior", "Observed")
+  ) +
+  labs(title = "Max",
+       subtitle = paste("p-value =", round(mean(ppcMaxStat_total$maxProbLow[-1]), 4))
+  ) +
+  theme_bw() +
+  guides(color = guide_legend(byrow = TRUE)) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    legend.key.spacing.y = unit(5, "points"),
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  )
+
 #### Combined plot ----
 ppcCombPlot_total <- 
   #(ppcBarsPlot_total + ppcDensPlot_total) /
@@ -2098,6 +2145,22 @@ ppcCombPlot_total <-
     )
   )
 ppcCombPlot_total
+
+ppcMinMaxPlot_total <- 
+  (ppcMinPlotGG_total + ppcMaxPlotGG_total) +
+  plot_layout(
+    guides = "collect",
+    axes = "collect_x"
+  ) +
+  plot_annotation(
+    #title = "Posterior Predictive Checks for Distributional Statistics",
+    #subtitle = paste("Bayesian predictive p-values for", sims, "Simulations"),
+    theme = theme(
+      legend.position = "bottom",
+      legend.direction = "horizontal"
+    )
+  )
+ppcMinMaxPlot_total
 
 # Performance Metrics ----
 ## Training ----
@@ -2190,6 +2253,18 @@ train_total_bet_df <- histModelData |>
     ),
     xgb_correct_cover = actual_cover == xgb_cover,
     .after = correct_cover
+  ) |>
+  mutate(
+    xgb_total2 = predict(xgb_total_model, newdata = histModelData),
+    xgb_total_line2 = total_line,
+    xgb_diff2 = xgb_total2 - xgb_total_line2,
+    xgb_cover2 = case_when(
+      xgb_total2 > total_line ~ "Over",
+      xgb_total2 < total_line ~ "Under",
+      .default = NA
+    ),
+    xgb_correct_cover2 = actual_cover == xgb_cover2,
+    .after = xgb_correct_cover
   )
 
 ### Accuracy ----
@@ -2275,6 +2350,12 @@ train_total_acc_prob_xgb <-
   mean(train_total_bet_df$xgb_correct_cover, na.rm = TRUE)*100
 train_total_acc_prob_xgb
 
+table(train_total_bet_df$xgb_correct_cover2, useNA = "ifany")
+
+train_total_acc_prob_xgb2 <-
+  mean(train_total_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
+train_total_acc_prob_xgb2
+
 ### Compare ----
 # Output
 print(paste("Model Accuracy Percent Posterior Mean:", 
@@ -2290,6 +2371,8 @@ print(paste("Model Accuracy Percent Posterior Threshold:",
             "with", train_total_thresh*100, "% threshold"))
 print(paste("Model Accuracy Percent XGBoost:", 
             round(train_total_acc_prob_xgb, 2), "%"))
+print(paste("Model Accuracy Percent XGBoost:", 
+            round(train_total_acc_prob_xgb2, 2), "%"))
 
 ## Test ----
 test_total_bet_df <- modelData |>
@@ -2337,6 +2420,18 @@ test_total_bet_df <- modelData |>
     ),
     xgb_correct_cover = actual_cover == xgb_cover,
     .after = correct_cover
+  ) |>
+  mutate(
+    xgb_total2 = predict(xgb_total_model, newdata = modelData),
+    xgb_total_line2 = total_line,
+    xgb_diff2 = xgb_total2 - xgb_total_line2,
+    xgb_cover2 = case_when(
+      xgb_total2 > total_line ~ "Over",
+      xgb_total2 < total_line ~ "Under",
+      .default = NA
+    ),
+    xgb_correct_cover2 = actual_cover == xgb_cover,
+    .after = xgb_correct_cover
   )
 
 ### Accuracy ----
@@ -2422,6 +2517,12 @@ test_total_acc_prob_xgb <-
   mean(test_total_bet_df$xgb_correct_cover, na.rm = TRUE)*100
 test_total_acc_prob_xgb
 
+table(test_total_bet_df$xgb_correct_cover2, useNA = "ifany")
+
+test_total_acc_prob_xgb2 <-
+  mean(test_total_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
+test_total_acc_prob_xgb2
+
 ### Compare ----
 # Output
 print(paste("Model Accuracy Percent Posterior Mean:", 
@@ -2437,6 +2538,8 @@ print(paste("Model Accuracy Percent Posterior Threshold:",
             "with", test_total_thresh*100, "% threshold"))
 print(paste("Model Accuracy Percent XGBoost:", 
             round(test_total_acc_prob_xgb, 2), "%"))
+print(paste("Model Accuracy Percent XGBoost:", 
+            round(test_total_acc_prob_xgb2, 2), "%"))
 
 ## Comparison Table ----
 accuracy_metrics_total_temp <- tibble(
@@ -2472,9 +2575,9 @@ accuracy_metrics_total_temp <- tibble(
     #test_result_bet_thresh_count,
     test_total_bet_thresh_count),
   XGB = c(#train_result_acc_prob_xgb,
-          train_total_acc_prob_xgb,
-          #test_result_acc_prob_xgb
-          test_total_acc_prob_xgb
+    train_total_acc_prob_xgb,
+    #test_result_acc_prob_xgb
+    test_total_acc_prob_xgb
   )
 )
 accuracy_metrics_total <- bind_rows(
@@ -2482,7 +2585,7 @@ accuracy_metrics_total <- bind_rows(
   accuracy_metrics_total
 )
 
-accuracy_metrics_total #<- accuracy_metrics_result_temp
+accuracy_metrics_total #<- accuracy_metrics_total_temp
 
 # All Accuracy ----
 accuracy_metrics_temp <-
