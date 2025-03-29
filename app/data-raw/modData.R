@@ -37,78 +37,16 @@ require(timetk)
 # library(performance)
 
 ## NFL Verse
-require(espnscrapeR)
 require(nflverse)
 
 ## Tidyverse
 require(tidyverse)
 
-source("./app/data-raw/gameData.R")
-source("./app/data-raw/gameDataLong.R")
-source("./app/data-raw/pbpData.R")
-
-#seasonsMod <- 2021:2024
-#gameData <- gameData #|> filter(season %in% seasonsMod)
-#gameData <- gameData |> filter(!(season == 2024 & week > 14))
-#gameDataLongMod <- gameDataLong #|> filter(season %in% seasonsMod)
-#gameDataLongMod <- gameDataLongMod |> filter(!(season == 2024 & week > 14))
-#pbpData <- pbpData
-#pbpData <- pbpData |> filter(!(season == 2024 & week > 14))
-#load("./app/data/seasonWeekStandings.rda")
-#seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
-
-#rm(gameData, gameDataLong)
-
-# con <- dbConnect(RPostgres::Postgres(),
-#                  dbname = "NFLdata",
-#                  user = "postgre",
-#                  password = "NFLpass1234",
-#                  host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
-# dbListTables(con)
-# dbDisconnect(con)
-
+#source("./app/data-raw/gameData.R")
+#source("./app/data-raw/gameDataLong.R")
+#source("./app/data-raw/pbpData.R")
 
 # Aggregate pbp ----
-# pbpPlayTypes <- pbpData |>
-#   select(
-#     play,
-#     play_type, 
-#     play_type_nfl,
-#     pass,
-#     pass_attempt,
-#     rush,
-#     rush_attempt,
-#     special_teams_play,
-#     special,
-#     penalty,
-#     qb_dropback,
-#     qb_kneel,
-#     qb_spike,
-#     qb_scramble,
-#     penalty_type
-#   ) |>
-#   distinct()
-
-# pbpPlayTypesView <- pbpPlayTypes |>
-#   filter(play == 1, pass == 1)
-#   filter(play == 1, pass == 0, rush == 0, penalty == 1)
-# pbpData |>
-#   group_by(game_id, posteam) |>
-#   mutate(
-#     home_epa_diff = total_home_epa - lag(total_home_epa, default = 0),
-#     away_epa_diff = total_away_epa - lag(total_away_epa, default = 0)
-#   ) |>
-#   #filter(special == 1) |>
-#   select(game_id, season, week, home_team, away_team, posteam, defteam, play_type, play, pass, rush, penalty, special,
-#          qb_scramble,
-#          td_prob, fg_prob, opp_td_prob, opp_fg_prob,
-#          field_goal_attempt, field_goal_result, kick_distance, #extra_point_attempt, extra_point_result,
-#          ep, epa, wp, wpa, vegas_wp, vegas_wpa, total_home_epa, total_away_epa, home_epa_diff, away_epa_diff,
-#          posteam_score, defteam_score, posteam_score_post, defteam_score_post,
-#          penalty_type, desc) |>
-#   ungroup() |>
-#   view()
-
 ## EPA ----
 ### Penalty Structure 1 ----
 # epaOffData <- pbpData |>
@@ -274,23 +212,6 @@ epaData2 <- gameDataLong |>
            .names = "{.col}")
   ) |>
   ungroup()
-# left_join(
-#   epaAvgs,
-#   by = join_by(season, team)
-# )
-
-# mutate(week = 1)
-# 
-# epaData3A <- gameDataLongMod |>
-#   select(game_id, season, week, team, opponent) |>
-#   left_join(
-#     bind_rows(
-#       epaAvgs,
-#       epaData2 |>
-#         select(season, week, team, contains("off"), contains("def")) |>
-#         filter(week != 1)
-#     )
-#   )
 
 epaData3A <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
@@ -302,9 +223,6 @@ epaData3A <- gameDataLong |>
         filter(week != 1)
     )
   ) |>
-  # select(
-  #   game_id, season, week, team, contains("mean")
-  # ) |>
   group_by(season, team) |>
   tk_augment_slidify(
     .value = contains("mean"),
@@ -327,35 +245,9 @@ epaData3A <- gameDataLong |>
 epaData3 <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(epaData3A)
-# arrange(row) #|>
-# select(-c(
-#   row,
-#   old_game_id,
-#   gsis,
-#   nfl_detail_id,
-#   pfr,
-#   pff,
-#   espn,
-#   ftn,
-#   team_qb_id,
-#   team_qb_name,
-#   opponent_qb_id,
-#   opponent_qb_name,
-#   referee,
-#   stadium_id
-# ))
+
 
 #rm(epaData, epaData2, epaOffData, epaAvgs, pbpData, pbpPlayTypes, pbpPlayTypesView)
-# mutate(
-#   off_epa_mean_feat = ifelse(is.na(off_epa_mean), off_epa_mean, off_epa_mean),
-#   off_pass_epa_mean_feat = ifelse(is.na(off_pass_epa_mean), off_pass_epa_mean, off_pass_epa_mean),
-#   off_rush_epa_mean_feat = ifelse(is.na(off_rush_epa_mean), off_rush_epa_mean, off_rush_epa_mean),
-#   off_penalty_epa_mean_feat = ifelse(is.na(off_penalty_epa_mean), off_penalty_epa_mean, off_penalty_epa_mean),
-#   def_epa_mean_feat = ifelse(is.na(def_epa_mean), def_epa_mean, def_epa_mean),
-#   def_pass_epa_mean_feat = ifelse(is.na(def_pass_epa_mean), def_pass_epa_mean, def_pass_epa_mean),
-#   def_rush_epa_mean_feat = ifelse(is.na(def_rush_epa_mean), def_rush_epa_mean, def_rush_epa_mean),
-#   def_penalty_epa_mean_feat = ifelse(is.na(def_penalty_epa_mean), def_penalty_epa_mean, def_penalty_epa_mean)
-# )
 
 ## SRS ----
 srsData <- epaData3 |>
@@ -397,35 +289,6 @@ nflStatsWeek <- calculate_stats(seasons = allSeasons,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
-#nflStatsWeek <- nflStatsWeek |> filter(!(season == 2024 & week > 14))
-# nflStatsSeason <- calculate_stats(seasons = 2021:2024,
-#                                   summary_level = "season",
-#                                   stat_type = "team",
-#                                   season_type = "REG+POST")
-
-## Score Stats ----
-# scoresData <- pbpData |>
-#   #filter(season %in% seasonsMod) |>
-#   select(game_id, season, week, posteam, home_team, away_team, td_team,
-#          fixed_drive, fixed_drive_result) |>
-#   distinct() |>
-#   filter(!(fixed_drive_result == "Opp touchdown" & is.na(td_team))) |>
-#   select(-td_team) |>
-#   distinct() |>
-#   filter(!is.na(posteam)) |>
-#   group_by(game_id, season, week, posteam, home_team, away_team) |>
-#   count(fixed_drive_result) |>
-#   pivot_wider(
-#     names_from = fixed_drive_result, 
-#     values_from = n, 
-#     values_fill = 0
-#   ) |>
-#   ungroup() |>
-#   left_join(
-#     nflStatsWeek |>
-#       select(season, week, team, special_teams_tds, def_tds),
-#     by = join_by(season, week, posteam == team)
-#   )
 
 scoresData <- nflStatsWeek |>
   select(season, week, team, 
@@ -458,116 +321,9 @@ scoresData <- nflStatsWeek |>
     rowID = row_number()
   )
 
-# scoresTeam <- scoresData |>
-#   mutate(
-#    score =  6*offTD + 6*special_teams_tds + 6*def_tds + 6*fumble_recovery_tds +
-#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
-#   ) |>
-#   select(season, week, team, score)
-# 
-# teamScoreComp <- gameDataLong |>
-#   arrange(season, week, team) |>
-#   #filter(!(season == 2024 & season_type == "POST")) |>
-#   filter(!is.na(result)) |>
-#   select(season, week, team, opponent, team_score, opponent_score)
-# 
-# teamScoreComp2 <- left_join(scoresTeam, teamScoreComp)
-# diffs <- which(teamScoreComp2$score != teamScoreComp2$team_score)
-# teamScoreComp2 |> 
-#   mutate(
-#     diff = score - team_score,
-#     diffInd = diff != 0
-#   ) |>
-#   filter(diffInd)
-
-
-# conversions <- pbpData |>
-#   #filter(season %in% seasonsMod) |>
-#   filter(!is.na(posteam)) |>
-#   select(game_id, season, week, posteam, home_team, away_team,
-#          extra_point_attempt, extra_point_result, extra_point_prob, 
-#          #defensive_extra_point_attempt, defensive_extra_point_conv,
-#          two_point_attempt, two_point_conv_result, two_point_conversion_prob
-#          #defensive_two_point_attempt, defensive_two_point_conv
-#   ) |>
-#   group_by(game_id, season, week, posteam, home_team, away_team) |>
-#   summarise(
-#     extra_point_attempt = sum(extra_point_attempt, na.rm = TRUE),
-#     extra_point_result = sum(extra_point_result == "good", na.rm = TRUE),
-#     extra_point_prob = mean(extra_point_prob, na.rm = TRUE),
-#     two_point_attempt = sum(two_point_attempt, na.rm = TRUE),
-#     two_point_conv_result = sum(two_point_conv_result == "success", na.rm = TRUE),
-#     two_point_conversion_prob = mean(two_point_conversion_prob, na.rm = TRUE)
-#   ) |>
-#   ungroup()
-# 
-# scoresData2 <- conversions |>
-#   rename(team = posteam) |>
-#   left_join(
-#     scoresData,
-#     by = join_by(season, week, team)
-#   ) |>
-#   mutate(
-#     teamScore = 6*offTD + 6*special_teams_tds + 6*def_tds +
-#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
-#     #teamPA = 6*oppTouchdown + 2*safety
-#   ) |>
-#   left_join(
-#     gameDataLong |> select(game_id, team, team_score, opponent_score),
-#     join_by(game_id, team)
-#   ) |>
-#   mutate(
-#     scoreDiff = team_score - teamScore,
-#     special_teams_tds = ifelse(scoreDiff == 6, special_teams_tds + 1, special_teams_tds)#,
-#     #def_safeties = ifelse(scoreDiff == 2, def_safeties + 1, def_safeties)
-#   ) |>
-#   rowwise() |>
-#   mutate(
-#     offTD = sum(passing_tds, rushing_tds),
-#     totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
-#     twoPtConv = sum(passing_2pt_conversions, rushing_2pt_conversions),
-#     twoPtAtt = totalTD - pat_att
-#   ) |>
-#   mutate(
-#     teamScore = 6*totalTD + #6*offTD + 6*special_teams_tds + 6*def_tds +
-#       3*fg_made + 2*twoPtConv + 1*pat_made + 2*def_safeties
-#     #teamPA = 6*oppTouchdown + 2*safety
-#   ) |>
-#   ungroup() 
-# 
-# diffs <- which(scoresData2$teamScore != scoresData2$team_score)
-# (scoresData2$teamScore - scoresData2$team_score)[diffs]
-
 scoresData3 <- scoresData |>
   select(rowID, everything()) |>
-  # group_by(game_id) |>
-  # mutate(
-  #   opponentScore = rev(teamScore)
-  #   #opponentPA = rev(teamPA)
-  # ) |>
-  # ungroup() |>
   group_by(season, team) |>
-  # mutate(
-  #   fg_pct_cum = cumsum(fg_made)/cumsum(fg_att),
-  #   pat_pct_cum = cumsum(pat_made)/cumsum(pat_att),
-  #   off_interceptions_cum = cummean(off_interceptions),
-  #   def_interceptions_cum = cummean(def_interceptions),
-  #   off_fumbles_cum = cummean(off_fumbles),
-  #   def_fumbles_cum = cummean(def_fumbles)
-  # ) |>
-  # relocate(fg_pct_cum, .after = fg_pct) |>
-  # relocate(pat_pct_cum, .after = pat_pct) |>
-  # tk_augment_slidify(
-  #   .value   = c(pat_made, pat_att, fg_made, fg_att),
-  #   # Multiple rolling windows
-  #   .period  = 5,
-  #   .f       = sum,
-  #   .partial = TRUE,
-  #   .align = "right",
-  #   .names = c("pat_made_roll", "pat_att_roll", "fg_made_roll", "fg_att_roll")
-  # ) |>
-  # mutate(pat_pct_roll = pat_made_roll/pat_att_roll, .after = pat_pct_cum) |>
-  # mutate(fg_pct_roll = fg_made_roll/fg_att_roll, .after = fg_pct_cum) |>
   tk_augment_slidify(
     .value   = c(everything(), -c(1:3)), #c(-game_id, -season, -team, -rowID),
     # Multiple rolling windows
@@ -589,47 +345,11 @@ scoresData3 <- scoresData |>
     across(contains("roll_5"), 
            ~ts_impute_vec(.x, period = 4))
   ) |>
-  # fill(c(fg_att_roll, fg_pct_cum, fg_pct_roll,offTD_roll,totalTD_roll), .direction = "down") |>
-  # mutate(
-  #   pat_pct_cum = ifelse(is.nan(pat_pct_cum), 1, pat_pct_cum), 
-  #   pat_pct_roll = ifelse(is.nan(pat_pct_roll), 1, pat_pct_roll), 
-  #   fg_pct_cum = ifelse(is.nan(fg_pct_cum), 1, fg_pct_cum), 
-  #   fg_pct_roll = ifelse(is.nan(fg_pct_roll), 1, fg_pct_roll), 
-  #   off_interceptions = lag(off_interceptions, default = 0),
-  #   def_interceptions = lag(def_interceptions, default = 0),
-  #   off_fumbles = lag(off_fumbles, default = 0),
-  #   def_fumbles = lag(def_fumbles, default = 0)
-  # ) |>
-  # mutate(
-  #   totalTD_roll = lag(totalTD_roll),
-  #   offTD_roll = lag(offTD_roll),
-  #   off_pat_att_roll = lag(pat_att_roll),
-  #   off_pat_pct_cum = lag(pat_pct_cum, default = 1),
-  #   off_pat_pct_roll = lag(pat_pct_roll, default = 1),
-  #   off_fg_att_roll = lag(fg_att_roll),
-  #   off_fg_pct_cum = lag(fg_pct_cum),
-  #   off_fg_pct_roll = lag(fg_pct_roll),
-  #   
-  # ) |> 
   ungroup() |>
   arrange(rowID)
 
 scoresData <- scoresData3 |>
   select(-c(rowID, season, week))
-  # select(
-  #   game_id, team, 
-  #   totalTD, totalTD_roll, offTD, offTD_roll,
-  #   special_teams_tds, def_tds,
-  #   fg_made, fg_att, 
-  #   off_fg_att_roll, off_fg_pct_cum, off_fg_pct_roll,
-  #   twoPtConv, twoPtAtt,
-  #   safeties = def_safeties,
-  #   pat_made, pat_att, 
-  #   off_pat_att_roll, off_pat_pct_cum, off_pat_pct_roll,
-  #   off_interceptions, 
-  #   def_interceptions,
-  #   off_fumbles, def_fumbles
-  # )
 
 ## Series ----
 seriesWeekData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
@@ -651,36 +371,8 @@ seriesData <- gameDataLong |>
   ) |>
   ungroup()
 
-# seriesAvgs <- seriesWeekData |> 
-#   group_by(season, team) |>
-#   summarise(
-#     across(-week,
-#            ~mean(.x, na.rm = TRUE))
-#   ) |> #arrange(season, team) 
-#   ungroup() |>
-#   group_by(team) |>
-#   mutate(
-#     across(-season,
-#            ~lag(.x, default = 0))
-#   ) |>
-#   ungroup() |>
-#   mutate(week = 1)
-# 
-# seriesData <- gameDataLong |>
-#   select(game_id, season, week, team, opponent) |>
-#   left_join(
-#     bind_rows(
-#       seriesAvgs,
-#       seriesWeekData2 |>
-#         select(-c(game_id, opponent)) |>
-#         filter(week != 1)
-#     )
-#   )
-
 ## Red Zone -----
 red_zone_pbp <- pbpData |>
-  #filter(season %in% seasonsMod) |>
-  #filter(play == 1) |> 
   filter(!is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
   select(fixed_drive, fixed_drive_result, drive_inside20, drive_ended_with_score) |>
@@ -693,8 +385,6 @@ red_zone_sum_week <- red_zone_pbp |>
     red_zone_app = sum(drive_inside20, na.rm = TRUE),
     red_zone_td = sum(fixed_drive_result == "Touchdown" & drive_inside20, na.rm = TRUE),
     red_zone_app_perc = red_zone_app/drives_num,
-    # red_zone_eff = sum(fixed_drive_result == "Touchdown")/sum(drive_inside20, na.rm = TRUE),
-    # red_zone_eff = ifelse(red_zone_app == 0, 0, red_zone_eff),
     red_zone_eff = red_zone_td/red_zone_app,
     red_zone_eff = ifelse(red_zone_app == 0, 0, red_zone_eff)
   ) 
@@ -769,25 +459,6 @@ red_zone_data3 <- red_zone_data2 |>
 red_zone_data <- red_zone_data3
 
 ## Weather -----
-# library(openmateo)
-# 
-# t <- weather_history(
-#   location = "Green Bay",
-#   start = "2006-12-03",
-#   end = "2006-12-03",
-#   response_units = list(
-#     temperature_units = "farenheit",
-#     windspeed_unit = "mph",
-#     precipitation_unit = "inch"
-#   ),
-#   hourly = c("temperature_2m",
-#              "apparent_temperature",
-#              "wind_speed_10m", 
-#              "precipitation", 
-#              "rain", 
-#              "snowfall",
-#              "weather_code")
-# )
 weatherData <- pbpData |>
   select(game_id, home_team, away_team, weather) |>
   distinct() |>

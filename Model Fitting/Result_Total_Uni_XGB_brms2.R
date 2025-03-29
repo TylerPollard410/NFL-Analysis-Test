@@ -55,13 +55,8 @@ library(tidyverse)
 
 source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
+source("./app/R/clean_modData.R")
 
-# seasonsMod <- 2020:2024
-# gameDataMod <- gameData |> filter(season %in% seasonsMod)
-# gameDataLongMod <- gameDataLong |> filter(season %in% seasonsMod)
-# pbpDataMod <- load_pbp(seasons = seasonsMod)
-# load("./app/data/seasonWeekStandings.rda")
-# seasonWeekStandings <- seasonWeekStandings |> filter(season %in% seasonsMod)
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 
 
@@ -70,196 +65,198 @@ load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/ma
 modDataLong <- modData |>
   clean_homeaway(invert = c("result", "spread_line"))
 
-modData2 <- modData |> 
-  filter(season >= 2007) |>
-  #filter(!is.na(result)) |>
-  select(
-    game_id,
-    season,
-    season_type,
-    week,
-    weekday,
-    time_of_day,
-    home_team,
-    home_score,
-    away_team,
-    away_score,
-    result,
-    spread_line,
-    contains("spread"),
-    total,
-    total_line,
-    totalCover,
-    contains("over_"),
-    contains("under_"),
-    winner,
-    contains("moneyline"),
-    contains("rest"),
-    location,
-    div_game,
-    roof,
-    surface,
-    temp,
-    wind,
-    contains("coach"),
-    contains("stadium"),
-    contains("home"),
-    contains("away"),
-    -contains("pat_pct"),
-    -contains("fg_pct")
-    # off_n, 
-    # off_scr, 
-    # off_scr_1st, 
-    # off_scr_2nd, 
-    # off_scr_3rd, 
-    # off_scr_4th, 
-    # off_1st, 
-    # off_td, 
-    # off_fg,
-    # off_punt,
-    # off_to, 
-    # def_n, 
-    # def_scr,
-    # def_scr_1st, 
-    # def_scr_2nd, 
-    # def_scr_3rd,
-    # def_scr_4th, 
-    # def_1st, 
-    # def_td, 
-    # def_fg, 
-    # def_punt, 
-    # def_to
-  ) |>
-  mutate(
-    across(c(where(is.character), -game_id),
-           ~factor(.x))
-  ) |>
-  mutate(
-    home_totalTDScore = 6*home_totalTD,
-    home_fg_madeScore = 3*home_fg_made,
-    home_pat_madeScore = home_pat_made,
-    home_safetiesScore = 2*home_def_safeties,
-    home_twoPtConvScore = 2*home_twoPtConv,
-    away_totalTDScore = 6*away_totalTD,
-    away_fg_madeScore = 3*away_fg_made,
-    away_pat_madeScore = away_pat_made,
-    away_safetiesScore = 2*away_def_safeties,
-    away_twoPtConvScore = 2*away_twoPtConv,
-    home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
-    away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
-  ) |>
-  mutate(
-    location2 = ifelse(location == "Home", 1, 0),
-    .after = location
-  ) |>
-  mutate(
-    location = factor(location, levels = c("Neutral", "Home"))
-  )
+# modData2 <- modData |> 
+#   filter(season >= 2007) |>
+#   #filter(!is.na(result)) |>
+#   select(
+#     game_id,
+#     season,
+#     season_type,
+#     week,
+#     weekday,
+#     time_of_day,
+#     home_team,
+#     home_score,
+#     away_team,
+#     away_score,
+#     result,
+#     spread_line,
+#     contains("spread"),
+#     total,
+#     total_line,
+#     totalCover,
+#     contains("over_"),
+#     contains("under_"),
+#     winner,
+#     contains("moneyline"),
+#     contains("rest"),
+#     location,
+#     div_game,
+#     roof,
+#     surface,
+#     temp,
+#     wind,
+#     contains("coach"),
+#     contains("stadium"),
+#     contains("home"),
+#     contains("away"),
+#     -contains("pat_pct"),
+#     -contains("fg_pct")
+#     # off_n, 
+#     # off_scr, 
+#     # off_scr_1st, 
+#     # off_scr_2nd, 
+#     # off_scr_3rd, 
+#     # off_scr_4th, 
+#     # off_1st, 
+#     # off_td, 
+#     # off_fg,
+#     # off_punt,
+#     # off_to, 
+#     # def_n, 
+#     # def_scr,
+#     # def_scr_1st, 
+#     # def_scr_2nd, 
+#     # def_scr_3rd,
+#     # def_scr_4th, 
+#     # def_1st, 
+#     # def_td, 
+#     # def_fg, 
+#     # def_punt, 
+#     # def_to
+#   ) |>
+#   mutate(
+#     across(c(where(is.character), -game_id),
+#            ~factor(.x))
+#   ) |>
+#   mutate(
+#     home_totalTDScore = 6*home_totalTD,
+#     home_fg_madeScore = 3*home_fg_made,
+#     home_pat_madeScore = home_pat_made,
+#     home_safetiesScore = 2*home_def_safeties,
+#     home_twoPtConvScore = 2*home_twoPtConv,
+#     away_totalTDScore = 6*away_totalTD,
+#     away_fg_madeScore = 3*away_fg_made,
+#     away_pat_madeScore = away_pat_made,
+#     away_safetiesScore = 2*away_def_safeties,
+#     away_twoPtConvScore = 2*away_twoPtConv,
+#     home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
+#     away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
+#   ) |>
+#   mutate(
+#     location2 = ifelse(location == "Home", 1, 0),
+#     .after = location
+#   ) |>
+#   mutate(
+#     location = factor(location, levels = c("Neutral", "Home"))
+#   )
+# 
+# which(modData$home_totalTD != (modData$home_offTD +
+#                                  modData$home_special_teams_tds +
+#                                  modData$home_fumble_recovery_tds +
+#                                  modData$home_def_tds))
+# which(modData$away_totalTD != (modData$away_offTD +
+#                                  modData$away_special_teams_tds +
+#                                  modData$away_fumble_recovery_tds +
+#                                  modData$away_def_tds))
+# which(modData$home_totalTD != (modData$home_pat_att + modData$home_twoPtAtt))
+# which(modData$away_totalTD != (modData$away_pat_att + modData$away_twoPtAtt))
+# 
+# modData3 <- modData2 |>
+#   select(
+#     game_id,
+#     season,
+#     season_type,
+#     week,
+#     home_team,
+#     home_score,
+#     away_team,
+#     away_score,
+#     result,
+#     spread_line,
+#     contains("spread"),
+#     total,
+#     total_line,
+#     totalCover,
+#     contains("over_"),
+#     contains("under_"),
+#     winner,
+#     contains("moneyline"),
+#     contains("rest"),
+#     weekday,
+#     time_of_day,
+#     location,
+#     location2,
+#     div_game,
+#     roof,
+#     surface,
+#     temp,
+#     wind,
+#     contains("coach"),
+#     contains("stadium"),
+#     contains("PFG"),
+#     contains("PAG"),
+#     contains("MOV"),
+#     contains("SOS"),
+#     contains("SRS"),
+#     contains("OSRS"),
+#     contains("DSRS"),
+#     contains("epa"),
+#     contains("cum"),
+#     contains("net"),
+#     contains("roll"),
+#     contains("off_n"), 
+#     contains("off_scr"), 
+#     contains("off_scr_1st"), 
+#     contains("off_scr_2nd"), 
+#     contains("off_scr_3rd"), 
+#     contains("off_scr_4th"), 
+#     contains("off_1st"), 
+#     contains("off_td"), 
+#     contains("off_fg"),
+#     contains("off_punt"),
+#     contains("off_to"), 
+#     contains("def_n"), 
+#     contains("def_scr"),
+#     contains("def_scr_1st"), 
+#     contains("def_scr_2nd"), 
+#     contains("def_scr_3rd"),
+#     contains("def_scr_4th"), 
+#     contains("def_1st"), 
+#     contains("def_td"), 
+#     contains("def_fg"), 
+#     contains("def_punt"), 
+#     contains("def_to"),
+#     -home_def_tds,
+#     -away_def_tds
+#     # contains("off"),
+#     # contains("def"),
+#     # -contains("totalTD"),
+#     # -contains("offTD"),
+#     # -contains("special_teams_tds"),
+#     # -contains("fumble_recovery_tds"),
+#     # -contains("def_tds"),
+#     # -contains("pat_made"),
+#     # -contains("pat_att"),
+#     # -contains("twoPtConv"),
+#     # -contains("twoPtAtt"),
+#     # -contains("fg_made"),
+#     # -contains("fg_att"),
+#     # -contains("def_safeties")
+#   ) |>
+#   mutate(
+#     surface = as.character(surface),
+#     surface = case_when(
+#       surface == "" ~ NA,
+#       surface == "grass " ~ "grass",
+#       surface %in% c("a_turf", "astroplay") ~ "astroturf", 
+#       .default = surface
+#     ),
+#     surface = factor(surface)
+#   ) |>
+#   select(-surface)
 
-which(modData$home_totalTD != (modData$home_offTD +
-                                 modData$home_special_teams_tds +
-                                 modData$home_fumble_recovery_tds +
-                                 modData$home_def_tds))
-which(modData$away_totalTD != (modData$away_offTD +
-                                 modData$away_special_teams_tds +
-                                 modData$away_fumble_recovery_tds +
-                                 modData$away_def_tds))
-which(modData$home_totalTD != (modData$home_pat_att + modData$home_twoPtAtt))
-which(modData$away_totalTD != (modData$away_pat_att + modData$away_twoPtAtt))
-
-modData3 <- modData2 |>
-  select(
-    game_id,
-    season,
-    season_type,
-    week,
-    home_team,
-    home_score,
-    away_team,
-    away_score,
-    result,
-    spread_line,
-    contains("spread"),
-    total,
-    total_line,
-    totalCover,
-    contains("over_"),
-    contains("under_"),
-    winner,
-    contains("moneyline"),
-    contains("rest"),
-    weekday,
-    time_of_day,
-    location,
-    location2,
-    div_game,
-    roof,
-    surface,
-    temp,
-    wind,
-    contains("coach"),
-    contains("stadium"),
-    contains("PFG"),
-    contains("PAG"),
-    contains("MOV"),
-    contains("SOS"),
-    contains("SRS"),
-    contains("OSRS"),
-    contains("DSRS"),
-    contains("epa"),
-    contains("cum"),
-    contains("net"),
-    contains("roll"),
-    contains("off_n"), 
-    contains("off_scr"), 
-    contains("off_scr_1st"), 
-    contains("off_scr_2nd"), 
-    contains("off_scr_3rd"), 
-    contains("off_scr_4th"), 
-    contains("off_1st"), 
-    contains("off_td"), 
-    contains("off_fg"),
-    contains("off_punt"),
-    contains("off_to"), 
-    contains("def_n"), 
-    contains("def_scr"),
-    contains("def_scr_1st"), 
-    contains("def_scr_2nd"), 
-    contains("def_scr_3rd"),
-    contains("def_scr_4th"), 
-    contains("def_1st"), 
-    contains("def_td"), 
-    contains("def_fg"), 
-    contains("def_punt"), 
-    contains("def_to"),
-    -home_def_tds,
-    -away_def_tds
-    # contains("off"),
-    # contains("def"),
-    # -contains("totalTD"),
-    # -contains("offTD"),
-    # -contains("special_teams_tds"),
-    # -contains("fumble_recovery_tds"),
-    # -contains("def_tds"),
-    # -contains("pat_made"),
-    # -contains("pat_att"),
-    # -contains("twoPtConv"),
-    # -contains("twoPtAtt"),
-    # -contains("fg_made"),
-    # -contains("fg_att"),
-    # -contains("def_safeties")
-  ) |>
-  mutate(
-    surface = as.character(surface),
-    surface = case_when(
-      surface == "" ~ NA,
-      surface == "grass " ~ "grass",
-      surface %in% c("a_turf", "astroplay") ~ "astroturf", 
-      .default = surface
-    ),
-    surface = factor(surface)
-  ) |>
-  select(-surface)
+modData3 <- clean_modData(data = modData, season_start = 2007)
 colnames(modData3)
 
 table(modData3$surface, useNA = "ifany")
@@ -289,112 +286,112 @@ modData3Long <- modData3 |>
 
 write_csv(modData3, file = "~/Desktop/modData.csv")
 
-## Select ----
-modScoreData <- modData2 |>
-  select(
-    game_id,
-    season,
-    season_type,
-    week,
-    location,
-    location2,
-    div_game,
-    result,
-    spread_line,
-    total,
-    total_line,
-    home_team,
-    contains("home_SRS"),
-    contains("home_OSRS"),
-    contains("home_DSRS"),
-    home_score,
-    home_totalTD,
-    home_offTD,
-    home_special_teams_tds,
-    home_fumble_recovery_tds,
-    home_def_tds,
-    home_pat_made,
-    home_pat_att,
-    home_twoPtConv,
-    home_twoPtAtt,
-    home_fg_made,
-    home_fg_att,
-    home_def_safeties,
-    away_team,
-    contains("away_SRS"),
-    contains("away_OSRS"),
-    contains("away_DSRS"),
-    away_score,
-    away_totalTD,
-    away_offTD,
-    away_special_teams_tds,
-    away_fumble_recovery_tds,
-    away_def_tds,
-    away_pat_made,
-    away_pat_att,
-    away_twoPtConv,
-    away_twoPtAtt,
-    away_fg_made,
-    away_fg_att,
-    away_def_safeties
-  ) |>
-  mutate(home_deffTD = home_fumble_recovery_tds + home_def_tds, .after = home_special_teams_tds) |>
-  mutate(away_deffTD = away_fumble_recovery_tds + away_def_tds, .after = away_special_teams_tds)
-
-modScoreDataLong <- modScoreData |>
-  clean_homeaway(invert = c("result", "spread_line"))
-
-write_csv(modScoreData |> filter(season >= 2020), 
-          file = "~/Desktop/wideNFLdata.csv")
-write_csv(modScoreDataLong |> filter(season >= 2020),
-          file = "~/Desktop/longNFLdata.csv")
-
-modScoreData2 <- modScoreData |>
-  mutate(
-    home_totalTD = 6*home_totalTD,
-    home_offTD = 6*home_offTD,
-    home_special_teams_tds = 6*home_special_teams_tds,
-    home_deffTD = 6*home_deffTD,
-    home_pat_made = home_pat_made,
-    home_twoPtConv = 2*home_twoPtConv,
-    home_extra_pts = home_pat_made + home_twoPtConv,
-    home_fg_made = 3*home_fg_made,
-    home_def_safeties = 2*home_def_safeties,
-    away_totalTD = 6*away_totalTD,
-    away_offTD = 6*away_offTD,
-    away_special_teams_tds = 6*away_special_teams_tds,
-    away_deffTD = 6*away_deffTD,
-    away_pat_made = away_pat_made,
-    away_twoPtConv = 2*away_twoPtConv,
-    away_extra_pts = away_pat_made + away_twoPtConv,
-    away_fg_made = 3*away_fg_made,
-    away_def_safeties = 2*away_def_safeties
-  ) |>
-  mutate(
-    home_score2 = (home_offTD + 
-                     home_special_teams_tds +
-                     home_deffTD +
-                     #home_pat_made + home_twoPtConv +
-                     home_extra_pts +
-                     home_fg_made +
-                     home_def_safeties),
-    .after = home_score
-  ) |>
-  mutate(
-    away_score2 = (away_offTD + 
-                     away_special_teams_tds +
-                     away_deffTD +
-                     #away_pat_made + away_twoPtConv +
-                     away_extra_pts +
-                     away_fg_made +
-                     away_def_safeties),
-    .after = away_score
-  )
-
-home_score_diff <- which(modScoreData2$home_score != modScoreData2$home_score2)
-away_score_diff <- which(modScoreData2$away_score != modScoreData2$away_score2)
-
-modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
+# ## Select ----
+# modScoreData <- modData2 |>
+#   select(
+#     game_id,
+#     season,
+#     season_type,
+#     week,
+#     location,
+#     location2,
+#     div_game,
+#     result,
+#     spread_line,
+#     total,
+#     total_line,
+#     home_team,
+#     contains("home_SRS"),
+#     contains("home_OSRS"),
+#     contains("home_DSRS"),
+#     home_score,
+#     home_totalTD,
+#     home_offTD,
+#     home_special_teams_tds,
+#     home_fumble_recovery_tds,
+#     home_def_tds,
+#     home_pat_made,
+#     home_pat_att,
+#     home_twoPtConv,
+#     home_twoPtAtt,
+#     home_fg_made,
+#     home_fg_att,
+#     home_def_safeties,
+#     away_team,
+#     contains("away_SRS"),
+#     contains("away_OSRS"),
+#     contains("away_DSRS"),
+#     away_score,
+#     away_totalTD,
+#     away_offTD,
+#     away_special_teams_tds,
+#     away_fumble_recovery_tds,
+#     away_def_tds,
+#     away_pat_made,
+#     away_pat_att,
+#     away_twoPtConv,
+#     away_twoPtAtt,
+#     away_fg_made,
+#     away_fg_att,
+#     away_def_safeties
+#   ) |>
+#   mutate(home_deffTD = home_fumble_recovery_tds + home_def_tds, .after = home_special_teams_tds) |>
+#   mutate(away_deffTD = away_fumble_recovery_tds + away_def_tds, .after = away_special_teams_tds)
+# 
+# modScoreDataLong <- modScoreData |>
+#   clean_homeaway(invert = c("result", "spread_line"))
+# 
+# write_csv(modScoreData |> filter(season >= 2020), 
+#           file = "~/Desktop/wideNFLdata.csv")
+# write_csv(modScoreDataLong |> filter(season >= 2020),
+#           file = "~/Desktop/longNFLdata.csv")
+# 
+# modScoreData2 <- modScoreData |>
+#   mutate(
+#     home_totalTD = 6*home_totalTD,
+#     home_offTD = 6*home_offTD,
+#     home_special_teams_tds = 6*home_special_teams_tds,
+#     home_deffTD = 6*home_deffTD,
+#     home_pat_made = home_pat_made,
+#     home_twoPtConv = 2*home_twoPtConv,
+#     home_extra_pts = home_pat_made + home_twoPtConv,
+#     home_fg_made = 3*home_fg_made,
+#     home_def_safeties = 2*home_def_safeties,
+#     away_totalTD = 6*away_totalTD,
+#     away_offTD = 6*away_offTD,
+#     away_special_teams_tds = 6*away_special_teams_tds,
+#     away_deffTD = 6*away_deffTD,
+#     away_pat_made = away_pat_made,
+#     away_twoPtConv = 2*away_twoPtConv,
+#     away_extra_pts = away_pat_made + away_twoPtConv,
+#     away_fg_made = 3*away_fg_made,
+#     away_def_safeties = 2*away_def_safeties
+#   ) |>
+#   mutate(
+#     home_score2 = (home_offTD + 
+#                      home_special_teams_tds +
+#                      home_deffTD +
+#                      #home_pat_made + home_twoPtConv +
+#                      home_extra_pts +
+#                      home_fg_made +
+#                      home_def_safeties),
+#     .after = home_score
+#   ) |>
+#   mutate(
+#     away_score2 = (away_offTD + 
+#                      away_special_teams_tds +
+#                      away_deffTD +
+#                      #away_pat_made + away_twoPtConv +
+#                      away_extra_pts +
+#                      away_fg_made +
+#                      away_def_safeties),
+#     .after = away_score
+#   )
+# 
+# home_score_diff <- which(modScoreData2$home_score != modScoreData2$home_score2)
+# away_score_diff <- which(modScoreData2$away_score != modScoreData2$away_score2)
+# 
+# modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
 
 ## Predict XGB scores ----
 load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
@@ -833,6 +830,10 @@ save(fit_result,
      file = paste0("~/Desktop/NFL Analysis Data/fit_result",
                    fitResult,
                    ".RData")
+)
+
+save(fit_result, 
+     file = paste0("~/Desktop/NFLAnalysisTest/app/data/fit_result.rda")
 )
 
 # Posteriors ----

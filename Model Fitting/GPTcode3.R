@@ -16,23 +16,28 @@ set.seed(123)
 # 1. Load & Prepare Data ------------------------------
 # Read in the feature-engineered CSV file (ensure "modData.csv" is in your working directory)
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
-nfl_data <- read_csv("~/Desktop/modData.csv")
 
-# Include both regular season and postseason games.
-# Create a postseason indicator: 0 for regular season, 1 for postseason.
-nfl_data <- nfl_data %>% 
-  mutate(postseason = ifelse(season_type == "REG", 0, 1))
+source("./app/R/clean_modData.R")
+nfl_data <- clean_modData(data = modData, season_start = 2007)
+write_csv(nfl_data, file = "~/Desktop/nfl_data.csv")
 
-# Order data by season and week (assumes week is available for both regular and postseason games)
-nfl_data <- nfl_data %>% arrange(season, week)
-
-# Create additional net features if not already available (e.g., net_SRS and net_off_epa)
-if(!"net_SRS" %in% names(nfl_data)){
-  nfl_data <- nfl_data %>% mutate(net_SRS = home_SRS - away_SRS)
-}
-if(!"net_off_epa" %in% names(nfl_data)){
-  nfl_data <- nfl_data %>% mutate(net_off_epa = home_off_epa_cum - away_def_epa_cum)
-}
+# nfl_data <- read_csv("~/Desktop/modData.csv")
+# 
+# # Include both regular season and postseason games.
+# # Create a postseason indicator: 0 for regular season, 1 for postseason.
+# nfl_data <- nfl_data %>% 
+#   mutate(postseason = ifelse(season_type == "REG", 0, 1))
+# 
+# # Order data by season and week (assumes week is available for both regular and postseason games)
+# nfl_data <- nfl_data %>% arrange(season, week)
+# 
+# # Create additional net features if not already available (e.g., net_SRS and net_off_epa)
+# if(!"net_SRS" %in% names(nfl_data)){
+#   nfl_data <- nfl_data %>% mutate(net_SRS = home_SRS - away_SRS)
+# }
+# if(!"net_off_epa" %in% names(nfl_data)){
+#   nfl_data <- nfl_data %>% mutate(net_off_epa = home_off_epa_cum - away_def_epa_cum)
+# }
 
 # Create an overall "time" identifier for ordering (combining season and week)
 nfl_data <- nfl_data %>% mutate(time_id = as.numeric(paste0(season, sprintf("%02d", week))))
@@ -49,7 +54,11 @@ drop_vars <- c("game_id", "season", "season_type", "week", "home_team", "away_te
                "time_id")
 
 # Define game-level variables (which we will exclude from XGBoost and later reintroduce in Bayesian modeling)
-game_level_vars <- c("weekday", "time_of_day", "location", "div_game", "roof", "surface", "temp", "wind")
+game_level_vars <- c(
+  "weekday", "time_of_day", "location", "location2", "div_game", 
+  "home_rest", "away_rest",
+  "roof", "surface", "temp", "wind"
+  )
 
 # Candidate predictors for XGBoost: all numeric variables not in drop_vars and not in game_level_vars.
 all_candidates <- setdiff(names(nfl_data), drop_vars)
@@ -61,33 +70,63 @@ cat("Team-specific candidate predictors for XGBoost:\n")
 print(candidate_xgb_vars)
 
 ## 2A. Preprocessing: ----
-# Remove Near-Zero Variance and Highly Correlated Predictors
-# Remove near-zero variance predictors
-nzv <- nearZeroVar(nfl_data[, candidate_xgb_vars], saveMetrics = TRUE)
-candidate_xgb_vars[nzv$nzv]
-candidate_xgb_vars <- candidate_xgb_vars[!nzv$nzv]
+candidate_data <- nfl_data |> select(candidate_xgb_vars)
 
-cat("After near-zero variance removal:\n")
-print(candidate_xgb_vars)
+# Keep only complete.cases
+candidate_data <- candidate_data |> filter(complete.cases(candidate_data))
+
+### 2A1. Linear Combos ----
+# Identify linear combinations among the predictors
+combo_info <- findLinearCombos(candidate_data)
+if (!is.null(combo_info$remove)) {
+  cat("Removing the following predictors due to linear dependency:\n")
+  print(candidate_xgb_vars[combo_info$remove])
+  
+  # Remove the predictors identified as redundant
+  candidate_xgb_vars_clean <- candidate_xgb_vars[-combo_info$remove]
+} else {
+  cat("No linear dependencies found.\n")
+  candidate_xgb_vars_clean <- candidate_xgb_vars
+}
+
+### 2A2. Near-zero variance ----
+nzv <- nearZeroVar(nfl_data[, candidate_xgb_vars_clean])
+if (length(nzv) > 0) {
+  cat("Removing the following near-zero variance predictors:\n")
+  print(candidate_xgb_vars_clean[nzv])
+  
+  candidate_xgb_vars_clean <- candidate_xgb_vars_clean[-nzv]
+} else {
+  cat("No near-zero variance predictors found.\n")
+}
+
+# Now, candidate_xgb_vars_clean contains the names of the predictors 
+# to be used in your XGBoost modeling.
+cat("Final candidate predictors for XGBoost:\n")
+print(candidate_xgb_vars_clean)
 
 # Remove highly correlated predictors (cutoff = 0.95)
-cor_matrix <- cor(nfl_data[, candidate_xgb_vars], use = "pairwise.complete.obs")
+cor_matrix <- cor(nfl_data[, candidate_xgb_vars_clean], use = "pairwise.complete.obs")
 high_corr <- findCorrelation(cor_matrix, cutoff = 0.95) #0.99
-candidate_xgb_vars[high_corr]
+candidate_xgb_vars_clean[high_corr]
 if(length(high_corr) > 0) {
-  candidate_xgb_vars_corr <- candidate_xgb_vars[-high_corr]
+  candidate_xgb_vars_corr <- candidate_xgb_vars_clean[-high_corr]
 }
 
 preProcCorr <- preProcess(
-  nfl_data |> select(candidate_xgb_vars),
+  nfl_data |> select(candidate_xgb_vars_clean),
   method = c("corr")
 )
 preProcCorr_vars <- preProcCorr$method$remove
-setdiff(preProcCorr_vars, candidate_xgb_vars[high_corr])
+preProcCorr_vars
+setdiff(preProcCorr_vars, candidate_xgb_vars_clean[high_corr])
 
 candidate_xgb_vars <- candidate_xgb_vars_corr
 cat("After correlation filtering:\n")
 print(candidate_xgb_vars)
+
+## 2B. Filter Data ----
+nfl_data_model <- nfl_data |> select(candidate_xgb_vars_clean)
 
 # 3. Define RFE Function for XGBoost Predictors ------------------------------
 # We'll use recursive feature elimination (RFE) with a random forest wrapper

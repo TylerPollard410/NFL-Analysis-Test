@@ -173,7 +173,8 @@ shinyServer(function(input, output, session) {
   #### Ranks ----
   # Betting Tab  ############################################
   ## Games ==================================================
-  gamesSeason <- reactive({
+  ### Lines ----
+  bettingGameLineSeason <- reactive({
     as.numeric(input$standingsSeason)
   })
   standingsStat <- reactive({

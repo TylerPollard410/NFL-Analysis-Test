@@ -20,7 +20,6 @@ library(pracma)
 library(timetk)
 
 ## nflverse
-library(espnscrapeR)
 library(nflverse)
 library(tidyverse)
 
@@ -149,7 +148,7 @@ source("./app/data-raw/modData.R")
 save(modData, file = "./app/data/modData.rda")
 toc()
 
-## Disconnect -----
+# Disconnect -----
 dbDisconnect(con)
 rm(list = ls())
 

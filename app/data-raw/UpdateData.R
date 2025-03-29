@@ -26,19 +26,6 @@ library(tidyverse)
 # Set wd ----
 setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
 
-# Amazon RDS connection ----
-plan("multisession")
-
-con <- dbConnect(RPostgres::Postgres(),
-                 dbname = "NFLdata",
-                 user = "postgre",
-                 password = "NFLpass1234",
-                 host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
-
-## List Tables ----
-dbListTables(con)
-#dbRemoveTable(conn = con, name = "seasonWeekStandings")
-
 # Universal Variables ----
 allSeasons <- 2006:most_recent_season()
 teamsData <- load_teams(current = FALSE)
@@ -51,22 +38,15 @@ gameIDs <- load_schedules(seasons = allSeasons) |>
 ## gameData -------------------------------
 source("./app/data-raw/gameData.R")
 
-### Initial 
-#dbWriteTable(con, name = "gameData", value = gameData, overwrite = TRUE)
-
 ## gameDataLong -------------------------------
 source("./app/data-raw/gameDataLong.R")
 
-#dbWriteTable(con, name = "gameDataLong", value = gameDataLong, overwrite = TRUE)
-
 ## pbpData ------------------------------
 ### Initial
-#source("./app/data-raw/pbpData.R")
-
-#dbWriteTable(con, name = "pbpData", value = pbpData)
+source("./app/data-raw/pbpData.R")
 
 ### Update
-gameIDsCurrent <- tbl(con, "pbpData") |>
+gameIDsCurrent <- pbpData |>
   filter(season == 2024) |>
   distinct(game_id) |>
   pull(game_id)
@@ -110,14 +90,6 @@ tic()
 source("./app/data-raw/playerOffenseData.R")
 save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
 toc()
-# fst::write_fst(playerOffenseData, 
-#                path = "./app/data/playerOffenseData.fst",
-#                compress = 100)
-
-#dbWriteTable(con, name = "playerOffenseData", value = playerOffenseData, overwrite = TRUE)
-
-#dbListTables(con)
-#rm(playerOffenseData)
 
 ## seasonStandings ------------------------------
 ### Initial
@@ -125,10 +97,6 @@ tic()
 source("./app/data-raw/seasonStandings.R")
 save(seasonStandings, file = "./app/data/seasonStandings.rda")
 toc()
-#dbWriteTable(con, name = "seasonStandings", value = seasonStandings, overwrite = TRUE)
-
-#dbListTables(con)
-#rm(seasonStandings)
 
 ## seasonWeekStandings ------------------------------
 ### Initial
@@ -137,11 +105,6 @@ source("./app/data-raw/seasonWeekStandings.R")
 save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 toc()
 
-#dbWriteTable(con, name = "seasonWeekStandings", value = seasonWeekStandings, overwrite = TRUE)
-
-#dbListTables(con)
-#rm(seasonWeekStandings)
-
 ## modData ----
 # About 8 minutes
 tic()
@@ -149,9 +112,5 @@ source("./app/data-raw/modData.R")
 save(modData, file = "./app/data/modData.rda")
 toc()
 
-## Disconnect -----
-dbDisconnect(con)
-dbListTables(con)
-rm(list = ls())
 
 

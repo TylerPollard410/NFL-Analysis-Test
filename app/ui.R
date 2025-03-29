@@ -5,6 +5,7 @@
 # Load Libraries ----
 library(shiny)
 library(shinydashboard)
+library(bslib)
 library(bs4Dash)
 library(shinyWidgets)
 library(shinycssloaders)
