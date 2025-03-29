@@ -1,0 +1,8 @@
+---
+output: html_document
+---
+
+This dashboard provides interactive access to historical and current data on the **National Football League (NFL)** since 2006 sourced from the 
+<a href='https://nflverse.nflverse.com/' target='_blank' style='color: #FFD700; font-weight: bold;'>nflverse</a> and its packages. Analyze team and player performance, visualize trends, and explore predictive modeling — all in one place.
+<!-- [`nflverse`](https://nflverse.nflverse.com/) and it's packages. -->
+<!-- This shiny dashboard explores data on **National Football League (NFL)** games from 2006 to 2020 and fits three statistical models to predict the total score of games. The models can then be used, along with user input of predictor values, to predict the total score of a particular game. Based on the predicted total points, the user will know if the expected point total is going to be over or under the total point line established for that game. The [data](http://www.habitatring.com/games.csv) provides information about each game like identifcation parameters, game conditions, game results, and pregame lines (expected results of the game scores) with corresponding odds. For more information about the dataset and a data dictionary of the column variables visit [NFL Game data information](https://github.com/nflverse/nfldata/blob/master/DATASETS.md#games). -->

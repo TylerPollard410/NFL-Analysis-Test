@@ -2,24 +2,109 @@
 output: html_document
 ---
 
-## Purpose
-This shiny dashboard explores data on **National Football League (NFL)** games from 2006 to 2020 and fits three statistical models to predict the total score of games. The models can then be used, along with user input of predictor values, to predict the total score of a particular game. Based on the predicted total points, the user will know if the expected point total is going to be over or under the total point line established for that game. The [data](http://www.habitatring.com/games.csv) provides information about each game like identifcation parameters, game conditions, game results, and pregame lines (expected results of the game scores) with corresponding odds. For more information about the dataset and a data dictionary of the column variables visit [NFL Game data information](https://github.com/nflverse/nfldata/blob/master/DATASETS.md#games).
+<!-- # **Purpose** -->
 
-## Data Tab
-The data tab allows the user to explore the dataset with options to filter the data by columns or rows. The column filter will filter the dataset by the selected variables. The rows of the dataset can be filtered by the season the game was played, the game type, and the teams that played in the game. The filters may be used together to really examine the data. The dataset can be saved as a csv file by clicking the "Save Data" button above the data table.
+<!-- <div style="margin-top: 25px;"></div> -->
 
-## Data Exploration Tab
-The data exploration tab allows the user to conduct an exploratory data analysis (EDA) of the data. The tab is broken into two sections, one for contingency and summary tables, the other for creating visuals. The contingency table displays the number of games for the selected input variable. The user may create a two dimensional contigency table by clicking the "Add variable" switch and selecting their desired variable. A summary table that displays the five number summary along with the mean and standard deviation can be generated for some of the continuous variables in the dataset. These summaries of the different variables can be compared by selecting multiple variables in the dropdown menu.
+<!-- This shiny dashboard explores data on the **National Football League (NFL)** since 2006 sourced from the [`nflverse`](https://nflverse.nflverse.com/) and it's packages. -->
+<!-- This shiny dashboard explores data on **National Football League (NFL)** games from 2006 to 2020 and fits three statistical models to predict the total score of games. The models can then be used, along with user input of predictor values, to predict the total score of a particular game. Based on the predicted total points, the user will know if the expected point total is going to be over or under the total point line established for that game. The [data](http://www.habitatring.com/games.csv) provides information about each game like identifcation parameters, game conditions, game results, and pregame lines (expected results of the game scores) with corresponding odds. For more information about the dataset and a data dictionary of the column variables visit [NFL Game data information](https://github.com/nflverse/nfldata/blob/master/DATASETS.md#games). -->
 
-The visuals section of this tab allows the user to create plots based on the selections in the "Visual Inputs" box. One of four possible plots can be generated including a box chart, histogram, box plot, and scatter plot. For each of the plot types there are corresponding data filters that can be applied which will automatically update the plot. The user can hover over the plot to see data values along with different controls in the upper right of the plot to closer examine the data. Each of these plots can be saved as a png file by clicking the camera button.
+<!-- <hr style="border-top: 3px double #bbb; margin-top: 40px; margin-bottom: 20px;"> -->
 
-## Modeling Info Tab
-The model info tab explains the three supervised statistical models (Linear Regression, Regression Tree, Random Forest) used in this app. A list of benefits and drawbacks for using each model is given for user insight.
+# **Data**
 
-## Model Fitting Tab
-The model fitting tab allows the user to fit the three models, explained in the "Model Info" tab, on a training subset of the dataset based on the inputs in the "Model Settings" box. The response of each model is the total points of a game. The user selects the proportion of the dataset to be used for the training data (the remaining proportion is used for the test data), the predictor variables for the model, and the number of folds for the cross validation to select the final model for each of the models. Once the user has made all of their input selections, the "Fit Models" button is used to create all three models. This will take a couple minutes. Once the models are fit, output tables are generated that compare fit statistics of the model on both the training and test data sets. Summaries are also generated to give the user some insight on each model.
+<div style="margin-top: 25px;"></div>
 
-## Prediction Tab
-The prediction tab allows the user to select one of the three models fit from the "Model Fitting" tab along with inputs for each of the predictors used in the model to predict the total points for that game. The possible predictor inputs are automatically updated each time the "Fit Model" button is clicked from the "Model Fitting" tab.
+## <i class="fas fa-list-ol"></i> Standings
+✅  *FULLY ACTIVE and maintained*
 
+Explore detailed NFL standings for each conference and division, including key team performance metrics like points scored, points allowed, margin of victory (MOV), strength of schedule (SOS), and Simple Rating System (SRS). Playoff standings highlight seeding and playoff qualification probabilities, providing a comprehensive snapshot of the current NFL season landscape.
 
+---
+
+## <i class="fas fa-football-ball"></i> Scores
+📝  *PLANNED - Coming soon!*
+
+---
+
+## <i class="fas fa-users"></i> Team Statistics
+
+<div style="margin-left: 20px;">
+
+### Offense
+📝  *PLANNED - Coming soon!*
+<!-- #### Overview  -->
+<!-- #### Passing -->
+<!-- #### Rushing -->
+<!-- #### Conversions -->
+<!-- #### Drive Averages -->
+
+### Defense
+📝  *PLANNED - Coming soon!*
+<!-- #### Overview -->
+<!-- #### Passing -->
+<!-- #### Rushing -->
+<!-- #### Conversions -->
+<!-- #### Drive Averages -->
+<!-- #### Against Position -->
+
+### Special Teams
+📝  *PLANNED - Coming soon!*
+<!-- #### Kick/Punt Returns -->
+<!-- #### Kicking -->
+<!-- #### Punting -->
+
+### Scoring
+📝  *PLANNED - Coming soon!*
+<!-- #### Scoring For -->
+<!-- #### Scoring Against -->
+
+</div>
+
+---
+
+## <i class="fas fa-user"></i> Player Statistics
+
+<div style="margin-left: 20px;">
+
+### Offense
+🛠  *FUNCTIONAL - actively evolving.*
+
+- **Passing** ✅: Explore detailed passing performance data including completion percentages, yards per game, touchdowns, interceptions, sacks, and QB ratings.
+- **Rushing** 📝: *Coming soon.*
+- **Receiving** 📝: *Coming soon.*
+- **Overview** 📝: *Coming soon.*
+
+### Defense
+📝  *PLANNED - Coming soon!*
+
+### Special Teams
+📝  *PLANNED - Coming soon!*
+
+### Scoring
+📝  *PLANNED - Coming soon!*
+
+### Fantasy
+📝  *PLANNED - Coming soon!*
+
+</div>
+<hr style="border-top: 3px double #bbb; margin-top: 40px; margin-bottom: 20px;">
+
+# **Betting**
+
+<div style="margin-top: 25px;"></div>
+
+## <i class="fas fa-dollar-sign"></i> Games
+🚧  *UNDER CONSTRUCTION — features and content coming soon!*
+
+---
+
+## <i class="fas fa-user-clock"></i> Player Props
+📝  *PLANNED - Coming soon!*
+
+---
+
+## <i class="fas fa-chart-line"></i> Plot
+🛠  *FUNCTIONAL - actively evolving.*
+
+Interactively explore relationships between team or game-level variables through customizable plots. Adjust seasons, data filters, plot dimensions, and statistical methods like smoothing lines to uncover insights from NFL data. This flexible visualization tool helps you quickly identify trends, patterns, and anomalies across seasons, teams, and game results.

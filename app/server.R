@@ -59,13 +59,13 @@ shinyServer(function(input, output, session) {
   })
   
   # Home Tab  ###############################################
-  output$image <- renderImage({
-    filename <- normalizePath(file.path("./www/nfl_logo.jpeg"))
-    list(src = filename,
-         width = "60%",
-         height = "400px",
-         align = "center")
-  }, deleteFile = FALSE)
+  # output$image <- renderImage({
+  #   filename <- normalizePath(file.path("./www/nfl_logo.jpeg"))
+  #   list(src = filename,
+  #        width = "60%",
+  #        height = "400px",
+  #        align = "center")
+  # }, deleteFile = FALSE)
   
   # Data Tab ################################################
   ## Standings Tab ##########################################

@@ -161,8 +161,8 @@ shinyUI(
                     id = "menu_items",
                     ### Data Tab ----
                     h4("Data", style = "color: white"),
-                    menuItem(text = "Standings", tabName = "standingsTab", icon = icon("table")),
-                    menuItem(text = "Scores", tabName = "scoresTab", icon = icon("table")),
+                    menuItem(text = "Standings", tabName = "standingsTab", icon = icon("list-ol")),
+                    menuItem(text = "Scores", tabName = "scoresTab", icon = icon("football-ball")),
                     menuItem(text = "Team Statistics", icon = icon("users"),
                              menuSubItem(text = "Offense", tabName = "teamOffenseTab"),
                              menuSubItem(text = "Defense", tabName = "teamDefenseTab"),
@@ -177,8 +177,8 @@ shinyUI(
                              menuSubItem(text = "Fantasy", tabName = "playerFantasyTab")
                     ), 
                     h4("Betting", style = "color: white"),
-                    menuItem(text = "Games", tabName = "bettingGamesTab", icon = icon("user")),
-                    menuItem(text = "Player Props", tabName = "bettingPlayerPropsTab", icon = icon("user")),
+                    menuItem(text = "Games", tabName = "bettingGamesTab", icon = icon("dollar-sign")),
+                    menuItem(text = "Player Props", tabName = "bettingPlayerPropsTab", icon = icon("user-clock")),
                     menuItem(text = "Plot", tabName = "bettingPlotTab", icon = icon("chart-line"))
                   ) # close sidebar menu
                 ), # close dashboard sidebar
@@ -192,12 +192,34 @@ shinyUI(
                     # Home Tab  ###############################################
                     tabItem(
                       tabName = "homeTab",
-                      h1("Welcome to the NFL Game Dashboard", align  = "center"),
-                      br(),
-                      box(width = 12, closable = FALSE, collapsible = FALSE, headerBorder = FALSE,
-                          fluidRow(column(width = 12, align = "center", 
-                                          imageOutput("image"))
-                          ),
+                      
+                      # Welcome Jumbotron ----
+                      bs4Jumbotron(
+                        title = h1("Welcome to the NFL Analysis Dashboard"),
+                        lead = includeMarkdown("./docs/Purpose.Rmd"),
+                        #lead = "This dashboard explores historical and current NFL data using powerful visualizations and modeling tools.",
+                        status = "primary",
+                        btnName = NULL,
+                        btnHref = NULL,
+                        div(
+                          style = "display: flex; justify-content: center; align-items: center; margin-top: 20px;",
+                          tags$img(
+                            src = "nfl_logo.jpeg",
+                            style = "max-width: 90%; height: auto; max-height: 400px; border-radius: 8px; box-shadow: 0px 4px 12px rgba(0,0,0,0.3);"
+                          )
+                        )
+                        #img = "www/nfl_logo.jpeg",
+                        #height = "400px",
+                        #includeMarkdown("./docs/Purpose.Rmd")
+                      ),
+                      #h1("Welcome to the NFL Game Dashboard", align  = "center"),
+                      #br(),
+                      box(width = 12, closable = FALSE, collapsible = FALSE, #headerBorder = FALSE,
+                          title = h2("App Overview", align = "center"),
+                          # fluidRow(column(width = 12, align = "center",
+                          #                 imageOutput("image"))
+                          # ),
+                          br(),
                           withMathJax(),
                           includeMarkdown("./docs/Description.Rmd")
                       ) # end box
@@ -348,24 +370,25 @@ shinyUI(
                       tabBox(
                         type = "pills",
                         width = 12,
+                        #### Overview ----
                         tabPanel(
                           title = "Overview"
                         ),
+                        #### Passing ----
                         tabPanel(
                           title = "Passing",
                           playerOffensePassingTableOutput("playerOffensePassingTable")
                         ),
+                        #### Rushing ----
                         tabPanel(
                           title = "Rushing"
                         ),
+                        #### Receiving ----
                         tabPanel(
                           title = "Receiving"
                         )
                       )
                     ), # end Player Offense tabItem
-                    #### Rushing ----
-                    #### Receiving ----
-                    #### Conversions ----
                     ### Player Defense ========================================
                     #### Overview ----
                     ### Player Special Teams ==================================
@@ -429,8 +452,6 @@ shinyUI(
                                modDataPlotOutput("modPlot"))
                       )
                     )
-                    
-                    # Prediction Tab  #########################################
                   ) # end tab Items
                 ) # end dashboard body
   ) # end dashboard Page
