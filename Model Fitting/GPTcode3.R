@@ -193,6 +193,7 @@ save(home_model, file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
 save(home_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model.rda")
 home_model
 varImp_home <- varImp(home_model)
+varImp_home
 best_home_vars <- varImp_home$importance |>
   filter(Overall > 0) |>
   row.names()
