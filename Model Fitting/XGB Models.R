@@ -131,6 +131,7 @@ print(candidate_xgb_vars)
 
 # 3. Define CV Indicies for XGBoost ------------------------------
 ## 3A. Expanding Window ----
+### 3A1. Per Week ----
 # 1) Ensure your data is sorted chronologically by season, week, and that you have season_type = "REG" or "POST"
 nfl_data_model <- nfl_data |>
   select(time_id, everything()) |>
@@ -245,7 +246,52 @@ cv_control_expanding <- trainControl(
 #   tuneLength = 5
 # )
 
+### 3A2. Per Season ----
+# Ensure data is sorted by season (and week if needed)
+nfl_data_model <- nfl_data_model %>%
+  arrange(season, week)
+
+# Define the seasons for cross-validation. We'll test on seasons 2010 to 2024.
+all_seasons <- sort(unique(nfl_data_model$season))
+cv_seasons <- all_seasons[all_seasons >= 2010]  # 2010 through 2024
+
+# Initialize lists to hold training and test indices for the expanding window CV
+train_indices_exp_season <- list()
+test_indices_exp_season  <- list()
+
+for (s in cv_seasons) {
+  # Training: all games from seasons earlier than s
+  train_idx <- which(nfl_data_model$season < s)
+  # Test: all games from season s
+  test_idx <- which(nfl_data_model$season == s)
+  
+  # Only add the fold if training data exists
+  if(length(train_idx) > 0 && length(test_idx) > 0) {
+    train_indices_exp_season[[as.character(s)]] <- train_idx
+    test_indices_exp_season[[as.character(s)]] <- test_idx
+    cat(sprintf("Expanding CV: Season %d -> Train: %d, Test: %d\n", 
+                s, length(train_idx), length(test_idx)))
+  }
+}
+
+time_slices_expanding_season <- list(train = train_indices_exp_season, 
+                                     test = test_indices_exp_season)
+
+cv_control_expanding_season <- trainControl(
+  method = "cv",
+  index = time_slices_expanding_season$train,
+  indexOut = time_slices_expanding_season$test,
+  summaryFunction = defaultSummary,
+  savePredictions = "final",
+  verboseIter = TRUE
+)
+
+# Inspect the number of folds:
+cat("Total Expanding CV folds:", length(time_slices_expanding_season$train), "\n")
+
+
 ## 3B. Rolling Window ----
+### 3B1. Per Week ----
 # Ensure data is sorted chronologically
 nfl_data_model <- nfl_data_model %>%
   arrange(season, week, season_type)
@@ -354,6 +400,55 @@ cv_control_rolling <- trainControl(
 #   tuneLength = 5
 # )
 
+### 3B2. Per Season ----
+# Ensure data is sorted chronologically
+nfl_data_model <- nfl_data_model %>%
+  arrange(season, week, season_type)
+
+# Define rolling window parameters:
+# We'll use only the three seasons immediately preceding the test season for training.
+rolling_window <- 3
+#initial_train_cutoff <- 2009   # we start testing on seasons after 2010
+
+# Initialize lists for rolling window CV indices
+train_indices_roll_season <- list()
+test_indices_roll_season  <- list()
+
+for (s in cv_seasons) {
+  # Define the earliest season allowed for training for test season s.
+  # For example, if s is 2012 and rolling_window is 3, then we use seasons 2009, 2010, and 2011.
+  min_season_allowed <- s - rolling_window
+  
+  # Training: only include games where season is between min_season_allowed and s-1.
+  train_idx <- which(nfl_data_model$season >= min_season_allowed & 
+                       nfl_data_model$season < s)
+  
+  # Test: all games from season s
+  test_idx <- which(nfl_data_model$season == s)
+  
+  if(length(train_idx) > 0 && length(test_idx) > 0) {
+    train_indices_roll_season[[as.character(s)]] <- train_idx
+    test_indices_roll_season[[as.character(s)]] <- test_idx
+    cat(sprintf("Rolling CV: Season %d -> Train (seasons %d to %d): %d, Test: %d\n", 
+                s, min_season_allowed, s - 1, length(train_idx), length(test_idx)))
+  }
+}
+
+time_slices_rolling_season <- list(train = train_indices_roll_season, 
+                                   test = test_indices_roll_season)
+
+cv_control_rolling_season <- trainControl(
+  method = "cv",
+  index = time_slices_rolling_season$train,
+  indexOut = time_slices_rolling_season$test,
+  summaryFunction = defaultSummary,
+  savePredictions = "final",
+  verboseIter = TRUE
+)
+
+cat("Total Rolling CV folds:", length(time_slices_rolling_season$train), "\n")
+
+
 ## 3C. Split Data  ------------------------------
 # train_data <- nfl_data |> filter(season < 2024)
 # test_data <- nfl_data |> filter(season == 2024)
@@ -423,7 +518,6 @@ cv_control_rolling <- trainControl(
 # )
 
 cl <- makeCluster(detectCores() - 1)
-registerDoParallel(cl)
 
 ## A. Expanding Window ----
 ### 1. Home ----
@@ -431,128 +525,139 @@ registerDoParallel(cl)
 #home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
 #home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+
 system.time(
-  home_model_expand <- train(
+  home_model_expand_season <- train(
     #home_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$home_score,
     method = "xgbTree",
-    trControl = cv_control_expanding,
+    trControl = cv_control_expanding_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(home_model_expand, file = "~/Desktop/NFL Analysis Data/xgb_home_model_expand.RData")
-save(home_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_expand.rda")
-home_model_expand
-varImp_home_expand <- varImp(home_model_expand)
-varImp_home_expand
-best_home_vars_expand <- varImp_home_expand$importance |>
+save(home_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_home_model_expand_season.RData")
+save(home_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_expand_season.rda")
+home_model_expand_season
+varImp_home_expand_season <- varImp(home_model_expand_season)
+varImp_home_expand_season
+best_home_vars_expand_season <- varImp_home_expand_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_home_score <- predict(home_model_expand, newdata = test_data)
+plot(home_model_expand_season)
+
+
+pred_home_score_expand <- predict(home_model_expand_season, newdata = test_data)
 
 ### 2. Away ----
 # Away score model using selected team-specific features
 #away_formula <- as.formula(paste("away_score ~", paste(best_vars, collapse = " + ")))
 #away_formula <- as.formula(paste("away_score ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  away_model_expand <- train(
+  away_model_expand_season <- train(
     #away_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$away_score,
     method = "xgbTree",
-    trControl = cv_control_expanding,
+    trControl = cv_control_expanding_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(away_model_expand, file = "~/Desktop/NFL Analysis Data/xgb_away_model_expand.RData")
-save(away_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_expand.rda")
-away_model_expand
-varImp_away_expand <- varImp(away_model_expand)
-varImp_away_expand
-best_away_vars_expand <- varImp_away_expand$importance |>
+save(away_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_away_model_expand_season.RData")
+save(away_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_expand_season.rda")
+away_model_expand_season
+varImp_away_expand_season <- varImp(away_model_expand_season)
+varImp_away_expand_season
+best_away_vars_expand_season <- varImp_away_expand_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_away_score <- predict(away_model_expand, newdata = test_data)
+pred_away_score_expand <- predict(away_model_expand_season, newdata = test_data)
 
 ### 3. Result ----
 # Spread score model using selected team-specific features
 #result_formula <- as.formula(paste("result ~", paste(best_vars, collapse = " + ")))
 #result_formula <- as.formula(paste("result ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  result_model_expand <- train(
+  result_model_expand_season <- train(
     #result_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$result,
     method = "xgbTree",
-    trControl = cv_control_expanding,
+    trControl = cv_control_expanding_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(result_model_expand, file = "~/Desktop/NFL Analysis Data/xgb_result_model_expand.RData")
-save(result_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_expand.rda")
-result_model_expand
-varImp_result_expand <- varImp(result_model_expand)
-varImp_result_expand
-best_result_vars_expand <- varImp_result_expand$importance |>
+save(result_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_expand_season.RData")
+save(result_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_expand_season.rda")
+result_model_expand_season
+varImp_result_expand_season <- varImp(result_model_expand_season)
+varImp_result_expand_season
+best_result_vars_expand_season <- varImp_result_expand_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_result <- predict(result_model_expand, newdata = test_data)
+pred_result_expand <- predict(result_model_expand_season, newdata = test_data)
 
 ### 4. Total ----
 # Spread score model using selected team-specific features
 #total_formula <- as.formula(paste("total ~", paste(best_vars, collapse = " + ")))
 #total_formula <- as.formula(paste("total ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  total_model_expand <- train(
+  total_model_expand_season <- train(
     #total_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$total,
     method = "xgbTree",
-    trControl = cv_control_expanding,
+    trControl = cv_control_expanding_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(total_model_expand, file = "~/Desktop/NFL Analysis Data/xgb_total_model_expand.RData")
-save(total_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_expand.rda")
-total_model_expand
-varImp_total_expand <- varImp(total_model_expand)
-varImp_total_expand
-best_total_vars_expand <- varImp_total_expand$importance |>
+save(total_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_total_model_expand_season.RData")
+save(total_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_expand_season.rda")
+total_model_expand_season
+varImp_total_expand_season <- varImp(total_model_expand_season)
+varImp_total_expand_season
+best_total_vars_expand_season <- varImp_total_expand_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_total <- predict(total_model_expand, newdata = test_data)
+pred_total_expand <- predict(total_model_expand_season, newdata = test_data)
 
 ## B. Rolling Window ----
 ### 1. Home ----
@@ -560,128 +665,136 @@ pred_total <- predict(total_model_expand, newdata = test_data)
 #home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
 #home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  home_model_rolling <- train(
+  home_model_roll_season <- train(
     #home_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$home_score,
     method = "xgbTree",
-    trControl = cv_control_rolling,
+    trControl = cv_control_rolling_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(home_model_rolling, file = "~/Desktop/NFL Analysis Data/xgb_home_model_rolling.RData")
-save(home_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_rolling.rda")
-home_model_rolling
-varImp_home_rolling <- varImp(home_model_rolling)
-varImp_home_rolling
-best_home_vars_rolling <- varImp_home_rolling$importance |>
+save(home_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_home_model_roll_season.RData")
+save(home_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_roll_season.rda")
+home_model_roll_season
+varImp_home_roll_season <- varImp(home_model_roll_season)
+varImp_home_roll_season
+best_home_vars_roll_season <- varImp_home_roll_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_home_score <- predict(home_model_rolling, newdata = test_data)
+pred_home_score_roll <- predict(home_model_roll_season, newdata = test_data)
 
 ### 2. Away ----
 # Away score model using selected team-specific features
 #away_formula <- as.formula(paste("away_score ~", paste(best_vars, collapse = " + ")))
 #away_formula <- as.formula(paste("away_score ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  away_model_rolling <- train(
+  away_model_roll_season <- train(
     #away_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$away_score,
     method = "xgbTree",
-    trControl = cv_control_rolling,
+    trControl = cv_control_rolling_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(away_model_rolling, file = "~/Desktop/NFL Analysis Data/xgb_away_model_rolling.RData")
-save(away_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_rolling.rda")
-away_model_rolling
-varImp_away_rolling <- varImp(away_model_rolling)
-varImp_away_rolling
-best_away_vars_rolling <- varImp_away_rolling$importance |>
+save(away_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_away_model_roll_season.RData")
+save(away_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_roll_season.rda")
+away_model_roll_season
+varImp_away_roll_season <- varImp(away_model_roll_season)
+varImp_away_roll_season
+best_away_vars_roll_season <- varImp_away_roll_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_away_score <- predict(away_model_rolling, newdata = test_data)
+pred_away_score_roll <- predict(away_model_roll_season, newdata = test_data)
 
 ### 3. Result ----
 # Spread score model using selected team-specific features
 #result_formula <- as.formula(paste("result ~", paste(best_vars, collapse = " + ")))
 #result_formula <- as.formula(paste("result ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  result_model_rolling <- train(
+  result_model_roll_season <- train(
     #result_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$result,
     method = "xgbTree",
-    trControl = cv_control_rolling,
+    trControl = cv_control_rolling_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(result_model_rolling, file = "~/Desktop/NFL Analysis Data/xgb_result_model_rolling.RData")
-save(result_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_rolling.rda")
-result_model_rolling
-varImp_result_rolling <- varImp(result_model_rolling)
-varImp_result_rolling
-best_result_vars_rolling <- varImp_result_rolling$importance |>
+save(result_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_roll_season.RData")
+save(result_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_roll_season.rda")
+result_model_roll_season
+varImp_result_roll_season <- varImp(result_model_roll_season)
+varImp_result_roll_season
+best_result_vars_roll_season <- varImp_result_roll_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_result <- predict(result_model_rolling, newdata = test_data)
+pred_result_roll <- predict(result_model_roll_season, newdata = test_data)
 
 ### 4. Total ----
 # Spread score model using selected team-specific features
 #total_formula <- as.formula(paste("total ~", paste(best_vars, collapse = " + ")))
 #total_formula <- as.formula(paste("total ~", paste(candidate_xgb_vars, collapse = " + ")))
 
+#registerDoParallel(cl)
+set.seed(123)
 system.time(
-  total_model_rolling <- train(
+  total_model_roll_season <- train(
     #total_formula, 
     #data = train_data,
     x = nfl_data_model[, candidate_xgb_vars_clean],
     y = nfl_data_model$total,
     method = "xgbTree",
-    trControl = cv_control_rolling,
+    trControl = cv_control_rolling_season,
     tuneLength = 5
     #tuneGrid = xgb_grid
   )
 )
 
 # Once all models are trained, stop the cluster:
-stopCluster(cl)
+#stopCluster(cl)
 
-save(total_model_rolling, file = "~/Desktop/NFL Analysis Data/xgb_total_model_rolling.RData")
-save(total_model, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_rolling.rda")
-total_model_rolling
-varImp_total_rolling <- varImp(total_model_rolling)
-varImp_total_rolling
-best_total_vars_rolling <- varImp_total_rolling$importance |>
+save(total_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_total_model_roll_season.RData")
+save(total_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_roll_season.rda")
+total_model_roll_season
+varImp_total_roll_season <- varImp(total_model_roll_season)
+varImp_total_roll_season
+best_total_vars_roll_season <- varImp_total_roll_season$importance |>
   filter(Overall > 0) |>
   row.names()
 
-pred_total <- predict(total_model_rolling, newdata = test_data)
+pred_total_roll <- predict(total_model_roll_season, newdata = test_data)
 
 # 4C. Generate Score Predictions on Test Data
 test_data <- test_data %>%
