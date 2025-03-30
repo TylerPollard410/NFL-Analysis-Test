@@ -174,35 +174,60 @@ shinyServer(function(input, output, session) {
   # Betting Tab  ############################################
   ## Games ==================================================
   ### Lines ----
-  bettingGameLineSeason <- reactive({
-    as.numeric(input$standingsSeason)
+  #### Inputs ----
+  ##### Season ----
+  # Betting Tab  ############################################
+  ## Games ==================================================
+  
+  ### Lines ----
+  # Betting Season and Week reactive values
+  bettingSeasonInput <- reactive({ input$bettingSeason })
+  bettingWeekInput <- reactive({ input$bettingWeek })
+  
+  # Update Week choices when Season changes
+  observe({
+    req(bettingSeasonInput())
+    
+    current_season <- get_current_season()
+    current_week <- get_current_week()
+    
+    if (bettingSeasonInput() == current_season) {
+      updateSelectInput(session, "bettingWeek",
+                        choices = 1:current_week,
+                        selected = current_week)
+    } else {
+      # Allow full season for past years
+      max_week <- max(gameData$week[gameData$season == bettingSeasonInput()], na.rm = TRUE)
+      updateSelectInput(session, "bettingWeek",
+                        choices = 1:max_week,
+                        selected = max_week)
+    }
+  }) |> bindEvent(input$bettingSeason)
+  
+  # Filter game data based on selected season & week
+  filteredFutureGames <- reactive({
+    req(bettingSeasonInput(), bettingWeekInput())
+    futureGames <- gameData |>
+      filter(season == bettingSeasonInput(), week == bettingWeekInput(), !is.na(spread_line))
+    futureGameIDs <- futureGames$game_id
+    list(
+      ids = futureGameIDs,
+      data = futureGames
+    )
   })
-  standingsStat <- reactive({
-    input$standingsStat
-  })
   
-  futureGameIDs <- gameData |>
-    filter(!is.na(spread_line) & is.na(result)) |>
-    pull(game_id)
+  # Launch betting lines module
+  observe({
+    games <- filteredFutureGames()
+    bettingGamesLinesServer("bettingGamesLines",
+                            futureGameIDs = games$ids,
+                            futureGameData = games$data,
+                            teamsData = teamsData,
+                            gameDataLong = gameDataLong)
+  }) |> bindEvent(filteredFutureGames())
   
-  futureGameData <- gameData |>
-    filter(game_id %in% futureGameIDs)
   
-  futureGameDataLong <- gameDataLong |>
-    filter(game_id %in% futureGameIDs)
   
-  futureGameDates <- unique(futureGameData |> select(week, gameday, weekday))
-  
-  # lapply(futureGameIDs, function(x){
-  #   bettingGamesLinesTableServer(x, teamsData, gameDataLong, gameID = x)
-  # })
-  
-  bettingGamesLinesServer("bettingGamesLines",
-                          futureGameIDs, 
-                          futureGameData,
-                          teamsData,
-                          gameDataLong)
-  #outputOptions(output, "bettingGamesLines-bettingGamesLinesUI", suspendWhenHidden = FALSE)
   
   
   ## Player Props ----

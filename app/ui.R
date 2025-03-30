@@ -412,9 +412,33 @@ shinyUI(
                           br(),
                           h3("Betting Game Lines"),
                           fluidRow(
-                            align = "center",
-                            withSpinner(bettingGamesLinesUI("bettingGamesLines"),
-                                        type = 8)
+                            column(2,
+                                   selectInput(
+                                     inputId = "bettingSeason",
+                                     label = "Season",
+                                     choices = 2006:get_current_season(),
+                                     selected = get_current_season()
+                                   )
+                            ),
+                            column(2,
+                                   selectInput(
+                                     inputId = "bettingWeek",
+                                     label = "Week",
+                                     choices = 1:get_current_week(),
+                                     selected = get_current_week()
+                                   )
+                            )
+                          ),
+                          br(),
+                          fluidRow(
+                            column(
+                              width = 12,
+                              withSpinner(
+                                bettingGamesLinesUI("bettingGamesLines"),
+                                type = 8
+                              ),
+                              align = "center"
+                            )
                           )
                         ), # end Lines tabPanel
                         
@@ -423,8 +447,25 @@ shinyUI(
                           title = "Predictions",
                           br(),
                           h3("Betting Predictions"),
+                          br(),
+                          #### Inputs ----
                           fluidRow(
-                          )
+                            ##### Season ----
+                            column(
+                              width = 1,
+                              virtualSelectInput(
+                                inputId = "bettingGamesPredSeason",
+                                label = "Select season",
+                                choices = seq(2007, get_current_season()),
+                                selected = get_current_season()
+                              )
+                            ),
+                            ##### Week ----
+                            column(
+                              width = 1,
+                              uiOutput(outputId = "bettingGamesPredWeekUI")
+                            )
+                          ), # end fluidRow
                         ) # end Prediction tabPanel
                       ) # end tabsetPanel
                     ), #end bettingGamesTab

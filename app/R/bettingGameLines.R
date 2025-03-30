@@ -1,67 +1,69 @@
-## Create Standings Tables ----
+# bettingGamesLines.R --------------------------------------------------
 
 # UI ----
-bettingGamesLinesUI <- function(id){
-  uiOutput(NS(id, "bettingGamesLinesUI"))
+bettingGamesLinesUI <- function(id) {
+  uiOutput(NS(id, "bettingGamesLinesUIout"))
 }
-
 
 # Server ----
 bettingGamesLinesServer <- function(id,
                                     futureGameIDs,
                                     futureGameData,
                                     teamsData,
-                                    gameDataLong){
-  
-  lapply(futureGameIDs, function(x){
-    bettingGamesLinesTableServer(x, teamsData, gameDataLong, gameID = x)
+                                    gameDataLong) {
+  lapply(futureGameIDs, function(x) {
+    bettingGamesLinesTableServer(
+      #id = game_id,
+      x,
+      teamsData = teamsData,
+      gameDataLong = gameDataLong,
+      gameID = x
+    )
   })
   
-  moduleServer(id, function(input, output, session){
+  moduleServer(id, function(input, output, session) {
     
-    output$bettingGamesLinesUI <- renderUI({
-      req(length(futureGameIDs) > 0)
+    # observe({
+    #   #req(futureGameIDs)
+    #   lapply(futureGameIDs, function(game_id) {
+    #     bettingGamesLinesTableServer(
+    #       id = game_id,
+    #       teamsData = teamsData,
+    #       gameDataLong = gameDataLong,
+    #       gameID = game_id
+    #     )
+    #   })
+    # }) |> bindEvent(futureGameIDs)
+    
+    output$bettingGamesLinesUIout <- renderUI({
+      req(nrow(futureGameData) > 0)
       
-      bettingGamesLinesTagList <- tagList()
+      splitGames <- split(futureGameData, futureGameData$gameday)
       
-      for(i in 1:nrow(futureGameData)){
-        if(i == 1){
-          futureWeek <- h1("Week", futureGameData$week[i])
-          futureDate <- h3(format(as_date(futureGameData |>
-                                            select(gameday, weekday) |>
-                                            slice(i) |>
-                                            pull(gameday)),
-                                  "%A, %B %d"))
-          # futureGame1 <- div(bettingGamesLinesTableOutput(futureGameIDs[i]),
-          #                    style = "display: inline-flex; align-items: center; margin-right: 20px")
-          futureGame <- bettingGamesLinesTableOutput(futureGameIDs[i])
-        }else{
-          if(futureGameData$week[i] != futureGameData$week[i-1]){
-            futureWeek <- h1("Week", futureGameData$week[i])
-          }else{futureWeek <- NULL}
-          if(futureGameData$gameday[i] != futureGameData$gameday[i-1]){
-            futureDate <- h3(format(as_date(futureGameData |>
-                                              select(gameday, weekday) |>
-                                              slice(i) |>
-                                              pull(gameday)),
-                                    "%A, %B %d"))
-          }else{futureDate <- NULL}
-          futureGame <- bettingGamesLinesTableOutput(futureGameIDs[i])
-        }
-        bettingGamesLinesTagList <- tagList(
-          bettingGamesLinesTagList,
-          futureWeek,
-          futureDate,
-          div(futureGame,
-              style = "display: inline-flex; align-items: center; margin-right: 20px")
-        )
-      }
-      #lapply(futureGameIDs, function(x){bettingGamesLinesTableOutput(x)})
-      if(is.null(futureGame)){
-        return(NULL)
-      }else{
-        bettingGamesLinesTagList
-      }
+      tagList(
+        h1(glue::glue("Week {futureGameData$week[1]}")),
+        lapply(names(splitGames), function(gameday) {
+          gamesOnDay <- splitGames[[gameday]]
+
+          tagList(
+            h3(format(as.Date(gameday), "%A, %B %d")),
+                layout_column_wrap(
+                  #style = "display: flex; justify-content: center;",
+                  align = "center",
+                  width = 1/3, # 3 cards per row
+                  fixed_width = FALSE,
+                  fill = FALSE,
+                  fillable = TRUE,
+                  heights_equal = "all",
+                  gap = "20px",
+                  !!!lapply(gamesOnDay$game_id, function(game_id) {
+                    bettingGamesLinesTableOutput(game_id)
+                  })
+                )
+          )
+        })
+      )
+      
     })
-  }) # end module Server
-} # end bettingGamesLines Server
+  })
+}
