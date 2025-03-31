@@ -1,6 +1,6 @@
 ## Model home and away score
 
-# Load Libraries ----
+# 0. Load Libraries ----
 ## Data Manipulation
 library(stringr)
 
@@ -49,421 +49,487 @@ library(nflverse)
 library(tidyverse)
 
 
-# Data -----
-## Uploads ----
+# 1. Data Loading & Preparation -----------------------------------------------
+# Load game data and feature-engineered data.
+## 1.A. nflverse ----
 source("./app/data-raw/gameData.R")
 source("./app/data-raw/gameDataLong.R")
+
+## 1.B. Features ----
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
+
+# feature engineered data cleaner
 source("./app/R/clean_modData.R")
 
+## 1.C. XGBoost ----
+### 1.C.1. Models ----
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_home_model_final.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_away_model_final.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_total_model_final.rda")
+
+### 1.C.2. Best features ----
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/varImp_final_all.rda")
+
+### 1.C.3. Predictions ----
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_cv_preds.rda")
+
+#### 1.C.3.a Model Seasons ---- 
+xgb_seasons <- xgb_cv_preds |>
+  filter(complete.cases(xgb_cv_preds)) |>
+  pull(season) |>
+  unique()
+
+xgb_season_start <- min(xgb_seasons)
+xgb_season_end <- max(xgb_seasons)
 
 
-## Clean ----
-modDataLong <- modData |>
-  clean_homeaway(invert = c("result", "spread_line"))
+# 2. Model Data ----
+## 2.A. Clean ----
+model_data <- clean_modData(data = modData, 
+                            season_start = xgb_season_start)
 
-# modData2 <- modData |> 
-#   filter(season >= 2007) |>
-#   #filter(!is.na(result)) |>
-#   select(
-#     game_id,
-#     season,
-#     season_type,
-#     week,
-#     weekday,
-#     time_of_day,
-#     home_team,
-#     home_score,
-#     away_team,
-#     away_score,
-#     result,
-#     spread_line,
-#     contains("spread"),
-#     total,
-#     total_line,
-#     totalCover,
-#     contains("over_"),
-#     contains("under_"),
-#     winner,
-#     contains("moneyline"),
-#     contains("rest"),
-#     location,
-#     div_game,
-#     roof,
-#     surface,
-#     temp,
-#     wind,
-#     contains("coach"),
-#     contains("stadium"),
-#     contains("home"),
-#     contains("away"),
-#     -contains("pat_pct"),
-#     -contains("fg_pct")
-#     # off_n, 
-#     # off_scr, 
-#     # off_scr_1st, 
-#     # off_scr_2nd, 
-#     # off_scr_3rd, 
-#     # off_scr_4th, 
-#     # off_1st, 
-#     # off_td, 
-#     # off_fg,
-#     # off_punt,
-#     # off_to, 
-#     # def_n, 
-#     # def_scr,
-#     # def_scr_1st, 
-#     # def_scr_2nd, 
-#     # def_scr_3rd,
-#     # def_scr_4th, 
-#     # def_1st, 
-#     # def_td, 
-#     # def_fg, 
-#     # def_punt, 
-#     # def_to
-#   ) |>
-#   mutate(
-#     across(c(where(is.character), -game_id),
-#            ~factor(.x))
-#   ) |>
-#   mutate(
-#     home_totalTDScore = 6*home_totalTD,
-#     home_fg_madeScore = 3*home_fg_made,
-#     home_pat_madeScore = home_pat_made,
-#     home_safetiesScore = 2*home_def_safeties,
-#     home_twoPtConvScore = 2*home_twoPtConv,
-#     away_totalTDScore = 6*away_totalTD,
-#     away_fg_madeScore = 3*away_fg_made,
-#     away_pat_madeScore = away_pat_made,
-#     away_safetiesScore = 2*away_def_safeties,
-#     away_twoPtConvScore = 2*away_twoPtConv,
-#     home_totalTDScore2 = home_totalTDScore + home_pat_madeScore + home_twoPtConvScore,
-#     away_totalTDScore2 = away_totalTDScore + away_pat_madeScore + away_twoPtConvScore
-#   ) |>
-#   mutate(
-#     location2 = ifelse(location == "Home", 1, 0),
-#     .after = location
-#   ) |>
-#   mutate(
-#     location = factor(location, levels = c("Neutral", "Home"))
-#   )
-# 
-# which(modData$home_totalTD != (modData$home_offTD +
-#                                  modData$home_special_teams_tds +
-#                                  modData$home_fumble_recovery_tds +
-#                                  modData$home_def_tds))
-# which(modData$away_totalTD != (modData$away_offTD +
-#                                  modData$away_special_teams_tds +
-#                                  modData$away_fumble_recovery_tds +
-#                                  modData$away_def_tds))
-# which(modData$home_totalTD != (modData$home_pat_att + modData$home_twoPtAtt))
-# which(modData$away_totalTD != (modData$away_pat_att + modData$away_twoPtAtt))
-# 
-# modData3 <- modData2 |>
-#   select(
-#     game_id,
-#     season,
-#     season_type,
-#     week,
-#     home_team,
-#     home_score,
-#     away_team,
-#     away_score,
-#     result,
-#     spread_line,
-#     contains("spread"),
-#     total,
-#     total_line,
-#     totalCover,
-#     contains("over_"),
-#     contains("under_"),
-#     winner,
-#     contains("moneyline"),
-#     contains("rest"),
-#     weekday,
-#     time_of_day,
-#     location,
-#     location2,
-#     div_game,
-#     roof,
-#     surface,
-#     temp,
-#     wind,
-#     contains("coach"),
-#     contains("stadium"),
-#     contains("PFG"),
-#     contains("PAG"),
-#     contains("MOV"),
-#     contains("SOS"),
-#     contains("SRS"),
-#     contains("OSRS"),
-#     contains("DSRS"),
-#     contains("epa"),
-#     contains("cum"),
-#     contains("net"),
-#     contains("roll"),
-#     contains("off_n"), 
-#     contains("off_scr"), 
-#     contains("off_scr_1st"), 
-#     contains("off_scr_2nd"), 
-#     contains("off_scr_3rd"), 
-#     contains("off_scr_4th"), 
-#     contains("off_1st"), 
-#     contains("off_td"), 
-#     contains("off_fg"),
-#     contains("off_punt"),
-#     contains("off_to"), 
-#     contains("def_n"), 
-#     contains("def_scr"),
-#     contains("def_scr_1st"), 
-#     contains("def_scr_2nd"), 
-#     contains("def_scr_3rd"),
-#     contains("def_scr_4th"), 
-#     contains("def_1st"), 
-#     contains("def_td"), 
-#     contains("def_fg"), 
-#     contains("def_punt"), 
-#     contains("def_to"),
-#     -home_def_tds,
-#     -away_def_tds
-#     # contains("off"),
-#     # contains("def"),
-#     # -contains("totalTD"),
-#     # -contains("offTD"),
-#     # -contains("special_teams_tds"),
-#     # -contains("fumble_recovery_tds"),
-#     # -contains("def_tds"),
-#     # -contains("pat_made"),
-#     # -contains("pat_att"),
-#     # -contains("twoPtConv"),
-#     # -contains("twoPtAtt"),
-#     # -contains("fg_made"),
-#     # -contains("fg_att"),
-#     # -contains("def_safeties")
-#   ) |>
-#   mutate(
-#     surface = as.character(surface),
-#     surface = case_when(
-#       surface == "" ~ NA,
-#       surface == "grass " ~ "grass",
-#       surface %in% c("a_turf", "astroplay") ~ "astroturf", 
-#       .default = surface
-#     ),
-#     surface = factor(surface)
-#   ) |>
-#   select(-surface)
-
-modData3 <- clean_modData(data = modData, season_start = 2007)
-colnames(modData3)
-
-table(modData3$surface, useNA = "ifany")
-
-stadiums <- modData3 |>
-  select(stadium, roof, surface) |>
-  distinct() |>
+### 2.A.1. Add Time ID ----
+model_data <- model_data |>
   mutate(
-    across(is.factor,
-           ~as.character(.x))
+    time_id = as.integer(str_extract(game_id, "^\\d{4}_\\d{2}") |> str_remove("_")),
+    .before = game_id
+  )
+
+## 2.B. Add XBG Predictions ----
+model_data <- model_data |>
+  left_join(
+    xgb_cv_preds |>
+      select(game_id, contains("xgb")), 
+    by = join_by(game_id)
   ) |>
   mutate(
-    surface = ifelse(surface == "", NA, surface)
-  )
-stadiums2 <- stadiums |>
-  filter(!is.na(surface))
-stadiums3 <- left_join(
-  stadiums |> select(-surface),
-  stadiums2
+    xgb_result_calc = xgb_home_score - xgb_away_score,
+    xgb_total_calc = xgb_home_score + xgb_away_score,
+  ) |>
+  relocate(xgb_home_score, .after = home_score) |>
+  relocate(xgb_away_score, .after = away_score) |>
+  relocate(xgb_result, xgb_result_calc, .after = result) |>
+  relocate(xgb_total, xgb_total_calc, .after = total)
+
+## 2.C. Define Variable Sets ----
+### 2.C.1 Identifiers ----
+id_vars <- c("time_id", "game_id",
+             "season", "week", "season_type",
+             "home_team", "away_team")
+
+team_id_vars <- c("stadium", "home_coach", "away_coach")
+
+### 2.C.2. Responses ----
+response_vars <- c("home_score", "away_score", "result", "total")
+
+### 2.C.3. Betting ----
+betting_vars <- c("spread_line", "spreadCover", 
+                  "home_spread_odds", "home_spread_prob",
+                  "away_spread_odds", "away_spread_prob",
+                  "total_line", "totalCover",
+                  "over_odds", "over_prob",
+                  "under_odds", "under_prob",
+                  "winner", 
+                  "home_moneyline", "home_moneyline_prob",
+                  "away_moneyline", "away_moneyline_prob")
+
+### 2.C.4. Game-Level -----
+# These will be included with XGB predictions to imporve fit
+game_level_vars <- c(
+  "weekday", "time_of_day", "location", "location2", "div_game", 
+  "home_rest", "away_rest",
+  "roof", "surface", "temp", "wind"
 )
 
-modData3Long <- modData3 |>
-  clean_homeaway(invert = c("result", "spread_line")) |>
-  mutate(
-    location2 = ifelse(location == "home", 1, 0)
+# 3. Split Data for Modeling ----
+
+## 3.A. Per Season ----
+# Use a rolling window: for each test season, use the previous 3 seasons as training.
+rolling_window <- 3
+first_test_season <- xgb_season_start + rolling_window
+
+train_indices <- list()
+test_indices  <- list()
+for (s in first_test_season:xgb_season_end) {
+  train_seasons <- (s - rolling_window):(s - 1)
+  train_idx <- which(model_data$season %in% train_seasons)
+  test_idx  <- which(model_data$season == s)
+  if (length(train_idx) > 0 && length(test_idx) > 0) {
+    train_indices[[as.character(s)]] <- train_idx
+    test_indices[[as.character(s)]]  <- test_idx
+    cat(sprintf("Season %d: Training on seasons %s (%d games); Testing on %d games\n", 
+                s, paste(train_seasons, collapse = ", "), length(train_idx), length(test_idx)))
+  }
+}
+time_slices <- list(train = train_indices, test = test_indices)
+cat("Total Seasonal CV folds:", length(time_slices$train), "\n")
+
+# 4. FIT MODELS ----
+# This function fits a Bayesian model on one fold and returns the fitted model,
+# the posterior predictive draws, and the test set.
+fit_seasonal_model <- function(
+    train_data, test_data, response = "result",
+    use_team_RE = TRUE, use_season_FE = FALSE,
+    # Specify which numeric predictors to center and scale:
+    preprocess_vars = c("xgb_result", "home_rest", "away_rest", "temp", "wind"),
+    iters = 4000, burn = 2000, chains = 4,
+    rstanBackend = FALSE) {
+  
+  # Preprocess numeric predictors in the training data and apply the transformation to test data.
+  # (Factors such as weekday, time_of_day, etc., are left unchanged.)
+  if (!is.null(preprocess_vars)) {
+    preProc <- preProcess(train_data[, preprocess_vars], method = c("center", "scale"))
+    train_data[, preprocess_vars] <- predict(preProc, train_data[, preprocess_vars])
+    test_data[, preprocess_vars]  <- predict(preProc, test_data[, preprocess_vars])
+  }
+  
+  # Choose the XGB predictor variable based on the response.
+  # For "result", we use the merged XGB output "xgb_result".
+  # For "total", we use "xgb_total". (Extend as needed for other responses.)
+  xgb_pred_var <- switch(response,
+                         "result" = "xgb_result",
+                         "total"  = "xgb_total",
+                         stop("Unsupported response"))
+  
+  # Build the formula string.
+  fixed_part <- paste(
+    response, "~", xgb_pred_var, " + ",
+    paste(c(
+      "home_rest",
+      "away_rest",
+      #"weekday",
+      #"time_of_day",
+      #"location2",
+      "div_game",
+      "roof",
+      "temp",
+      "wind"
+    ),
+    collapse = " + ")
   )
-
-write_csv(modData3, file = "~/Desktop/modData.csv")
-
-# ## Select ----
-# modScoreData <- modData2 |>
-#   select(
-#     game_id,
-#     season,
-#     season_type,
-#     week,
-#     location,
-#     location2,
-#     div_game,
-#     result,
-#     spread_line,
-#     total,
-#     total_line,
-#     home_team,
-#     contains("home_SRS"),
-#     contains("home_OSRS"),
-#     contains("home_DSRS"),
-#     home_score,
-#     home_totalTD,
-#     home_offTD,
-#     home_special_teams_tds,
-#     home_fumble_recovery_tds,
-#     home_def_tds,
-#     home_pat_made,
-#     home_pat_att,
-#     home_twoPtConv,
-#     home_twoPtAtt,
-#     home_fg_made,
-#     home_fg_att,
-#     home_def_safeties,
-#     away_team,
-#     contains("away_SRS"),
-#     contains("away_OSRS"),
-#     contains("away_DSRS"),
-#     away_score,
-#     away_totalTD,
-#     away_offTD,
-#     away_special_teams_tds,
-#     away_fumble_recovery_tds,
-#     away_def_tds,
-#     away_pat_made,
-#     away_pat_att,
-#     away_twoPtConv,
-#     away_twoPtAtt,
-#     away_fg_made,
-#     away_fg_att,
-#     away_def_safeties
-#   ) |>
-#   mutate(home_deffTD = home_fumble_recovery_tds + home_def_tds, .after = home_special_teams_tds) |>
-#   mutate(away_deffTD = away_fumble_recovery_tds + away_def_tds, .after = away_special_teams_tds)
-# 
-# modScoreDataLong <- modScoreData |>
-#   clean_homeaway(invert = c("result", "spread_line"))
-# 
-# write_csv(modScoreData |> filter(season >= 2020), 
-#           file = "~/Desktop/wideNFLdata.csv")
-# write_csv(modScoreDataLong |> filter(season >= 2020),
-#           file = "~/Desktop/longNFLdata.csv")
-# 
-# modScoreData2 <- modScoreData |>
-#   mutate(
-#     home_totalTD = 6*home_totalTD,
-#     home_offTD = 6*home_offTD,
-#     home_special_teams_tds = 6*home_special_teams_tds,
-#     home_deffTD = 6*home_deffTD,
-#     home_pat_made = home_pat_made,
-#     home_twoPtConv = 2*home_twoPtConv,
-#     home_extra_pts = home_pat_made + home_twoPtConv,
-#     home_fg_made = 3*home_fg_made,
-#     home_def_safeties = 2*home_def_safeties,
-#     away_totalTD = 6*away_totalTD,
-#     away_offTD = 6*away_offTD,
-#     away_special_teams_tds = 6*away_special_teams_tds,
-#     away_deffTD = 6*away_deffTD,
-#     away_pat_made = away_pat_made,
-#     away_twoPtConv = 2*away_twoPtConv,
-#     away_extra_pts = away_pat_made + away_twoPtConv,
-#     away_fg_made = 3*away_fg_made,
-#     away_def_safeties = 2*away_def_safeties
-#   ) |>
-#   mutate(
-#     home_score2 = (home_offTD + 
-#                      home_special_teams_tds +
-#                      home_deffTD +
-#                      #home_pat_made + home_twoPtConv +
-#                      home_extra_pts +
-#                      home_fg_made +
-#                      home_def_safeties),
-#     .after = home_score
-#   ) |>
-#   mutate(
-#     away_score2 = (away_offTD + 
-#                      away_special_teams_tds +
-#                      away_deffTD +
-#                      #away_pat_made + away_twoPtConv +
-#                      away_extra_pts +
-#                      away_fg_made +
-#                      away_def_safeties),
-#     .after = away_score
-#   )
-# 
-# home_score_diff <- which(modScoreData2$home_score != modScoreData2$home_score2)
-# away_score_diff <- which(modScoreData2$away_score != modScoreData2$away_score2)
-# 
-# modScoreData2diff <- modScoreData2 |> slice(c(home_score_diff,away_score_diff))
-
-## Predict XGB scores ----
-load(file = "~/Desktop/NFL Analysis Data/xgb_home_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_away_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_result_model.RData")
-load(file = "~/Desktop/NFL Analysis Data/xgb_total_model.RData")
-
-xgb_home_model <- home_model
-xgb_away_model <- away_model
-xgb_result_model <- result_model
-xgb_total_model <- total_model
-
-varImp_home <- varImp(xgb_home_model)
-varImp_home
-best_home_vars <- varImp_home$importance |>
-  filter(Overall > 0) |>
-  row.names()
-
-varImp_away <- varImp(xgb_away_model)
-varImp_away
-best_away_vars <- varImp_away$importance |>
-  filter(Overall > 0) |>
-  row.names()
-
-varImp_result <- varImp(xgb_result_model)
-varImp_result
-best_result_vars <- varImp_result$importance |>
-  filter(Overall > 0) |>
-  row.names()
-
-varImp_total <- varImp(xgb_total_model)
-varImp_total
-best_total_vars <- varImp_total$importance |>
-  filter(Overall > 0) |>
-  row.names()
-
-modData4 <- modData3 |> 
-  select(
-    game_id, 
-    best_home_vars,
-    best_away_vars,
-    best_result_vars,
-    best_total_vars
+  re_team <- if (use_team_RE) " + (1 | home_team) + (1 | away_team)" else ""
+  fe_season <- if (use_season_FE) " + season" else ""
+  formula_str <- paste0(fixed_part, fe_season, re_team)
+  formula_obj <- bf(as.formula(formula_str)) + brmsfamily(family = "student", link = "identity")
+  
+  # Define default priors.
+  priors <- c(
+    prior(normal(0, 10), class = "b"),
+    prior(student_t(3, 0, 10), class = "sigma"),
+    prior(student_t(3, 0, 5), class = "sd")
   )
-mod_IDs <- modData4 |>
-  filter(complete.cases(modData4)) |>
-  pull(game_id)
-
-modData5 <- modData3 |>
-  filter(game_id %in% mod_IDs)
-modData5 <- modData5 |>
-  #filter(game_id %in% mod_IDs) |>
-  mutate(
-    xgb_pred_home_score = predict(xgb_home_model, newdata = modData5),
-    .after = home_score
-  ) |>
-  mutate(
-    xgb_pred_away_score = predict(xgb_away_model, newdata = modData5),
-    .after = away_score
-  ) |>
-  mutate(
-    xgb_pred_result = xgb_pred_home_score - xgb_pred_away_score,
-    xgb_pred_result2 = predict(xgb_result_model, newdata = modData5),
-    .after = result
-  ) |>
-  mutate(
-    xgb_pred_total = xgb_pred_home_score + xgb_pred_away_score,
-    xgb_pred_total2 = predict(xgb_total_model, newdata = modData5),
-    .after = total
+  
+  # Fit the Bayesian model with brms.
+  fit <- brm(
+    formula = formula_obj,
+    data = train_data,
+    prior = priors,
+    save_pars = save_pars(all = TRUE),
+    chains = chains,
+    iter = iters,
+    warmup = burn,
+    cores = parallel::detectCores(),
+    normalize = TRUE,
+    drop_unused_levels = FALSE,
+    control = list(adapt_delta = 0.95),
+    backend = ifelse(rstanBackend, "rstan", "cmdstanr"),
+    seed = 52
   )
+  
+  # Generate the full posterior predictive draws (PPD) for the test set.
+  ppd <- posterior_predict(fit, 
+                           newdata = test_data, 
+                           re_formula = NULL,
+                           allow_new_levels = TRUE)
+  
+  # Return a list with the fitted model, PPD, test data, and formula.
+  return(list(model = fit, ppd = ppd, test_data = test_data, formula = formula_obj))
+}
 
-mean(abs(modData5$result - modData5$xgb_pred_result))
-mean(abs(modData5$result - modData5$xgb_pred_result2))
-mean(abs(modData5$total - modData5$xgb_pred_total))
-mean(abs(modData5$total - modData5$xgb_pred_total2))
+# 5. Loop Over Seasonal Folds to Fit and Store Models ------------------------
+fold_results <- list()
+
+system.time(
+  for (fold in names(time_slices$train)) {
+    cat("\n---------- Processing Season Fold:", fold, "----------\n")
+    train_data <- model_data[time_slices$train[[fold]], ]
+    test_data  <- model_data[time_slices$test[[fold]], ]
+    
+    # Fit the model for the "result" response; adjust arguments as needed.
+    fold_fit <- fit_seasonal_model(
+      train_data, test_data, response = "result",
+      use_team_RE = TRUE, use_season_FE = FALSE,
+      preprocess_vars = c("xgb_result", "home_rest", "away_rest", "temp", "wind")
+    )
+    
+    # For example, compute the posterior mean predictions and RMSE:
+    ppd_mean <- colMeans(fold_fit$ppd)
+    rmse_val <- sqrt(mean((test_data$result - ppd_mean)^2, na.rm = TRUE))
+    cat(sprintf("Fold (Season %s) RMSE = %.3f\n", fold, rmse_val))
+    
+    fold_results[[fold]] <- fold_fit
+  }
+)
+# Now fold_results is a list containing the fitted models and PPD for each seasonal fold.
+# You can later use lapply, purrr::map, or similar functions to run additional diagnostics,
+# generate PPC plots, or compute betting metrics on each fold.
+
+# 6. Post-Processing  ------------------------
+# Performance and Betting Evaluation
+# Combine predictions from all folds.
+# For each fold, we compute the posterior mean prediction.
+all_fold_preds <- do.call(rbind, lapply(fold_results, function(fold) {
+  data.frame(
+    game_id  = fold$test_data$game_id,
+    season   = fold$test_data$season,
+    observed = fold$test_data$result,
+    predicted = colMeans(fold$ppd)
+  )
+}))
+
+# Compute overall RMSE, MAE, and MAD from the combined predictions.
+overall_rmse <- sqrt(mean((all_fold_preds$observed - all_fold_preds$predicted)^2, na.rm = TRUE))
+overall_mae  <- mean(abs(all_fold_preds$observed - all_fold_preds$predicted), na.rm = TRUE)
+overall_mad  <- median(abs(all_fold_preds$observed - all_fold_preds$predicted), na.rm = TRUE)
+
+cat("Overall RMSE:", round(overall_rmse, 3), "\n")
+cat("Overall MAE:", round(overall_mae, 3), "\n")
+cat("Overall MAD:", round(overall_mad, 3), "\n")
+
+# 7. Compute Coverage -------
+# Percentage of observed values falling within the 95% PPD interval.
+compute_coverage <- function(ppd, observed, lower = 0.025, upper = 0.975) {
+  # For each test observation, compute the 2.5% and 97.5% quantiles of the posterior draws.
+  lower_bound <- apply(ppd, 2, quantile, probs = lower)
+  upper_bound <- apply(ppd, 2, quantile, probs = upper)
+  mean(observed >= lower_bound & observed <= upper_bound, na.rm = TRUE)
+}
+
+fold_coverage <- sapply(fold_results, function(fold) {
+  compute_coverage(fold$ppd, fold$test_data$result)
+})
+cat("Coverage across folds (proportion within 95% intervals):\n")
+print(round(fold_coverage, 3))
+
+# 8. Betting Evaluation ----
+# Compare Model's Cover vs. Vegas Lines.
+# Assume your test data contains a 'spread_line' column and that
+# the model's prediction for 'result' can be compared to it.
+betting_results <- lapply(fold_results, function(fold) {
+  # Compute the posterior mean prediction for each game.
+  fold$test_data$result_pred <- colMeans(fold$ppd)
+  
+  # Create a betting decision:
+  # For example, if the predicted result is greater than the spread line, call it a "Home" cover.
+  fold <- fold$test_data %>%
+    mutate(
+      actual_cover = case_when(
+        result > spread_line ~ "Home",
+        result < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      exp_cover = ifelse(result_pred > spread_line, "Home", 
+                         ifelse(result_pred < spread_line, "Away", NA)),
+      correct_cover = (actual_cover == exp_cover)
+    )
+  
+  acc <- mean(fold$correct_cover, na.rm = TRUE) * 100
+  list(data = fold, accuracy = acc)
+})
+
+# Extract betting accuracy from each fold.
+betting_accuracy <- sapply(betting_results, function(x) x$accuracy)
+cat("Betting Accuracy (Posterior Mean vs. Spread) per fold (%):\n")
+print(round(betting_accuracy, 2))
+
+# Overall betting accuracy (averaged across folds):
+overall_betting_acc <- mean(betting_accuracy, na.rm = TRUE)
+cat("Overall Betting Accuracy (%):", round(overall_betting_acc, 2), "\n")
+
+# You can now use lapply, purrr::map, or similar functions on 'fold_results'
+# to generate further diagnostics (e.g., PPC plots, residual plots, or LOO comparisons)
+# for each seasonal fold. These outputs can then be shared to assess whether your
+# Bayesian model, with its uncertainty estimates, beats Vegas.
+
+# 9. Generate PPC plots ----
+# density overlays for each fold)
+ppc_plots <- lapply(fold_results, function(fold) {
+  pp_check(fold$model, newdata = fold$test_data, resp = "result", ndraws = 100, type = "dens_overlay")
+})
+
+ppc_plots
+# Then, you can display these plots in your Shiny app or save them as files.
+
+
+# Example function to evaluate betting metrics on one fold
+betting_eval_fold <- function(fold_result,
+                              # These XGB model objects must be loaded in your session:
+                              home_model, away_model, xgb_result_model,
+                              threshold = 0.6) {
+  
+  # Copy the test data from the fold and add the model's predictions
+  test_df <- fold_result$test_data
+  # Use the posterior mean (across draws) as your point prediction
+  test_df$result_pred <- colMeans(fold_result$ppd)
+  
+  # Compute the actual cover: if the actual result exceeds the spread, call it "Home", else "Away"
+  test_df <- test_df %>%
+    mutate(
+      diff = result - spread_line,
+      actual_cover = case_when(
+        result > spread_line ~ "Home",
+        result < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      )
+    )
+  
+  # Compute model-derived predictions (using the posterior mean)
+  test_df <- test_df %>%
+    mutate(
+      exp_result = result_pred,
+      exp_spread_line = spread_line,
+      exp_diff = exp_result - exp_spread_line,
+      exp_cover = case_when(
+        exp_result > spread_line ~ "Home",
+        exp_result < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      correct_cover = (actual_cover == exp_cover)
+    )
+  
+  # Compute accuracy based on the posterior mean
+  acc_posterior_mean <- mean(test_df$correct_cover, na.rm = TRUE) * 100
+  
+  # Full Posterior Betting Decision:
+  # For each test observation, use the full set of posterior draws to decide cover.
+  # Here we use sweep() to subtract the spread_line from every draw.
+  ppd_decision <- sweep(fold_result$ppd, 2, test_df$spread_line, 
+                        FUN = function(pred, line) {
+                          ifelse(pred > line, "Home", ifelse(pred < line, "Away", NA))
+                        })
+  # Compare each posterior draw decision with the actual cover
+  comparison_matrix <- sweep(ppd_decision, 2, test_df$actual_cover,
+                             FUN = function(pred, actual) {
+                               ifelse(is.na(pred) | is.na(actual), NA, pred == actual)
+                             })
+  # For each game, compute the proportion of draws that are correct.
+  game_accuracy <- colMeans(comparison_matrix, na.rm = TRUE)
+  acc_full <- mean(game_accuracy, na.rm = TRUE) * 100
+  
+  # Vegas-based decisions: use the provided Vegas probabilities.
+  test_home_prob <- colMeans(ppd_decision == "Home", na.rm = TRUE)
+  test_away_prob <- colMeans(ppd_decision == "Away", na.rm = TRUE)
+  # Decision: if the model's home probability exceeds the Vegas home spread probability, decide "Home", else "Away"
+  test_bet_side_vegas <- ifelse(test_home_prob > test_df$home_spread_prob, "Home",
+                                ifelse(test_away_prob > test_df$away_spread_prob, "Away", NA))
+  test_bet_vegas_correct <- ifelse(is.na(test_bet_side_vegas) | is.na(test_df$actual_cover),
+                                   NA, test_bet_side_vegas == test_df$actual_cover)
+  acc_vegas <- mean(test_bet_vegas_correct, na.rm = TRUE) * 100
+  bet_vegas_count <- sum(!is.na(test_bet_vegas_correct))
+  
+  # Threshold-based decisions: decide a bet only if the model's predicted probability exceeds a threshold.
+  test_bet_side_thresh <- ifelse(test_home_prob > threshold, "Home",
+                                 ifelse(test_away_prob > threshold, "Away", NA))
+  test_bet_thresh_correct <- ifelse(is.na(test_bet_side_thresh) | is.na(test_df$actual_cover),
+                                    NA, test_bet_side_thresh == test_df$actual_cover)
+  acc_thresh <- mean(test_bet_thresh_correct, na.rm = TRUE) * 100
+  bet_thresh_count <- sum(!is.na(test_bet_thresh_correct))
+  
+  # Also incorporate XGBoost predictions if available.
+  test_df <- test_df %>%
+    mutate(
+      xgb_home_score = predict(home_model, newdata = test_df),
+      xgb_away_score = predict(away_model, newdata = test_df),
+      xgb_result = xgb_home_score - xgb_away_score,
+      xgb_spread_line = spread_line,
+      xgb_diff = xgb_result - xgb_spread_line,
+      xgb_cover = case_when(
+        xgb_result > spread_line ~ "Home",
+        xgb_result < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      xgb_correct_cover = (actual_cover == xgb_cover)
+    ) %>%
+    mutate(
+      xgb_result2 = predict(xgb_result_model, newdata = test_df),
+      xgb_spread_line2 = spread_line,
+      xgb_diff2 = xgb_result2 - xgb_spread_line2,
+      xgb_cover2 = case_when(
+        xgb_result2 > spread_line ~ "Home",
+        xgb_result2 < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      xgb_correct_cover2 = (actual_cover == xgb_cover2)
+    )
+  
+  acc_xgb <- mean(test_df$xgb_correct_cover, na.rm = TRUE) * 100
+  acc_xgb2 <- mean(test_df$xgb_correct_cover2, na.rm = TRUE) * 100
+  
+  # Return a list with the betting metrics and enriched test dataframe.
+  return(list(
+    test_df = test_df,
+    acc_posterior_mean = acc_posterior_mean,
+    acc_full = acc_full,
+    acc_vegas = acc_vegas,
+    bet_vegas_count = bet_vegas_count,
+    acc_thresh = acc_thresh,
+    bet_thresh_count = bet_thresh_count,
+    acc_xgb = acc_xgb,
+    acc_xgb2 = acc_xgb2
+  ))
+}
+
+# Example of applying the evaluation function to each seasonal fold:
+# (Ensure that your XGB models -- home_model, away_model, and xgb_result_model -- are loaded.)
+betting_evals <- lapply(fold_results, function(fold) {
+  betting_eval_fold(fold, 
+                    xgb_home_model_final, 
+                    xgb_away_model_final,
+                    xgb_result_model_final, 
+                    threshold = 0.6)
+})
+
+# Now, you can extract and compare the metrics across folds:
+posterior_mean_accs <- sapply(betting_evals, function(x) x$acc_posterior_mean)
+full_ppd_accs     <- sapply(betting_evals, function(x) x$acc_full)
+vegas_accs        <- sapply(betting_evals, function(x) x$acc_vegas)
+thresh_accs       <- sapply(betting_evals, function(x) x$acc_thresh)
+xgb_accs          <- sapply(betting_evals, function(x) x$acc_xgb)
+xgb2_accs         <- sapply(betting_evals, function(x) x$acc_xgb2)
+
+cat("Posterior Mean Accuracy per fold (%):\n", round(posterior_mean_accs, 2), "\n")
+cat("Full PPD Accuracy per fold (%):\n", round(full_ppd_accs, 2), "\n")
+cat("Vegas-based Accuracy per fold (%):\n", round(vegas_accs, 2), "\n")
+cat("Threshold-based Accuracy per fold (%):\n", round(thresh_accs, 2), "\n")
+cat("XGB Accuracy (model 1) per fold (%):\n", round(xgb_accs, 2), "\n")
+cat("XGB Accuracy (model 2) per fold (%):\n", round(xgb2_accs, 2), "\n")
+
+# You can also construct a comparison table if desired:
+accuracy_metrics_result_temp <- tibble(
+  Fold = names(betting_evals),
+  PostMean = posterior_mean_accs,
+  PostFull = full_ppd_accs,
+  BetVegas = vegas_accs,
+  BetThresh = thresh_accs,
+  XGB = xgb_accs,
+  XGB2 = xgb2_accs
+)
+
+print(accuracy_metrics_result_temp)
+
+
+
+
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$----
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$----
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$----
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$----
+# $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$----
+
+
+
+
 
 ## Split ----
 histModelData1 <- modData5 |> 
@@ -529,108 +595,7 @@ modelDataYeo <- predict(preProcValuesYeo, modelData1)
 histModelData <- histModelDataYeo
 modelData <- modelDataYeo
 
-# Plots ----
-# [1] "game_id"                      "season"                       "season_type"                 
-# [4] "week"                         "home_team"                    "home_score"                  
-# [7] "away_team"                    "away_score"                   "result"                      
-# [10] "spread_line"                  "spreadCover"                  "total"                       
-# [13] "total_line"                   "totalCover"                   "overtime"                    
-# [16] "over_odds"                    "over_prob"                    "under_odds"                  
-# [19] "under_prob"                   "location"                     "div_game"                    
-# [22] "roof"                         "surface"                      "temp"                        
-# [25] "wind"                         "home_rest"                    "home_moneyline"              
-# [28] "home_moneyline_prob"          "home_spread_odds"             "home_spread_prob"            
-# [31] "home_coach"                   "home_off_plays_cum"           "home_off_pass_plays_cum"     
-# [34] "home_off_rush_plays_cum"      "home_off_penalty_plays_cum"   "home_off_kick_plays_cum"     
-# [37] "home_off_special_plays_cum"   "home_off_pass_plays_perc_cum" "home_off_rush_plays_perc_cum"
-# [40] "home_def_plays_cum"           "home_def_pass_plays_cum"      "home_def_rush_plays_cum"     
-# [43] "home_def_penalty_plays_cum"   "home_def_kick_plays_cum"      "home_def_special_plays_cum"  
-# [46] "home_def_pass_plays_perc_cum" "home_def_rush_plays_perc_cum" "home_off_epa_cum"            
-# [49] "home_off_pass_epa_cum"        "home_off_rush_epa_cum"        "home_off_penalty_epa_cum"    
-# [52] "home_off_kick_epa_cum"        "home_off_special_epa_cum"     "home_def_epa_cum"            
-# [55] "home_def_pass_epa_cum"        "home_def_rush_epa_cum"        "home_def_penalty_epa_cum"    
-# [58] "home_def_kick_epa_cum"        "home_def_special_epa_cum"     "home_off_epa_roll"           
-# [61] "home_off_pass_epa_roll"       "home_off_rush_epa_roll"       "home_off_penalty_epa_roll"   
-# [64] "home_off_kick_epa_roll"       "home_off_special_epa_roll"    "home_def_epa_roll"           
-# [67] "home_def_pass_epa_roll"       "home_def_rush_epa_roll"       "home_def_penalty_epa_roll"   
-# [70] "home_def_kick_epa_roll"       "home_def_special_epa_roll"    "home_PFG"                    
-# [73] "home_PAG"                     "home_MOV"                     "home_SOS"                    
-# [76] "home_SRS"                     "home_OSRS"                    "home_DSRS"                   
-# [79] "home_totalTD"                 "home_offTD"                   "home_special_teams_tds"      
-# [82] "home_def_tds"                 "home_fg_made"                 "home_fg_att"                 
-# [85] "home_off_fg_att_roll"         "home_off_fg_pct_cum"          "home_off_fg_pct_roll"        
-# [88] "home_twoPtConv"               "home_twoPtAtt"                "home_safeties"               
-# [91] "home_pat_made"                "home_pat_att"                 "home_off_pat_att_roll"       
-# [94] "home_off_pat_pct_cum"         "home_off_pat_pct_roll"        "home_off_interceptions"      
-# [97] "home_def_interceptions"       "home_off_fumbles"             "home_def_fumbles"            
-# [100] "home_off_n"                   "home_off_scr"                 "home_off_scr_1st"            
-# [103] "home_off_scr_2nd"             "home_off_scr_3rd"             "home_off_scr_4th"            
-# [106] "home_off_1st"                 "home_off_td"                  "home_off_fg"                 
-# [109] "home_off_punt"                "home_off_to"                  "home_def_n"                  
-# [112] "home_def_scr"                 "home_def_scr_1st"             "home_def_scr_2nd"            
-# [115] "home_def_scr_3rd"             "home_def_scr_4th"             "home_def_1st"                
-# [118] "home_def_td"                  "home_def_fg"                  "home_def_punt"               
-# [121] "home_def_to"                  "home_net_epa_cum"             "home_net_epa_roll"           
-# [124] "home_off_net_epa_cum"         "home_off_net_epa_roll"        "home_pass_net_epa_cum"       
-# [127] "home_pass_net_epa_roll"       "home_rush_net_epa_cum"        "home_rush_net_epa_roll"      
-# [130] "home_penalty_net_epa_cum"     "home_penalty_net_epa_roll"    "home_MOV_net"                
-# [133] "home_SOS_net"                 "home_SRS_net"                 "home_OSRS_net"               
-# [136] "home_DSRS_net"                "away_rest"                    "away_moneyline"              
-# [139] "away_moneyline_prob"          "away_spread_odds"             "away_spread_prob"            
-# [142] "away_coach"                   "away_off_plays_cum"           "away_off_pass_plays_cum"     
-# [145] "away_off_rush_plays_cum"      "away_off_penalty_plays_cum"   "away_off_kick_plays_cum"     
-# [148] "away_off_special_plays_cum"   "away_off_pass_plays_perc_cum" "away_off_rush_plays_perc_cum"
-# [151] "away_def_plays_cum"           "away_def_pass_plays_cum"      "away_def_rush_plays_cum"     
-# [154] "away_def_penalty_plays_cum"   "away_def_kick_plays_cum"      "away_def_special_plays_cum"  
-# [157] "away_def_pass_plays_perc_cum" "away_def_rush_plays_perc_cum" "away_off_epa_cum"            
-# [160] "away_off_pass_epa_cum"        "away_off_rush_epa_cum"        "away_off_penalty_epa_cum"    
-# [163] "away_off_kick_epa_cum"        "away_off_special_epa_cum"     "away_def_epa_cum"            
-# [166] "away_def_pass_epa_cum"        "away_def_rush_epa_cum"        "away_def_penalty_epa_cum"    
-# [169] "away_def_kick_epa_cum"        "away_def_special_epa_cum"     "away_off_epa_roll"           
-# [172] "away_off_pass_epa_roll"       "away_off_rush_epa_roll"       "away_off_penalty_epa_roll"   
-# [175] "away_off_kick_epa_roll"       "away_off_special_epa_roll"    "away_def_epa_roll"           
-# [178] "away_def_pass_epa_roll"       "away_def_rush_epa_roll"       "away_def_penalty_epa_roll"   
-# [181] "away_def_kick_epa_roll"       "away_def_special_epa_roll"    "away_PFG"                    
-# [184] "away_PAG"                     "away_MOV"                     "away_SOS"                    
-# [187] "away_SRS"                     "away_OSRS"                    "away_DSRS"                   
-# [190] "away_totalTD"                 "away_offTD"                   "away_special_teams_tds"      
-# [193] "away_def_tds"                 "away_fg_made"                 "away_fg_att"                 
-# [196] "away_off_fg_att_roll"         "away_off_fg_pct_cum"          "away_off_fg_pct_roll"        
-# [199] "away_twoPtConv"               "away_twoPtAtt"                "away_safeties"               
-# [202] "away_pat_made"                "away_pat_att"                 "away_off_pat_att_roll"       
-# [205] "away_off_pat_pct_cum"         "away_off_pat_pct_roll"        "away_off_interceptions"      
-# [208] "away_def_interceptions"       "away_off_fumbles"             "away_def_fumbles"            
-# [211] "away_off_n"                   "away_off_scr"                 "away_off_scr_1st"            
-# [214] "away_off_scr_2nd"             "away_off_scr_3rd"             "away_off_scr_4th"            
-# [217] "away_off_1st"                 "away_off_td"                  "away_off_fg"                 
-# [220] "away_off_punt"                "away_off_to"                  "away_def_n"                  
-# [223] "away_def_scr"                 "away_def_scr_1st"             "away_def_scr_2nd"            
-# [226] "away_def_scr_3rd"             "away_def_scr_4th"             "away_def_1st"                
-# [229] "away_def_td"                  "away_def_fg"                  "away_def_punt"               
-# [232] "away_def_to"                  "away_net_epa_cum"             "away_net_epa_roll"           
-# [235] "away_off_net_epa_cum"         "away_off_net_epa_roll"        "away_pass_net_epa_cum"       
-# [238] "away_pass_net_epa_roll"       "away_rush_net_epa_cum"        "away_rush_net_epa_roll"      
-# [241] "away_penalty_net_epa_cum"     "away_penalty_net_epa_roll"    "away_MOV_net"                
-# [244] "away_SOS_net"                 "away_SRS_net"                 "away_OSRS_net"               
-# [247] "away_DSRS_net"                "home_totalTDScore"            "home_fg_madeScore"           
-# [250] "home_pat_madeScore"           "home_safetiesScore"           "home_twoPtConvScore"         
-# [253] "away_totalTDScore"            "away_fg_madeScore"            "away_pat_madeScore"          
-# [256] "away_safetiesScore"           "away_twoPtConvScore"          "home_totalTDScore2"          
-# [259] "away_totalTDScore2" 
 
-result_plot <- ggplot(data = modData5) +
-  geom_histogram(aes(x = result, y = after_stat(density)),
-                 bins = 100, fill = fillPPC, color = colorPPC) +
-  geom_density(aes(x = result)) +
-  theme_bw()
-result_plot
-
-total_plot <- ggplot(data = modData5) +
-  geom_histogram(aes(x = total, y = after_stat(density)),
-                 bins = 100, fill = fillPPC, color = colorPPC) +
-  geom_density(aes(x = total)) +
-  theme_bw()
-total_plot
 
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 # RESULT ----------------
@@ -642,14 +607,6 @@ sims <- (iters-burn)*chains
 
 #as.formula(paste(c(best_vars_home[1:20], best_vars_away[1:20]), collapse = " + "))
 
-# > preProc_CS$method$remove
-# [1] "home_off_net_epa_cum"    "home_off_epa_cum"        "home_off_epa_roll"      
-# [4] "away_def_epa_cum"        "away_off_net_epa_cum"    "away_off_net_epa_roll"  
-# [7] "away_off_epa_roll"       "home_def_epa_roll"       "home_def_epa_cum"       
-# [10] "away_off_rush_plays_cum" "away_fg_made_roll_5"     "home_off_net_epa_roll"  
-# [13] "home_net_epa_cum"        "away_MOV_roll_net"       "home_MOV_roll"          
-# [16] "away_net_epa_cum"        "away_MOV_roll"           "away_off_epa_cum"       
-# [19] "home_fg_made_roll_5" 
 home_result_diff_vars <- setdiff(best_home_vars, best_result_vars)
 home_result_diff_vars
 away_result_diff_vars <- setdiff(best_away_vars, best_result_vars)
@@ -1626,10 +1583,10 @@ formula_total <- bf(
     (1 | away_team)
 ) + 
   brmsfamily(family = "student", link = "identity")
-  #brmsfamily(family = "shifted_lognormal", link = "identity")
-  #brmsfamily(family = "skew_normal", link = "identity")
-  #mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
-  #brmsfamily(family = "negbinomial", link = "log")
+#brmsfamily(family = "shifted_lognormal", link = "identity")
+#brmsfamily(family = "skew_normal", link = "identity")
+#mixture(brmsfamily(family = "poisson", link = "log"), nmix = 3)
+#brmsfamily(family = "negbinomial", link = "log")
 
 default_prior(formula_total, histModelData)
 
