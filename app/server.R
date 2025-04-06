@@ -54,9 +54,9 @@ shinyServer(function(input, output, session) {
   })
   
   # Sidebar #################################################
-  observeEvent(input$menu_items,{
-    updateSidebar(id = "sidebar", session = session)
-  })
+  # observeEvent(input$menu_items,{
+  #   updateSidebar(id = "sidebar", session = session)
+  # })
   
   # Home Tab  ###############################################
   # output$image <- renderImage({
@@ -186,7 +186,7 @@ shinyServer(function(input, output, session) {
   
   # Update Week choices when Season changes
   observe({
-    req(bettingSeasonInput())
+    #req(bettingSeasonInput())
     
     current_season <- get_current_season()
     current_week <- get_current_week()
@@ -202,26 +202,31 @@ shinyServer(function(input, output, session) {
                         choices = 1:max_week,
                         selected = max_week)
     }
-  }) |> bindEvent(input$bettingSeason)
+  }) |> bindEvent(bettingSeasonInput())
   
   # Filter game data based on selected season & week
   filteredFutureGames <- reactive({
-    req(bettingSeasonInput(), bettingWeekInput())
-    futureGames <- gameData |>
+    req(input$bettingSeason, input$bettingWeek)
+    gameData |>
       filter(season == bettingSeasonInput(), week == bettingWeekInput(), !is.na(spread_line))
-    futureGameIDs <- futureGames$game_id
-    list(
-      ids = futureGameIDs,
-      data = futureGames
-    )
+    #futureGameIDs <- futureGames$game_id
+    # list(
+    #   ids = futureGameIDs,
+    #   data = futureGames
+    # )
+  })
+  
+  filteredFutureGamesIDs <- reactive({
+    filteredFutureGames()$game_id
   })
   
   # Launch betting lines module
   observe({
-    games <- filteredFutureGames()
-    bettingGamesLinesServer("bettingGamesLines",
-                            futureGameIDs = games$ids,
-                            futureGameData = games$data,
+    filteredFutureGamesIDs <- filteredFutureGamesIDs()
+    filteredFutureGames <- filteredFutureGames()
+    bettingGamesLinesServer("gameLines",
+                            futureGameIDs = filteredFutureGamesIDs, #games$ids,
+                            futureGameData = filteredFutureGames, #games$data,
                             teamsData = teamsData,
                             gameDataLong = gameDataLong)
   }) |> bindEvent(filteredFutureGames())
@@ -233,27 +238,33 @@ shinyServer(function(input, output, session) {
   ## Player Props ----
   AllInputs1 <- reactive({
     x <- reactiveValuesToList(input)
-    data.frame(
-      #names = names(x)
-      values = unlist(x, use.names = TRUE)
-    )
+    #x2 <<- x
+    x2 <- unlist(x)
+    x3 <- data.frame(x2) |> rownames_to_column()
+    colnames(x3) <- c("name", "value")
+    # data.frame(
+    #   names = names(x),
+    #   values = unlist(x, use.names = TRUE)
+    # )
+    x3 <- x3 |> add_row(name = NA, value = NA)
+    return(x3)
   })
   
   output$show_inputs1 <- renderTable({
     AllInputs1()
-  })
+  }, width = "100%")
   
-  AllInputs2 <- reactive({
-    x <- reactiveValuesToList(input)
-    data.frame(
-      names = names(x)
-      #values = unlist(x, use.names = TRUE)
-    )
-  })
-  
-  output$show_inputs2 <- renderTable({
-    AllInputs2()
-  })
+  # AllInputs2 <- reactive({
+  #   x <- reactiveValuesToList(input)
+  #   data.frame(
+  #     names = names(x)
+  #     #values = unlist(x, use.names = TRUE)
+  #   )
+  # })
+  # 
+  # output$show_inputs2 <- renderTable({
+  #   AllInputs2()
+  # })
   
   ## Plot ====================================
   modPlotInputs <- modDataPlotInputServer("modDataPlotInput",

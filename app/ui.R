@@ -148,15 +148,15 @@ shinyUI(
                 scrollToTop = TRUE,
                 # Dashboard Sidebar =============
                 sidebar = dashboardSidebar(
-                  id = "sidebar",
+                  #id = "sidebar",
                   skin = "dark",
                   elevation = 5,
                   fixed = TRUE,
                   minified = FALSE,
                   status = "primary",
-                  compact = TRUE,
-                  collapsed = TRUE,
-                  width = "150px",
+                  compact = FALSE,
+                  collapsed = FALSE,
+                  #width = "150px",
                   ## Sidebar Menu ---------------
                   sidebarMenu(
                     id = "menu_items",
@@ -164,13 +164,13 @@ shinyUI(
                     h4("Data", style = "color: white"),
                     menuItem(text = "Standings", tabName = "standingsTab", icon = icon("list-ol")),
                     menuItem(text = "Scores", tabName = "scoresTab", icon = icon("football-ball")),
-                    menuItem(text = "Team Statistics", icon = icon("users"),
+                    menuItem(text = "Team Statistics", icon = icon("users"), expandedName = "teamStatistics",
                              menuSubItem(text = "Offense", tabName = "teamOffenseTab"),
                              menuSubItem(text = "Defense", tabName = "teamDefenseTab"),
                              menuSubItem(text = "Special Teams", tabName = "teamSpecialTeamsTab"),
                              menuSubItem(text = "Scoring", tabName = "teamScoringTab")
                     ), 
-                    menuItem(text = "Player Statistics", icon = icon("user"),
+                    menuItem(text = "Player Statistics", icon = icon("user"), expandedName = "playerStatistics",
                              menuSubItem(text = "Offense", tabName = "playerOffenseTab"),
                              menuSubItem(text = "Defense", tabName = "playerDefenseTab"),
                              menuSubItem(text = "Special Teams", tabName = "playerSpecialTeamsTab"),
@@ -184,7 +184,15 @@ shinyUI(
                   ) # close sidebar menu
                 ), # close dashboard sidebar
                 # Dashboard Controlbar ==================
-                controlbar = dashboardControlbar(),
+                controlbar = dashboardControlbar(
+                  id = "controlbar",
+                  collapsed = FALSE,
+                  width = 600,
+                  pinned = TRUE,
+                  fluidRow(
+                    tableOutput('show_inputs1')
+                  )
+                ),
                 # Dashboard Body ================
                 body = dashboardBody(
                   
@@ -406,13 +414,14 @@ shinyUI(
                       tabName = "bettingGamesTab",
                       
                       tabsetPanel(
+                        id = "bettingGamesTabset",
                         ### Lines ----
                         tabPanel(
                           title = "Lines",
                           br(),
                           h3("Betting Game Lines"),
                           fluidRow(
-                            column(2,
+                            column(1,
                                    selectInput(
                                      inputId = "bettingSeason",
                                      label = "Season",
@@ -420,7 +429,7 @@ shinyUI(
                                      selected = get_current_season()
                                    )
                             ),
-                            column(2,
+                            column(1,
                                    selectInput(
                                      inputId = "bettingWeek",
                                      label = "Week",
@@ -433,10 +442,10 @@ shinyUI(
                           fluidRow(
                             column(
                               width = 12,
-                              withSpinner(
-                                bettingGamesLinesUI("bettingGamesLines"),
-                                type = 8
-                              ),
+                              #withSpinner(
+                                bettingGamesLinesUI("gameLines"),
+                               # type = 8
+                              #),
                               align = "center"
                             )
                           )
@@ -465,7 +474,7 @@ shinyUI(
                               width = 1,
                               uiOutput(outputId = "bettingGamesPredWeekUI")
                             )
-                          ), # end fluidRow
+                          ) # end fluidRow
                         ) # end Prediction tabPanel
                       ) # end tabsetPanel
                     ), #end bettingGamesTab
@@ -474,10 +483,7 @@ shinyUI(
                     tabItem(
                       tabName = "bettingPlayerPropsTab",
                       fluidRow(
-                        tableOutput('show_inputs1'),
-                        tableOutput('show_inputs2'),
-                        tableOutput('show_outputs1'),
-                        tableOutput('show_outputs2')
+                        #tableOutput('show_inputs1')
                       )
                     ),
                     

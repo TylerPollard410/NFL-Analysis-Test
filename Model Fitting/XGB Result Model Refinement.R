@@ -93,6 +93,7 @@ if (!is.null(combo_info$remove)) {
   cat("No linear dependencies found.\n")
   candidate_xgb_vars_clean <- candidate_xgb_vars
 }
+candidate_xgb_vars_clean
 
 ### 2.A.2. Near-zero variance ----
 nzv <- nearZeroVar(nfl_data[, candidate_xgb_vars_clean])
@@ -424,6 +425,7 @@ cv_control_rolling_season <- trainControl(
   savePredictions = "final",
   verboseIter = TRUE
 )
+cv_control_rolling_season
 
 save(cv_control_rolling_season,
      file = "~/Desktop/NFL Analysis Data/cv_control_rolling_season.rda")
@@ -450,59 +452,6 @@ cat("Total Rolling CV folds:", length(time_slices_rolling_season$train), "\n")
 #cl <- makeCluster(detectCores() - 1)
 
 ## 4.A. Expanding Window ----
-### 4.A.1. Home ----
-# Home score model using selected team-specific features
-#home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
-#home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
-
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  home_model_expand_season <- train(
-    #home_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$home_score,
-    method = "xgbTree",
-    trControl = cv_control_expanding_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(home_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_home_model_expand_season.RData")
-save(home_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_expand_season.rda")
-
-### 4.A.2. Away ----
-# Away score model using selected team-specific features
-#away_formula <- as.formula(paste("away_score ~", paste(best_vars, collapse = " + ")))
-#away_formula <- as.formula(paste("away_score ~", paste(candidate_xgb_vars, collapse = " + ")))
-
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  away_model_expand_season <- train(
-    #away_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$away_score,
-    method = "xgbTree",
-    trControl = cv_control_expanding_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(away_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_away_model_expand_season.RData")
-save(away_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_expand_season.rda")
-
-
 ### 4.A.3. Result ----
 # Spread score model using selected team-specific features
 #result_formula <- as.formula(paste("result ~", paste(best_vars, collapse = " + ")))
@@ -514,11 +463,12 @@ system.time(
   result_model_expand_season <- train(
     #result_formula, 
     #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
+    #x = nfl_data_model[, candidate_xgb_vars_clean],
+    x = nfl_data_model[, candidate_xgb_vars],
     y = nfl_data_model$result,
     method = "xgbTree",
     trControl = cv_control_expanding_season,
-    tuneLength = 5
+    tuneLength = 10
     #tuneGrid = xgb_grid
   )
 )
@@ -529,89 +479,30 @@ system.time(
 save(result_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_expand_season.RData")
 save(result_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_expand_season.rda")
 
-### 4.A.4. Total ----
-# Spread score model using selected team-specific features
-#total_formula <- as.formula(paste("total ~", paste(best_vars, collapse = " + ")))
-#total_formula <- as.formula(paste("total ~", paste(candidate_xgb_vars, collapse = " + ")))
-
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  total_model_expand_season <- train(
-    #total_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$total,
-    method = "xgbTree",
-    trControl = cv_control_expanding_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(total_model_expand_season, file = "~/Desktop/NFL Analysis Data/xgb_total_model_expand_season.RData")
-save(total_model_expand_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_expand_season.rda")
-
 ## 4.B. Rolling Window ----
-### 4.B.1. Home ----
-# Home score model using selected team-specific features
-#home_formula <- as.formula(paste("home_score ~", paste(best_vars, collapse = " + ")))
-#home_formula <- as.formula(paste("home_score ~", paste(candidate_xgb_vars, collapse = " + ")))
-
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  home_model_roll_season <- train(
-    #home_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$home_score,
-    method = "xgbTree",
-    trControl = cv_control_rolling_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(home_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_home_model_roll_season.RData")
-save(home_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_home_model_roll_season.rda")
-
-### 4.B.2. Away ----
-# Away score model using selected team-specific features
-#away_formula <- as.formula(paste("away_score ~", paste(best_vars, collapse = " + ")))
-#away_formula <- as.formula(paste("away_score ~", paste(candidate_xgb_vars, collapse = " + ")))
-
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  away_model_roll_season <- train(
-    #away_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$away_score,
-    method = "xgbTree",
-    trControl = cv_control_rolling_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(away_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_away_model_roll_season.RData")
-save(away_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_away_model_roll_season.rda")
-
 ### 4.B.3. Result ----
 # Spread score model using selected team-specific features
 #result_formula <- as.formula(paste("result ~", paste(best_vars, collapse = " + ")))
 #result_formula <- as.formula(paste("result ~", paste(candidate_xgb_vars, collapse = " + ")))
+
+caret::getModelInfo("xgbTree")
+caret::modelLookup("xgbTree")
+
+# Tuning parameter 'gamma' was held constant at a value of 0
+# Tuning parameter 'min_child_weight' was
+# held constant at a value of 1
+# RMSE was used to select the optimal model using the smallest value.
+# The final values used for the model were nrounds = 50, max_depth = 1, eta = 0.3, gamma =
+#   0, colsample_bytree = 0.6, min_child_weight = 1 and subsample = 1.
+
+xgb_result_roll_grid <- expand.grid(
+  max_depth = c(3, 4, 5),
+  eta = c(0.05, 0.1),
+  gamma = c(0, 1),
+  subsample = c(0.6, 0.8),
+  colsample_bytree = c(0.6, 0.8),
+  min_child_weight = c(1, 3)
+)
 
 #registerDoParallel(cl)
 set.seed(123)
@@ -619,11 +510,12 @@ system.time(
   result_model_roll_season <- train(
     #result_formula, 
     #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
+    #x = nfl_data_model[, candidate_xgb_vars_clean],
+    x = nfl_data_model[, candidate_xgb_vars],
     y = nfl_data_model$result,
     method = "xgbTree",
     trControl = cv_control_rolling_season,
-    tuneLength = 5
+    tuneLength = 10
     #tuneGrid = xgb_grid
   )
 )
@@ -631,42 +523,12 @@ system.time(
 # Once all models are trained, stop the cluster:
 #stopCluster(cl)
 
-save(result_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_roll_season.RData")
+save(result_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_roll_season2.RData")
 save(result_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_result_model_roll_season.rda")
 
-### 4.B.4. Total ----
-# Spread score model using selected team-specific features
-#total_formula <- as.formula(paste("total ~", paste(best_vars, collapse = " + ")))
-#total_formula <- as.formula(paste("total ~", paste(candidate_xgb_vars, collapse = " + ")))
 
-#registerDoParallel(cl)
-set.seed(123)
-system.time(
-  total_model_roll_season <- train(
-    #total_formula, 
-    #data = train_data,
-    x = nfl_data_model[, candidate_xgb_vars_clean],
-    y = nfl_data_model$total,
-    method = "xgbTree",
-    trControl = cv_control_rolling_season,
-    tuneLength = 5
-    #tuneGrid = xgb_grid
-  )
-)
-
-# Once all models are trained, stop the cluster:
-#stopCluster(cl)
-
-save(total_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_total_model_roll_season.RData")
-save(total_model_roll_season, file = "~/Desktop/NFLAnalysisTest/app/data/xgb_total_model_roll_season.rda")
-# total_model_roll_season
-# varImp_total_roll_season <- varImp(total_model_roll_season)
-# varImp_total_roll_season
-# best_total_vars_roll_season <- varImp_total_roll_season$importance |>
-#   filter(Overall > 0) |>
-#   row.names()
-# 
-# pred_total_roll <- predict(total_model_roll_season, newdata = test_data)
+save(result_model_roll_season, file = "~/Desktop/NFL Analysis Data/xgb_result_model_roll_season2.RData")
+load(file = "~/Desktop/NFL Analysis Data/xgb_result_model_expand_season.RData")
 
 # 5. Evaluate and Compare Model Performance Metrics ----------------------------
 # Define a helper function to compute performance metrics for a caret model
@@ -756,33 +618,13 @@ plot_obs_vs_pred <- function(preds_df, target_label) {
   return(p)
 }
 
-### 6.B.1. Home ----
-preds_home <- get_combined_preds(home_model_expand_season, home_model_roll_season)
-home_obs_vs_pred_plot <- plot_obs_vs_pred(preds_home, "Home Scores")
-
-# Display Home Score plots
-print(home_obs_vs_pred_plot)
-
-### 6.B.2. Away ----
-preds_away <- get_combined_preds(away_model_expand_season, away_model_roll_season)
-away_obs_vs_pred_plot <- plot_obs_vs_pred(preds_away, "Away Scores")
-
-# Display away Score plots
-print(away_obs_vs_pred_plot)
-
 ### 6.B.3. Result ----
+preds_result <- get_filtered_preds(result_model_roll_season)
 preds_result <- get_combined_preds(result_model_expand_season, result_model_roll_season)
 result_obs_vs_pred_plot <- plot_obs_vs_pred(preds_result, "Result (Spread)")
 
 # Display Result (Spread) plots
 print(result_obs_vs_pred_plot)
-
-### 6.B.4. Total ----
-preds_total <- get_combined_preds(total_model_expand_season, total_model_roll_season)
-total_obs_vs_pred_plot <- plot_obs_vs_pred(preds_total, "Total (Points Scored)")
-
-# Display Total plots
-print(total_obs_vs_pred_plot)
 
 ## 6.C. Residual Diagnostics ----
 ### 6.A.3 Residual Diagnostics
@@ -818,46 +660,6 @@ plot_residuals <- function(preds_df, target_label) {
               histogram_hor = p_hist_hor))
 }
 
-### 6.C.1. Home ----
-home_res_plots <- plot_residuals(preds_home, "Home Scores")
-
-# Display Home Score plots
-print(home_res_plots$scatter)
-print(home_res_plots$histogram)
-wrap_plots(
-  home_res_plots$scatter + 
-    theme(legend.position = "none"), 
-  home_res_plots$histogram_hor + 
-    theme(legend.direction = "horizontal")
-) +
-  plot_layout(guides = 'collect', axes = 'collect',
-              ncol = 2, widths = c(2,1)) +
-  plot_annotation(
-    theme = theme(
-      legend.position = "bottom"
-    )
-  )
-
-### 6.C.2. Away ----
-away_res_plots <- plot_residuals(preds_away, "Away Scores")
-
-# Display away Score plots
-print(away_res_plots$scatter)
-print(away_res_plots$histogram)
-wrap_plots(
-  away_res_plots$scatter + 
-    theme(legend.position = "none"), 
-  away_res_plots$histogram_hor + 
-    theme(legend.direction = "horizontal")
-) +
-  plot_layout(guides = 'collect', axes = 'collect',
-              ncol = 2, widths = c(2,1)) +
-  plot_annotation(
-    theme = theme(
-      legend.position = "bottom"
-    )
-  )
-
 ### 6.C.3. Result ----
 result_res_plots <- plot_residuals(preds_result, "Result (Spread)")
 
@@ -868,26 +670,6 @@ wrap_plots(
   result_res_plots$scatter + 
     theme(legend.position = "none"), 
   result_res_plots$histogram_hor + 
-    theme(legend.direction = "horizontal")
-) +
-  plot_layout(guides = 'collect', axes = 'collect',
-              ncol = 2, widths = c(2,1)) +
-  plot_annotation(
-    theme = theme(
-      legend.position = "bottom"
-    )
-  )
-
-### 6.C.4. Total ----
-total_res_plots <- plot_residuals(preds_total, "Total (Points Scored)")
-
-# Display Total plots
-print(total_res_plots$scatter)
-print(total_res_plots$histogram)
-wrap_plots(
-  total_res_plots$scatter + 
-    theme(legend.position = "none"), 
-  total_res_plots$histogram_hor + 
     theme(legend.direction = "horizontal")
 ) +
   plot_layout(guides = 'collect', axes = 'collect',
@@ -920,27 +702,10 @@ plot_qq_residuals <- function(preds_df, target_label) {
   return(p)
 }
 
-### 6.D.1. Home ----
-preds_home <- add_residuals(preds_home)
-qq_home <- plot_qq_residuals(preds_home, "Home Scores")
-print(qq_home)
-
-### 6.D.2. Away ----
-preds_away <- add_residuals(preds_away)
-qq_away <- plot_qq_residuals(preds_away, "Away Scores")
-print(qq_away)
-
 ### 6.D.3. Result ----
 preds_result <- add_residuals(preds_result)
 qq_result <- plot_qq_residuals(preds_result, "Result (Spread)")
 print(qq_result)
-
-### 6.D.4. Total ----
-preds_total <- add_residuals(preds_total)
-qq_total <- plot_qq_residuals(preds_total, "Total (Points Scored)")
-print(qq_total)
-
-
 
 # 7. Feature Importance Analysis ----
 
@@ -994,57 +759,6 @@ plot_feature_importance <- function(model_expand,
   return(p)
 }
 
-## 7.A. Home ----
-# Get the data for further analysis or comparison:
-varImp_home_data <- get_feature_importance_data(
-  home_model_expand_season, 
-  home_model_roll_season
-) |>
-  mutate(
-    Response = "Home"
-  )
-varImp_home_data_expand <- varImp_home_data |>
-  filter(CV_Method == "Expanding", Overall > 0)
-varImp_home_data_roll <- varImp_home_data |>
-  filter(CV_Method == "Rolling", Overall > 0)
-
-print(varImp_home_data_expand)
-print(varImp_home_data_roll)
-
-# Generate and display the plot:
-p_home <- plot_feature_importance(home_model_expand_season, 
-                                  home_model_roll_season, 
-                                  "Home Score",
-                                  top_n = 20)
-print(p_home)
-ggplotly(p_home)
-
-## 7.B. Away ----
-# Get the data for further analysis or comparison:
-varImp_away_data <- get_feature_importance_data(
-  away_model_expand_season, 
-  away_model_roll_season
-) |>
-  mutate(
-    Response = "Away"
-  )
-varImp_away_data_expand <- varImp_away_data |>
-  filter(CV_Method == "Expanding", Overall > 0)
-varImp_away_data_roll <- varImp_away_data |>
-  filter(CV_Method == "Rolling", Overall > 0)
-
-print(varImp_away_data_expand)
-print(varImp_away_data_roll)
-
-
-# Generate and display the plot:
-p_away <- plot_feature_importance(away_model_expand_season, 
-                                  away_model_roll_season, 
-                                  "Away Score",
-                                  top_n = 20)
-print(p_away)
-ggplotly(p_away)
-
 ## 7.C. Result ----
 # Get the data for further analysis or comparison:
 varImp_result_data <- get_feature_importance_data(
@@ -1061,8 +775,6 @@ varImp_result_data_roll <- varImp_result_data |>
 
 print(varImp_result_data_expand)
 print(varImp_result_data_roll)
-setdiff(varImp_result_data_expand$Feature,
-        varImp_result_data_roll$Feature)
 
 
 # Generate and display the plot:
@@ -1075,89 +787,6 @@ p_result <- plot_feature_importance(result_model_expand_season,
 print(p_result)
 ggplotly(p_result)
 
-## 7.D. Total ----
-# Get the data for further analysis or comparison:
-varImp_total_data <- get_feature_importance_data(
-  total_model_expand_season, 
-  total_model_roll_season
-) |>
-  mutate(
-    Response = "Total"
-  )
-varImp_total_data_expand <- varImp_total_data |>
-  filter(CV_Method == "Expanding", Overall > 0)
-varImp_total_data_roll <- varImp_total_data |>
-  filter(CV_Method == "Rolling", Overall > 0)
-
-print(varImp_total_data_expand)
-print(varImp_total_data_roll)
-
-
-# Generate and display the plot:
-p_total <- plot_feature_importance(total_model_expand_season, 
-                                   total_model_roll_season, 
-                                   "Total",
-                                   top_n = 20)
-print(p_total)
-ggplotly(p_total)
-
-
-## 7.E. Combined ----
-# # Combine into one data frame
-# varImp_all <- bind_rows(
-#   varImp_home_data_expand,
-#   varImp_home_data_roll,
-#   varImp_away_data_expand, 
-#   varImp_away_data_roll, 
-#   varImp_result_data_expand,
-#   varImp_result_data_roll,
-#   varImp_total_data_expand,
-#   varImp_total_data_roll
-#   )
-# print(varImp_all)
-# 
-# # Reshape the data to wide format so each feature has Expanding and Rolling scores side by side
-# varImp_wide <- varImp_all |>
-#   pivot_wider(names_from = CV_Method, values_from = Overall)
-# 
-# # Function to create scatter plots comparing Expanding vs. Rolling importance for each response
-# compare_varImp <- function(data, response_label) {
-#   df <- data |> filter(Response == response_label)
-#   
-#   p <- ggplot(df, aes(x = Expanding, y = Rolling, label = Feature)) +
-#     geom_point() +
-#     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
-#     geom_text(nudge_y = 0.05, nudge_x = 0.05, check_overlap = TRUE, size = 3) +
-#     labs(title = paste("Expanding vs. Rolling Feature Importance:", response_label),
-#          x = "Expanding Importance", 
-#          y = "Rolling Importance") +
-#     theme_bw()
-#   
-#   return(p)
-# }
-# 
-# # Generate comparison plots for each response
-# p_home_comp   <- compare_varImp(varImp_wide, "Home")
-# p_away_comp   <- compare_varImp(varImp_wide, "Away")
-# p_result_comp <- compare_varImp(varImp_wide, "Result")
-# p_total_comp  <- compare_varImp(varImp_wide, "Total")
-# 
-# print(p_home_comp)
-# print(p_away_comp)
-# print(p_result_comp)
-# print(p_total_comp)
-# 
-# # Alternatively, a faceted dot plot across responses:
-# p_dot <- ggplot(varImp_all, aes(x = reorder(Feature, Overall), y = Overall, color = CV_Method)) +
-#   geom_point(position = position_jitter(width = 0.2), size = 2, alpha = 0.7) +
-#   facet_wrap(~ Response, scales = "free_y") +
-#   coord_flip() +
-#   labs(title = "Feature Importance Across Responses",
-#        x = "Feature",
-#        y = "Importance") +
-#   theme_bw()
-# 
-# print(p_dot)
 
 # 8. Temporal Performance Analysis ----
 compute_seasonal_metrics <- function(model, response_name) {
@@ -1187,24 +816,6 @@ compute_seasonal_metrics <- function(model, response_name) {
 }
 
 ## 8.A. Compute and Combine Seasonal Metrics ----
-### 8.A.1. Home Score Metrics ----
-metrics_home_expand_season <- compute_seasonal_metrics(home_model_expand_season, "Home")
-metrics_home_roll_season   <- compute_seasonal_metrics(home_model_roll_season, "Home")
-
-metrics_home_season <- bind_rows(
-  metrics_home_expand_season %>% mutate(CV_Method = "Expanding"),
-  metrics_home_roll_season %>% mutate(CV_Method = "Rolling")
-)
-
-### 8.A.2. Away Score Metrics ----
-metrics_away_expand_season <- compute_seasonal_metrics(away_model_expand_season, "Away")
-metrics_away_roll_season   <- compute_seasonal_metrics(away_model_roll_season, "Away")
-
-metrics_away_season <- bind_rows(
-  metrics_away_expand_season %>% mutate(CV_Method = "Expanding"),
-  metrics_away_roll_season %>% mutate(CV_Method = "Rolling")
-)
-
 ### 8.A.3. Result Metrics ----
 metrics_result_expand_season <- compute_seasonal_metrics(result_model_expand_season, "result")
 metrics_result_roll_season   <- compute_seasonal_metrics(result_model_roll_season, "result")
@@ -1214,24 +825,6 @@ metrics_result_season <- bind_rows(
   metrics_result_roll_season %>% mutate(CV_Method = "Rolling")
 )
 print(metrics_result_season, n = nrow(metrics_result_season))
-
-### 8.A.4. Total Metrics ----
-metrics_total_expand_season <- compute_seasonal_metrics(total_model_expand_season, "total")
-metrics_total_roll_season   <- compute_seasonal_metrics(total_model_roll_season, "total")
-
-metrics_total_season <- bind_rows(
-  metrics_total_expand_season %>% mutate(CV_Method = "Expanding"),
-  metrics_total_roll_season %>% mutate(CV_Method = "Rolling")
-)
-
-### 8.A.5. Combined ----
-metrics_combined_season <- bind_rows(
-  metrics_home_season,
-  metrics_away_season,
-  metrics_result_season,
-  metrics_total_season
-)
-print(metrics_combined_season, n = 128)
 
 ## 8.B. Plot Temporal Performance ----
 plot_temporal_metric <- function(metrics_df, metric, y_label, plot_title) {
@@ -1246,74 +839,6 @@ plot_temporal_metric <- function(metrics_df, metric, y_label, plot_title) {
     theme_bw()
   return(p)
 }
-
-### 8.B.1. Home ----
-p_rmse_home_season <- plot_temporal_metric(
-  metrics_home_season,
-  "RMSE", "RMSE", "Home Score RMSE by Season"
-)
-# print(p_rmse_home_season)
-
-p_mae_home_season <- plot_temporal_metric(
-  metrics_home_season, 
-  "MAE", "MAE", "Home Score MAE by Season"
-)
-# print(p_mae_home_season)
-
-p_r2_home_season <- plot_temporal_metric(
-  metrics_home_season,
-  "R2", "R²", "Home Score R² by Season"
-)
-# print(p_r2_home_season)
-
-p_bias_home_season <- plot_temporal_metric(
-  metrics_home_season, 
-  "Mean_Bias", "Mean Bias", "Home Score Mean Bias by Season"
-)
-# print(p_bias_home_season)
-
-wrap_plots(
-  p_rmse_home_season,
-  p_mae_home_season,
-  p_r2_home_season,
-  p_bias_home_season,
-  nrow = 2,
-  guides = 'collect'
-)
-
-### 8.B.2. Away ----
-p_rmse_away_season <- plot_temporal_metric(
-  metrics_away_season,
-  "RMSE", "RMSE", "Away Score RMSE by Season"
-)
-# print(p_rmse_away_season)
-
-p_mae_away_season <- plot_temporal_metric(
-  metrics_away_season, 
-  "MAE", "MAE", "Away Score MAE by Season"
-)
-# print(p_mae_away_season)
-
-p_r2_away_season <- plot_temporal_metric(
-  metrics_away_season,
-  "R2", "R²", "Away Score R² by Season"
-)
-# print(p_r2_away_season)
-
-p_bias_away_season <- plot_temporal_metric(
-  metrics_away_season, 
-  "Mean_Bias", "Mean Bias", "Away Score Mean Bias by Season"
-)
-# print(p_bias_away_season)
-
-wrap_plots(
-  p_rmse_away_season,
-  p_mae_away_season,
-  p_r2_away_season,
-  p_bias_away_season,
-  nrow = 2,
-  guides = 'collect'
-)
 
 ### 8.B.3. Result ----
 p_rmse_result_season <- plot_temporal_metric(
@@ -1349,40 +874,6 @@ wrap_plots(
   guides = 'collect'
 )
 
-### 8.B.4. Total ----
-p_rmse_total_season <- plot_temporal_metric(
-  metrics_total_season,
-  "RMSE", "RMSE", "Total RMSE by Season"
-)
-# print(p_rmse_total_season)
-
-p_mae_total_season <- plot_temporal_metric(
-  metrics_total_season, 
-  "MAE", "MAE", "Total MAE by Season"
-)
-# print(p_mae_total_season)
-
-p_r2_total_season <- plot_temporal_metric(
-  metrics_total_season,
-  "R2", "R²", "Total R² by Season"
-)
-# print(p_r2_total_season)
-
-p_bias_total_season <- plot_temporal_metric(
-  metrics_total_season, 
-  "Mean_Bias", "Mean Bias", "Total Mean Bias by Season"
-)
-# print(p_bias_total_season)
-
-wrap_plots(
-  p_rmse_total_season,
-  p_mae_total_season,
-  p_r2_total_season,
-  p_bias_total_season,
-  nrow = 2,
-  guides = 'collect'
-)
-
 # 9. Final Models ----
 ## 9.A. Identity Models ----
 xgb_home_model_final <- home_model_expand_season
@@ -1403,6 +894,11 @@ save(xgb_result_model_final,
      file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
 save(xgb_total_model_final, 
      file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_total_model_final.rda")
+
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_home_model_final.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_away_model_final.rda")
+#load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_total_model_final.rda")
 
 ## 9.B. Best Tunes ----
 ### 9.B.1. Plot Tunes ----
@@ -1708,13 +1204,13 @@ acc_df <- betting_eval(betting_df,
                        group_season = FALSE,
                        group_week = FALSE)
 acc_df_season <- betting_eval(betting_df, 
-                       start_season = 2010,
-                       group_season = TRUE,
-                       group_week = FALSE)
+                              start_season = 2010,
+                              group_season = TRUE,
+                              group_week = FALSE)
 acc_df_week <- betting_eval(betting_df, 
-                       start_season = 2010,
-                       group_season = FALSE,
-                       group_week = TRUE)
+                            start_season = 2010,
+                            group_season = FALSE,
+                            group_week = TRUE)
 
 print(acc_df, n = nrow(acc_df))
 print(acc_df_season, n = nrow(acc_df_season))

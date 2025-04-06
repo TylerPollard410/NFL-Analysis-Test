@@ -13,41 +13,41 @@ bettingGamesLinesTableServer <- function(id,
   lineData <- #reactive({
     #req(gameID)
     gameDataLong |>
-      filter(game_id == gameID) |>
-      mutate(
-        rowID = row_number(),
-        spread_line = -spread_line,
-        spread_line = ifelse(spread_line > 0, paste0("+", spread_line), spread_line),
-        team_spread_odds = paste0("(", team_spread_odds, ")"),
-        total_line = ifelse(rowID == 1, paste0("o", total_line), paste0("u", total_line)),
-        total_odds = ifelse(rowID == 1, paste0("(", over_odds, ")"), paste0("(", under_odds, ")")),
-        team_moneyline = ifelse(team_moneyline > 0, paste0("+", team_moneyline), team_moneyline),
-        record = ifelse(team_T == 0,
-                        paste0("(", team_W, "-", team_L, ")"),
-                        paste0("(", team_W, "-", team_L, "-", team_T, ")")),
-        location = str_to_sentence(location),
-        recordLocation = paste(record, location),
-        gametime = ifelse(str_sub(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), 1, 1) == "0",
-                          str_replace(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), "0", ""),
-                          format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"))
-      ) |>
-      left_join(
-        teamsData |> select(team_abbr, team_nick, team_logo_espn),
-        by = c("team" = "team_abbr")
-      ) |>
-      select(
-        weekday,
-        gameday,
-        gametime,
-        team,
-        team_nick,
-        recordLocation,
-        spread_line,
-        team_spread_odds,
-        total_line,
-        total_odds,
-        team_moneyline
-      )
+    filter(game_id == gameID) |>
+    mutate(
+      rowID = row_number(),
+      spread_line = -spread_line,
+      spread_line = ifelse(spread_line > 0, paste0("+", spread_line), spread_line),
+      team_spread_odds = paste0("(", team_spread_odds, ")"),
+      total_line = ifelse(rowID == 1, paste0("o", total_line), paste0("u", total_line)),
+      total_odds = ifelse(rowID == 1, paste0("(", over_odds, ")"), paste0("(", under_odds, ")")),
+      team_moneyline = ifelse(team_moneyline > 0, paste0("+", team_moneyline), team_moneyline),
+      record = ifelse(team_T == 0,
+                      paste0("(", team_W, "-", team_L, ")"),
+                      paste0("(", team_W, "-", team_L, "-", team_T, ")")),
+      location = str_to_sentence(location),
+      recordLocation = paste(record, location),
+      gametime = ifelse(str_sub(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), 1, 1) == "0",
+                        str_replace(format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"), "0", ""),
+                        format(parse_date_time(gametime, "%#H:%M"), "%I:%M %p"))
+    ) |>
+    left_join(
+      teamsData |> select(team_abbr, team_nick, team_logo_espn),
+      by = c("team" = "team_abbr")
+    ) |>
+    select(
+      weekday,
+      gameday,
+      gametime,
+      team,
+      team_nick,
+      recordLocation,
+      spread_line,
+      team_spread_odds,
+      total_line,
+      total_odds,
+      team_moneyline
+    )
   #})
   
   moduleServer(id, function(input, output, session) {
@@ -165,8 +165,8 @@ bettingGamesLinesTableServer <- function(id,
         ),
         width = 12,
         #div(
-          #style = "margin-top:-20px; padding:-10px",
-          gt_output(NS(id, "bettingGamesLinesTable"))
+        #style = "margin-top:-20px; padding:-10px",
+        gt_output(NS(id, "bettingGamesLinesTable"))
         #)
       )
     })

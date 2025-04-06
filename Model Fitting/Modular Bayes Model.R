@@ -15,6 +15,7 @@ library(elo)
 library(glmnet)
 library(xgboost)
 library(MASS)
+library(matrixStats)
 library(fitdistrplus)
 library(bestNormalize)
 library(tictoc)
@@ -26,14 +27,14 @@ library(DescTools)
 library(car)
 library(bayesplot)
 library(BayesFactor)
-library(projpred)
+#library(projpred)
 library(cmdstanr)
 library(rstanarm)
 library(tidybayes)
 library(loo)
 library(brms)
 library(performance)
-library(espnscrapeR)
+library(Metrics)
 library(nflverse)
 library(tidyverse)
 
@@ -98,7 +99,8 @@ time_slices <- list(train = train_indices, test = test_indices)
 cat("Total Seasonal CV folds:", length(time_slices$train), "\n")
 
 # 3. Modular Model Fitting Function -------------------------------------------
-fit_seasonal_model <- function(train_data, test_data, response = "result",
+fit_seasonal_model <- function(train_data, test_data, 
+                               response = "result", use_calc = FALSE,
                                use_team_RE = TRUE, use_season_FE = FALSE,
                                # Numeric predictors to center & scale.
                                preprocess_vars = c("xgb_result", "home_rest", "away_rest", "temp", "wind"),
@@ -114,14 +116,26 @@ fit_seasonal_model <- function(train_data, test_data, response = "result",
   
   # Choose the XGB predictor variable.
   xgb_pred_var <- switch(response,
-                         "result" = "xgb_result",
-                         "total"  = "xgb_total",
+                         "result" = if(use_calc) "xgb_result_calc" else "xgb_result",
+                         "total"  = if(use_calc) "xgb_total_calc"  else "xgb_total",
                          stop("Unsupported response"))
   
   # Build formula.
-  fixed_part <- paste(response, "~", xgb_pred_var, " + ",
-                      paste(c("home_rest", "away_rest", "div_game", "roof", "temp", "wind"),
-                            collapse = " + "))
+  fixed_part <- paste(
+    response, "~", xgb_pred_var, " + ",
+    paste(c(
+      #"home_rest",
+      #"away_rest",
+      #"weekday",
+      #"time_of_day",
+      #"location2",
+      "div_game",
+      "roof",
+      "temp",
+      "wind"
+    ),
+    collapse = " + ")
+  )
   re_team <- if (use_team_RE) " + (1 | home_team) + (1 | away_team)" else ""
   fe_season <- if (use_season_FE) " + season" else ""
   formula_str <- paste0(fixed_part, fe_season, re_team)
@@ -154,7 +168,11 @@ fit_seasonal_model <- function(train_data, test_data, response = "result",
   # Generate full posterior predictive draws.
   ppd <- posterior_predict(fit, newdata = test_data, re_formula = NULL, allow_new_levels = TRUE)
   
-  return(list(model = fit, ppd = ppd, test_data = test_data, formula = formula_obj))
+  return(list(model = fit,
+              ppd = ppd, 
+              train_data = train_data,
+              test_data = test_data,
+              formula = formula_obj))
 }
 
 # 4. Optional: Variable Selection with projpred -----------------------------
@@ -173,6 +191,14 @@ fit_seasonal_model <- function(train_data, test_data, response = "result",
 # cat("Selected predictors:", paste(selected_vars, collapse = ", "), "\n")
 # # You could then re-fit a model using only these predictors.
 
+# Convert your brms model to a stanreg object (if supported)
+# fit_stanreg <- as_stanreg(fold_results[["2022"]]$model)
+# vs <- cv_varsel(fit_stanreg, method = "forward")
+# suggested_size <- suggest_size(vs)
+# cat("Suggested model size (number of predictors):", suggested_size, "\n")
+# selected_vars <- names(vs$solution)[vs$solution != 0]
+# cat("Selected predictors:", paste(selected_vars, collapse = ", "), "\n")
+
 # 5. Loop Over Seasonal Folds to Fit and Store Models ------------------------
 fold_results <- list()
 system.time(
@@ -182,9 +208,10 @@ system.time(
     test_data  <- model_data[time_slices$test[[fold]], ]
     
     fold_fit <- fit_seasonal_model(
-      train_data, test_data, response = "result",
+      train_data, test_data, 
+      response = "result", use_calc = TRUE,
       use_team_RE = TRUE, use_season_FE = FALSE,
-      preprocess_vars = c("xgb_result", "home_rest", "away_rest", "temp", "wind")
+      preprocess_vars = c("xgb_result_calc", "home_rest", "away_rest", "temp", "wind")
     )
     
     # Compute and report fold RMSE.
@@ -196,6 +223,18 @@ system.time(
   }
 )
 
+## 5B. Model Summary Outputs -----------------------------------------------------
+# Loop over each fold and print a summary.
+for (fold in names(fold_results)) {
+  cat("\n---------- Model Summary for Season Fold:", fold, "----------\n")
+  summary_output <- summary(fold_results[[fold]]$model)
+  print(summary_output)
+  
+  cat("\nFixed Effects for Season Fold", fold, ":\n")
+  fixed_eff <- fixef(fold_results[[fold]]$model, probs = c(0.025, 0.975))
+  print(fixed_eff)
+}
+
 # 6. Post-Processing: Overall & Weekly Performance ----------------------------
 # Combine predictions from all folds.
 all_fold_preds <- do.call(rbind, lapply(fold_results, function(fold) {
@@ -204,27 +243,31 @@ all_fold_preds <- do.call(rbind, lapply(fold_results, function(fold) {
     season   = fold$test_data$season,
     week     = fold$test_data$week,
     observed = fold$test_data$result,
-    predicted = colMeans(fold$ppd)
+    predicted = colMeans(fold$ppd),
+    predictedMed = colMedians(fold$ppd)
   )
 }))
 
 overall_rmse <- sqrt(mean((all_fold_preds$observed - all_fold_preds$predicted)^2, na.rm = TRUE))
 overall_mae  <- mean(abs(all_fold_preds$observed - all_fold_preds$predicted), na.rm = TRUE)
 overall_mad  <- median(abs(all_fold_preds$observed - all_fold_preds$predicted), na.rm = TRUE)
+overall_mad2  <- mean(abs(all_fold_preds$observed - all_fold_preds$predictedMed), na.rm = TRUE)
 
 cat("Overall RMSE:", round(overall_rmse, 3), "\n")
 cat("Overall MAE:", round(overall_mae, 3), "\n")
 cat("Overall MAD:", round(overall_mad, 3), "\n")
+cat("Overall MAD2:", round(overall_mad2, 3), "\n")
 
 # Weekly performance: group by week and compute metrics.
-weekly_metrics <- all_fold_preds %>%
-  group_by(week) %>%
+weekly_metrics <- all_fold_preds |>
+  group_by(week) |>
   summarize(
-    rmse = sqrt(mean((observed - predicted)^2, na.rm = TRUE)),
-    mae = mean(abs(observed - predicted), na.rm = TRUE),
+    rmse = sqrt(mean((observed - predicted)^2, na.rm = FALSE)),
+    mae = mean(abs(observed - predicted), na.rm = FALSE),
+    #mae2 = mae(observed, predicted),
     n = n()
   )
-print(weekly_metrics)
+print(weekly_metrics, n = 30)
 
 # 7. Compute Coverage (95% Credible Intervals) -------------------------------
 compute_coverage <- function(ppd, observed, lower = 0.025, upper = 0.975) {
@@ -297,9 +340,9 @@ betting_eval_fold <- function(fold_result,
   
   test_df <- test_df %>%
     mutate(
-      xgb_home_score = predict(home_model, newdata = test_df),
-      xgb_away_score = predict(away_model, newdata = test_df),
-      xgb_result = xgb_home_score - xgb_away_score,
+      # xgb_home_score = predict(home_model, newdata = test_df),
+      # xgb_away_score = predict(away_model, newdata = test_df),
+      #xgb_result = xgb_home_score - xgb_away_score,
       xgb_spread_line = spread_line,
       xgb_diff = xgb_result - xgb_spread_line,
       xgb_cover = case_when(
@@ -310,7 +353,8 @@ betting_eval_fold <- function(fold_result,
       xgb_correct_cover = (actual_cover == xgb_cover)
     ) %>%
     mutate(
-      xgb_result2 = predict(xgb_result_model, newdata = test_df),
+      # xgb_result2 = predict(xgb_result_model, newdata = test_df),
+      xgb_result2 = xgb_home_score - xgb_away_score,
       xgb_spread_line2 = spread_line,
       xgb_diff2 = xgb_result2 - xgb_spread_line2,
       xgb_cover2 = case_when(
@@ -339,7 +383,11 @@ betting_eval_fold <- function(fold_result,
 
 # Apply the betting evaluation to each fold.
 betting_evals <- lapply(fold_results, function(fold) {
-  betting_eval_fold(fold, xgb_home_model_final, xgb_away_model_final, xgb_result_model_final, threshold = 0.6)
+  betting_eval_fold(fold, 
+                    xgb_home_model_final,
+                    xgb_away_model_final, 
+                    xgb_result_model_final, 
+                    threshold = 0.6)
 })
 
 # Extract and print metrics.
