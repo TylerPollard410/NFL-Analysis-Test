@@ -950,7 +950,6 @@ cat("\n=== Variable Importance ===\n")
 print(importance_matrix)
 
 # Optionally, plot importance:
-library(ggplot2)
 ggplot(importance_matrix, aes(x = reorder(Feature, Gain), y = Gain)) +
   geom_col(fill = "steelblue") +
   coord_flip() +
@@ -1155,6 +1154,178 @@ ggplot(all_forecasts, aes(x = away_score, y = pred_away_score)) +
   theme_minimal()
 
 
+# 9. Save Model Info -----
+final_xgb_model_away <- final_model_full
+final_xgb_params_away <- final_params
+final_xgb_importance_away <- importance_matrix_gain
+final_xgb_forecasts_away <- all_forecasts
 
+file_loc <- "~/Desktop/NFL Analysis Data/finalXGBmodels/"
+
+save(final_xgb_model_away,
+     file = paste0(file_loc, "final_xgb_model_away", ".rda"))
+save(final_xgb_params_away,
+     file = paste0(file_loc, "final_xgb_params_away", ".rda"))
+save(final_xgb_importance_away,
+     file = paste0(file_loc, "final_xgb_importance_away", ".rda"))
+save(final_xgb_forecasts_away,
+     file = paste0(file_loc, "final_xgb_forecasts_away", ".rda"))
+
+# 10. Betting Performance ----
+load(file = paste0(file_loc, "final_xgb_forecasts_home", ".rda"))
+load(file = paste0(file_loc, "final_xgb_forecasts_away", ".rda"))
+
+xgb_cv_preds <- nfl_data |> 
+  select(
+    game_id, season, week,
+    home_score,
+    away_score,
+    result,
+    total
+  ) |>
+  left_join(
+    final_xgb_forecasts_home |> 
+      select(game_id, xgb_home_score = pred_home_score),
+    by = join_by(game_id)
+  ) |>
+  left_join(
+    final_xgb_forecasts_away |> 
+      select(game_id, xgb_away_score = pred_away_score),
+    by = join_by(game_id)
+  ) |>
+  # left_join(
+  #   xgb_result_pred |> 
+  #     select(game_id, xgb_result = pred),
+  #   by = join_by(game_id)
+  # ) |>
+  # left_join(
+  #   xgb_total_pred |> 
+  #     select(game_id, xgb_total = pred),
+  #   by = join_by(game_id)
+  # ) |>
+  relocate(xgb_home_score, .after = home_score) |>
+  relocate(xgb_away_score, .after = away_score) 
+  #relocate(xgb_result, .after = result) |>
+  #relocate(xgb_total, .after = total)
+
+betting_vars <- c("spread_line", "spreadCover", 
+                  "home_spread_odds", "home_spread_prob",
+                  "away_spread_odds", "away_spread_prob",
+                  "total_line", "totalCover",
+                  "over_odds", "over_prob",
+                  "under_odds", "under_prob",
+                  "winner", 
+                  "home_moneyline", "home_moneyline_prob",
+                  "away_moneyline", "away_moneyline_prob")
+
+betting_df <- nfl_data |>
+  select(game_id) |>
+  left_join(xgb_cv_preds) |>
+  left_join(
+    nfl_data |>
+      select(game_id, betting_vars)
+  ) #|>
+# mutate(
+#   actual_cover = case_when(
+#     result > spread_line ~ "Home",
+#     result < spread_line ~ "Away",
+#     TRUE ~ NA_character_
+#   ),
+#   .after = spreadCover
+# )
+
+betting_eval <- function(bet_df,
+                         start_season = 2010,
+                         group_season = FALSE,
+                         group_week = FALSE) {
+  bet_df <- bet_df |>
+    filter(season >= start_season) |>
+    mutate(
+      actual_result_cover = case_when(
+        result > spread_line ~ "Home",
+        result < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      # exp_result = xgb_result,
+      # exp_result_cover = case_when(
+      #   exp_result > spread_line ~ "Home",
+      #   exp_result < spread_line ~ "Away",
+      #   TRUE ~ NA_character_
+      # ),
+      exp_result2 = xgb_home_score - xgb_away_score,
+      exp_result2_cover = case_when(
+        exp_result2 > spread_line ~ "Home",
+        exp_result2 < spread_line ~ "Away",
+        TRUE ~ NA_character_
+      ),
+      #correct_result = exp_result_cover == actual_result_cover,
+      correct_result2 = exp_result2_cover == actual_result_cover
+    ) |>
+    mutate(
+      actual_total_cover = case_when(
+        total > total_line ~ "Over",
+        total < total_line ~ "Under",
+        TRUE ~ NA_character_
+      ),
+      # exp_total = xgb_total,
+      # exp_total_cover = case_when(
+      #   exp_total > total_line ~ "Over",
+      #   exp_total < total_line ~ "Under",
+      #   TRUE ~ NA_character_
+      # ),
+      exp_total2 = xgb_home_score + xgb_away_score,
+      exp_total2_cover = case_when(
+        exp_total2 > total_line ~ "Over",
+        exp_total2 < total_line ~ "Under",
+        TRUE ~ NA_character_
+      ),
+      #correct_total = exp_total_cover == actual_total_cover,
+      correct_total2 = exp_total2_cover == actual_total_cover
+    )
+  
+  if(group_season & group_week){
+    bet_df <- bet_df |>
+      group_by(season, week)
+  }else if(group_season & !group_week){
+    bet_df <- bet_df |>
+      group_by(season)
+  }else if(!group_season & group_week){
+    bet_df <- bet_df |>
+      group_by(week)
+  }else{
+    bet_df <- bet_df
+  }
+  
+  acc_df <- bet_df |>
+    summarise(
+      Games = n(),
+      Result_Bets = sum(!is.na(correct_result2)),
+      #Acc_Result = round(mean(correct_result, na.rm = TRUE)*100, 2),
+      Acc_Result2 = round(mean(correct_result2, na.rm = TRUE)*100, 2),
+      Total_Bets = sum(!is.na(correct_total2)),
+      #Acc_Total = round(mean(correct_total, na.rm = TRUE)*100, 2),
+      Acc_Total2 = round(mean(correct_total2, na.rm = TRUE)*100, 2)
+    )
+  
+  return(acc_df)
+}
+
+## 10.B. Output Accuracy ----
+acc_df <- betting_eval(betting_df, 
+                       start_season = 2010,
+                       group_season = FALSE,
+                       group_week = FALSE)
+acc_df_season <- betting_eval(betting_df, 
+                              start_season = 2010,
+                              group_season = TRUE,
+                              group_week = FALSE)
+acc_df_week <- betting_eval(betting_df, 
+                            start_season = 2010,
+                            group_season = FALSE,
+                            group_week = TRUE)
+
+print(acc_df, n = nrow(acc_df))
+print(acc_df_season, n = nrow(acc_df_season))
+print(acc_df_week, n = nrow(acc_df_week))
 
 

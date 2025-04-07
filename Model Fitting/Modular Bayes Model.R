@@ -46,12 +46,23 @@ load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/ma
 source("./app/R/clean_modData.R")
 
 # Load XGBoost models, variable importance, and predictions.
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_home_model_final.rda")
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_away_model_final.rda")
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_total_model_final.rda")
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/varImp_final_all.rda")
-load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_cv_preds.rda")
+#file_loc <- "~/Desktop/NFL Analysis Data/finalXGBmodels/"
+
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_home.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_home.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_away.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_away.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_result.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_result.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_total.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_total.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_cv_preds_native.rda")
+
+# load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_away_model_final.rda")
+# load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
+# load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_total_model_final.rda")
+# load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/varImp_final_all.rda")
+# load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_cv_preds.rda")
 
 # Determine available seasons from XGBoost predictions.
 xgb_seasons <- xgb_cv_preds %>% 
@@ -61,7 +72,10 @@ xgb_season_start <- min(xgb_seasons)
 xgb_season_end   <- max(xgb_seasons)
 
 # Clean and prepare the main data.
-model_data <- clean_modData(data = modData, season_start = xgb_season_start)
+model_data <- clean_modData(data = modData, season_start = xgb_season_start) |>
+  mutate(
+    season_type = relevel(season_type, ref = "REG")
+  )
 
 # Add a time identifier.
 model_data <- model_data %>%
@@ -71,8 +85,10 @@ model_data <- model_data %>%
 # Merge in XGBoost predictions.
 model_data <- model_data %>%
   left_join(xgb_cv_preds %>% select(game_id, contains("xgb")), by = "game_id") %>%
-  mutate(xgb_result_calc = xgb_home_score - xgb_away_score,
-         xgb_total_calc  = xgb_home_score + xgb_away_score) %>%
+  mutate(
+    xgb_result_calc = xgb_home_score - xgb_away_score,
+    xgb_total_calc  = xgb_home_score + xgb_away_score
+  ) %>%
   relocate(xgb_home_score, .after = home_score) %>%
   relocate(xgb_away_score, .after = away_score) %>%
   relocate(xgb_result, xgb_result_calc, .after = result) %>%
@@ -100,35 +116,48 @@ cat("Total Seasonal CV folds:", length(time_slices$train), "\n")
 
 # 3. Modular Model Fitting Function -------------------------------------------
 fit_seasonal_model <- function(train_data, test_data, 
-                               response = "result", use_calc = FALSE,
-                               use_team_RE = TRUE, use_season_FE = FALSE,
+                               response = "result",
+                               use_calc = FALSE,
+                               use_home_team_RE = TRUE, 
+                               use_away_team_RE = TRUE,
+                               use_season_FE = TRUE,
                                # Numeric predictors to center & scale.
-                               preprocess_vars = c("xgb_result", "home_rest", "away_rest", "temp", "wind"),
+                               preprocess_vars = c("xgb_result", 
+                                                   "home_rest",
+                                                   "away_rest",
+                                                   "temp",
+                                                   "wind"),
                                iters = 4000, burn = 2000, chains = 4,
                                rstanBackend = FALSE) {
   
   # Preprocess numeric predictors.
   if (!is.null(preprocess_vars)) {
-    preProc <- preProcess(train_data[, preprocess_vars], method = c("center", "scale"))
-    train_data[, preprocess_vars] <- predict(preProc, train_data[, preprocess_vars])
-    test_data[, preprocess_vars]  <- predict(preProc, test_data[, preprocess_vars])
+    preProc <- preProcess(train_data |> select(preprocess_vars),
+                          method = c("center", "scale"))
+    #train_data[, preprocess_vars] <- predict(preProc, train_data[, preprocess_vars])
+    #test_data[, preprocess_vars]  <- predict(preProc, test_data[, preprocess_vars])
+    train_data <- predict(preProc, train_data)
+    test_data <- predict(preProc, test_data)
   }
   
   # Choose the XGB predictor variable.
   xgb_pred_var <- switch(response,
-                         "result" = if(use_calc) "xgb_result_calc" else "xgb_result",
-                         "total"  = if(use_calc) "xgb_total_calc"  else "xgb_total",
+                         "result" = ifelse(use_calc, "xgb_result_calc", "xgb_result"),
+                         "total"  = ifelse(use_calc,"xgb_total_calc","xgb_total"),
                          stop("Unsupported response"))
   
   # Build formula.
   fixed_part <- paste(
-    response, "~", xgb_pred_var, " + ",
+    response, "~", 
+    xgb_pred_var, " + ",
     paste(c(
-      #"home_rest",
-      #"away_rest",
+      #"offset(xgb_pred_var)"
+      "home_rest",
+      "away_rest",
+      "season_type",
       #"weekday",
-      #"time_of_day",
-      #"location2",
+      "time_of_day",
+      "location",
       "div_game",
       "roof",
       "temp",
@@ -136,10 +165,13 @@ fit_seasonal_model <- function(train_data, test_data,
     ),
     collapse = " + ")
   )
-  re_team <- if (use_team_RE) " + (1 | home_team) + (1 | away_team)" else ""
-  fe_season <- if (use_season_FE) " + season" else ""
-  formula_str <- paste0(fixed_part, fe_season, re_team)
-  formula_obj <- bf(as.formula(formula_str)) + brmsfamily(family = "student", link = "identity")
+  re_home_team <- ifelse(use_home_team_RE, " + (1 | home_team)", "")
+  re_away_team <- ifelse(use_away_team_RE, " + (1 | away_team)", "")
+  fe_season <- ifelse(use_season_FE," + season", "")
+  formula_str <- paste0(fixed_part, fe_season, re_home_team, re_away_team)
+  
+  formula_obj <- bf(as.formula(formula_str)) +
+    brmsfamily(family = "student", link = "identity")
   
   # Define priors.
   priors <- c(
@@ -152,7 +184,7 @@ fit_seasonal_model <- function(train_data, test_data,
   fit <- brm(
     formula = formula_obj,
     data = train_data,
-    prior = priors,
+    #prior = priors,
     save_pars = save_pars(all = TRUE),
     chains = chains,
     iter = iters,
@@ -166,7 +198,10 @@ fit_seasonal_model <- function(train_data, test_data,
   )
   
   # Generate full posterior predictive draws.
-  ppd <- posterior_predict(fit, newdata = test_data, re_formula = NULL, allow_new_levels = TRUE)
+  ppd <- posterior_predict(fit, 
+                           newdata = test_data,
+                           re_formula = NULL, 
+                           allow_new_levels = TRUE)
   
   return(list(model = fit,
               ppd = ppd, 
@@ -208,16 +243,33 @@ system.time(
     test_data  <- model_data[time_slices$test[[fold]], ]
     
     fold_fit <- fit_seasonal_model(
-      train_data, test_data, 
-      response = "result", use_calc = TRUE,
-      use_team_RE = TRUE, use_season_FE = FALSE,
-      preprocess_vars = c("xgb_result_calc", "home_rest", "away_rest", "temp", "wind")
+      train_data, 
+      test_data, 
+      response = "result",
+      use_calc = FALSE,
+      use_home_team_RE = TRUE, 
+      use_away_team_RE = TRUE,
+      use_season_FE = TRUE,
+      # Numeric predictors to center & scale.
+      preprocess_vars = c(
+        #"xgb_result", 
+        "home_rest",
+        "away_rest",
+        "temp",
+        "wind"
+      ),
+      iters = 4000, burn = 2000, chains = 4,
+      rstanBackend = FALSE
     )
     
     # Compute and report fold RMSE.
     ppd_mean <- colMeans(fold_fit$ppd)
-    rmse_val <- sqrt(mean((test_data$result - ppd_mean)^2, na.rm = TRUE))
-    cat(sprintf("Fold (Season %s) RMSE = %.3f\n", fold, rmse_val))
+    # rmse_val <- sqrt(mean((test_data$result - ppd_mean)^2, na.rm = TRUE))
+    # mae_val <- sqrt(mean((test_data$result - ppd_mean)^2, na.rm = TRUE))
+    rmse_val <- rmse(test_data$result, ppd_mean)
+    mae_val <- mae(test_data$result, ppd_mean)
+    cat(sprintf("Fold (Season %s) RMSE = %.3f MAE = %.3f\n", 
+                fold, rmse_val, mae_val))
     
     fold_results[[fold]] <- fold_fit
   }
@@ -237,16 +289,17 @@ for (fold in names(fold_results)) {
 
 # 6. Post-Processing: Overall & Weekly Performance ----------------------------
 # Combine predictions from all folds.
-all_fold_preds <- do.call(rbind, lapply(fold_results, function(fold) {
-  data.frame(
-    game_id  = fold$test_data$game_id,
-    season   = fold$test_data$season,
-    week     = fold$test_data$week,
-    observed = fold$test_data$result,
-    predicted = colMeans(fold$ppd),
-    predictedMed = colMedians(fold$ppd)
-  )
-}))
+all_fold_preds <- 
+  do.call(rbind, lapply(fold_results, function(fold, response = "result") {
+    data.frame(
+      game_id  = fold$test_data$game_id,
+      season   = fold$test_data$season,
+      week     = fold$test_data$week,
+      observed = fold$test_data |> pull(response),
+      predicted = colMeans(fold$ppd),
+      predictedMed = colMedians(fold$ppd)
+    )
+  }))
 
 overall_rmse <- sqrt(mean((all_fold_preds$observed - all_fold_preds$predicted)^2, na.rm = TRUE))
 overall_mae  <- mean(abs(all_fold_preds$observed - all_fold_preds$predicted), na.rm = TRUE)
@@ -384,9 +437,9 @@ betting_eval_fold <- function(fold_result,
 # Apply the betting evaluation to each fold.
 betting_evals <- lapply(fold_results, function(fold) {
   betting_eval_fold(fold, 
-                    xgb_home_model_final,
-                    xgb_away_model_final, 
-                    xgb_result_model_final, 
+                    final_xgb_model_home,
+                    final_xgb_model_away, 
+                    final_xgb_model_result, 
                     threshold = 0.6)
 })
 

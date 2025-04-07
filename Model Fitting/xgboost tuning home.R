@@ -177,7 +177,7 @@ build_rolling_folds <- function(data, start_years = 2007:2021, window_size = 3) 
 }
 
 rolling_folds <- build_rolling_folds(nfl_data_model, 
-                                     start_years=2018:2021,
+                                     start_years=2007:2021,
                                      window_size=3)
 cat("Number of rolling folds:", length(rolling_folds), "\n")
 
@@ -950,7 +950,6 @@ cat("\n=== Variable Importance ===\n")
 print(importance_matrix)
 
 # Optionally, plot importance:
-library(ggplot2)
 ggplot(importance_matrix, aes(x = reorder(Feature, Gain), y = Gain)) +
   geom_col(fill = "steelblue") +
   coord_flip() +
@@ -1155,6 +1154,21 @@ ggplot(all_forecasts, aes(x = home_score, y = pred_home_score)) +
   theme_minimal()
 
 
+# 9. Save Model Info -----
+final_xgb_model_home <- final_model_full
+final_xgb_params_home <- final_params
+final_xgb_importance_home <- importance_matrix_gain
+final_xgb_forecasts_home <- all_forecasts
 
+file_loc <- "~/Desktop/NFL Analysis Data/finalXGBmodels/"
+
+save(final_xgb_model_home,
+     file = paste0(file_loc, "final_xgb_model_home", ".rda"))
+save(final_xgb_params_home,
+     file = paste0(file_loc, "final_xgb_params_home", ".rda"))
+save(final_xgb_importance_home,
+     file = paste0(file_loc, "final_xgb_importance_home", ".rda"))
+save(final_xgb_forecasts_home,
+     file = paste0(file_loc, "final_xgb_forecasts_home", ".rda"))
 
 
