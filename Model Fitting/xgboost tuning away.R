@@ -888,7 +888,7 @@ compare_df <- per_fold_summary %>%
   arrange(test_season, Approach)
 
 cat("\n=== Comparison of Per-Fold vs Global Tuning (fold by fold) ===\n")
-print(compare_df)
+print(compare_df, n = nrow(compare_df))
 
 # Summaries:
 comparison_summary <- compare_df %>%

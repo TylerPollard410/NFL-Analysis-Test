@@ -46,9 +46,8 @@ require(tidyverse)
 #source("./app/data-raw/gameDataLong.R")
 #source("./app/data-raw/pbpData.R")
 
-# Aggregate pbp ----
-## EPA ----
-### Penalty Structure 1 ----
+# EPA ----
+## Penalty Structure 1 ----
 # epaOffData <- pbpData |>
 #   filter(season %in% seasonsMod) |>
 #   #filter(play == 1) |> 
@@ -99,270 +98,580 @@ require(tidyverse)
 #   ) |>
 #   ungroup()
 
-### Penalty Sturcture 2 ----
+## Penalty Sturcture 2 ----
+## STEP 1: Compute game-level offensive EPA metrics from pbpData ----
 epaOffData <- pbpData |>
-  #filter(season %in% seasonsMod) |>
-  #filter(play == 1) |> 
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
-  mutate(
-    scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2
-  ) |>
+  mutate(scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2) |>
   summarise(
     # Total EPA
-    # off_plays = sum(play == 1),
-    # off_epa_sum = sum(epa[play == 1], na.rm = TRUE),
-    # off_epa_mean = mean(epa[play == 1], na.rm = TRUE),
-    off_plays = sum(play == 1 | play_type == "field_goal", na.rm = TRUE),
-    off_epa_sum = sum(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
-    off_epa_mean = mean(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    off_plays        = sum(play == 1 | play_type == "field_goal", na.rm = TRUE),
+    off_epa_sum      = sum(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    off_epa_mean     = mean(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
     # Passing EPA
-    off_pass_plays = sum(play == 1 & pass == 1 & penalty == 0, na.rm = TRUE),
+    off_pass_plays   = sum(play == 1 & pass == 1 & penalty == 0, na.rm = TRUE),
     off_pass_epa_sum = sum(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
-    off_pass_epa_mean = mean(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
-    # QB EPA (includes scrambles)
-    # off_pass_plays = sum(play == 1 & pass == 1 & penalty == 0, na.rm = TRUE),
-    # off_pass_epa_sum = sum(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
-    # off_pass_epa_mean = mean(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
+    off_pass_epa_mean= mean(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
     # Rushing EPA
-    off_rush_plays = sum(play == 1 & rush == 1 & penalty == 0, na.rm = TRUE),
+    off_rush_plays   = sum(play == 1 & rush == 1 & penalty == 0, na.rm = TRUE),
     off_rush_epa_sum = sum(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
-    off_rush_epa_mean = mean(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
+    off_rush_epa_mean= mean(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
     # Pre Snap Penalty EPA
-    off_penalty_plays = sum(play == 1 & penalty == 1, na.rm = TRUE),
+    off_penalty_plays   = sum(play == 1 & penalty == 1, na.rm = TRUE),
     off_penalty_epa_sum = sum(epa[play == 1 & penalty == 1], na.rm = TRUE),
-    off_penalty_epa_mean = mean(epa[play == 1 & penalty == 1], na.rm = TRUE),
+    off_penalty_epa_mean= mean(epa[play == 1 & penalty == 1], na.rm = TRUE),
     # Kicker EPA
-    off_kick_plays = sum(play_type %in% c("field_goal"), na.rm = TRUE),
+    off_kick_plays   = sum(play_type %in% c("field_goal"), na.rm = TRUE),
     off_kick_epa_sum = sum(epa[play_type %in% c("field_goal")], na.rm = TRUE),
-    off_kick_epa_mean = mean(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+    off_kick_epa_mean= mean(epa[play_type %in% c("field_goal")], na.rm = TRUE),
     # Special Teams EPA
-    off_special_plays = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
+    off_special_plays   = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
     off_special_epa_sum = sum(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
-    off_special_epa_mean = mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+    off_special_epa_mean= mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
     # Play distribution
     off_pass_plays_perc = off_pass_plays/(off_pass_plays + off_rush_plays),
     off_rush_plays_perc = off_rush_plays/(off_pass_plays + off_rush_plays)
   ) |>
-  mutate(
-    across(contains("off"), ~ifelse(is.nan(.x), 0, .x))
-  ) |>
+  mutate(across(contains("off"), ~ifelse(is.nan(.x), 0, .x))) |>
   ungroup() |>
+  # Create opponent variable by reversing the posteam order within each game
   group_by(game_id) |>
-  mutate(
-    opponent = rev(posteam), .after = posteam
-  ) |>
-  rename(
-    team = posteam
-  ) |>
+  mutate(opponent = rev(posteam), .after = posteam) |>
+  rename(team = posteam) |>
   ungroup()
 
-# epaOffData |> filter(season == 2024) |> group_by(team) |> 
-#   summarise(
-#     across(contains("epa"),
-#            ~mean(.x, na.rm = TRUE))
-#   ) |> 
-#   select(team, contains("mean")) |>
-#   arrange(desc(off_epa_mean)) |>
-#   view()
-
+## STEP 2: Merge defensive EPA metrics ----
+# Here we assume that a team's defensive EPA can be represented by the opponent’s offensive metrics.
 epaData <- epaOffData |>
   left_join(
-    epaOffData |> 
+    epaOffData |>
       select(game_id, opponent, contains("off")) |>
       rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
     by = join_by(game_id, team == opponent)
   )
+colnames(epaData)
 
-#epaData |> filter(season == 2024) |> view()
-
-epaAvgs <- epaData |> 
-  group_by(season, team) |>
-  summarise(
-    across(c(contains("plays"), contains("epa_mean")),
-           ~mean(.x, na.rm = TRUE),
-           .names = "{.col}"
-    )
-  ) |>
-  ungroup() |>
-  group_by(team) |>
-  mutate(
-    across(c(contains("plays"), contains("epa_mean")),
-           ~lag(.x, n = 1, default = 0),
-           .names = "{.col}"
-    )
-  ) |>
-  ungroup() |>
-  mutate(week = 1)
-
-
-#epaAvgs |> filter(season == 2024) |> arrange(desc(off_epa_mean)) |> view()
-
-epaData2 <- gameDataLong |>
-  select(
-    game_id, season, week, team
-  ) |>
-  left_join(
-    epaData |> select(game_id, team, opponent, contains("plays"), contains("mean"))
-  ) |>
-  group_by(season, team) |>
-  mutate(
-    across(c(contains("plays"), contains("epa_mean")),
-           ~lag(.x, n = 1, default = NA),
-           .names = "{.col}")
-  ) |>
-  ungroup()
-
-epaData3A <- gameDataLong |>
+## STEP 3: Merge EPA data with game-level ordering (from gameDataLong) ----
+epaFeatures <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   left_join(
-    bind_rows(
-      epaAvgs,
-      epaData2 |>
-        select(season, week, team, contains("off"), contains("def")) |>
-        filter(week != 1)
-    )
-  ) |>
-  group_by(season, team) |>
-  tk_augment_slidify(
-    .value = contains("mean"),
-    .period = 5,
-    .f = mean,
-    .partial = TRUE,
-    .align = "right"
-  ) |>
-  mutate(
-    across(c(contains("plays"), contains("mean"), -contains("roll")),
-           ~cummean(.x),
-           .names = "{.col}_cum")
-  ) |>
-  ungroup() |>
-  rename_with(~str_remove(.x, "(?<=roll).+"), contains("roll")) |>
-  select(
-    game_id, season, week, team, opponent, everything()
+    epaData |> 
+      select(game_id, team, opponent, 
+             contains("epa_mean"),
+             contains("plays")),
+    by = join_by(game_id, team, opponent)
   )
 
-epaData3 <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
-  left_join(epaData3A)
 
+### Define EPA metric columns for aggregation
+epa_cols <- epaFeatures |>
+  select(contains("epa_mean"), contains("plays")) |>
+  colnames()
+
+## STEP 4: Season-Specific Aggregates (Cumulative Mean) ----
+# For each season and team, order by week, lag each EPA metric by one game, then compute cumulative mean.
+epaSeason <- epaFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
+  mutate(
+    across(all_of(epa_cols), #contains(epa_cols),
+           ~cummean(.x),
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
+  ) |>
+  mutate(
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+
+## check
+# epaFeatures |>
+#   filter(season == 2023, team == "KC") |>
+#   pull(off_epa_mean) |>
+#   mean()
+
+## STEP 5: Multi-Season Aggregates (5-Game Rolling Average) ----
+# For continuity across seasons, group by team (ordered by season then week), lag, then compute a 5-game rolling average.
+epaMulti <- epaFeatures |>
+  mutate(
+    across(all_of(epa_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(epa_cols), #c(contains(epa_cols), -contains("roll"))
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(epa_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
+
+# check
+# epaMulti |> filter(season > 2006) |> nrow()
+# epaMulti |> filter(season > 2006) |> complete.cases() |> sum()
+
+## STEP 6: Combine EPA Features ----
+epaFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(epaSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(epaMulti,  by = join_by(game_id, season, week, team, opponent))
+
+# epaFinal now contains:
+# • The base EPA metrics per game (from epaFeatures)
+# • Season-specific cumulative aggregates (e.g., off_epa_mean_lag_season_cum_season)
+# • Multi-season rolling aggregates (e.g., off_epa_mean_lag_multi_roll_multi)
+# • Multi-season EWMA aggregates (e.g., off_epa_mean_lag_multi_ewma_multi)
+# epaFinal
 
 #rm(epaData, epaData2, epaOffData, epaAvgs, pbpData, pbpPlayTypes, pbpPlayTypesView)
 
-## SRS ----
-srsData <- epaData3 |>
-  left_join(
-    seasonWeekStandings |>
-      select(season, week, team, PFG = team_PPG, PAG = opp_PPG, MOV, SOS, SRS, OSRS, DSRS)
-  ) |>
-  group_by(team) |>
-  mutate(
-    across(c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS),
-           .fns = list(
-             lag = ~lag(.x, default = 0)
-           ),
-           .names = "{.col}")
-    # lagSRS = lag(SRS, n = 1),
-    # diffSRS = SRS - lagSRS,
-  ) |>
-  mutate(
-    across(c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS),
-           .fns = list(
-             ewma = ~ifelse(week < 6, movavg(.x, n = 2, "e"), .x)
-           ),
-           .names = "{.col}_ewma")
-  ) |>
-  #group_by(season, team) |>
-  tk_augment_slidify(
-    .value   = c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS),
-    # Multiple rolling windows
-    .period  = 5,
-    .f       = mean,
-    .partial = TRUE,
-    .align = "right",
-    .names = paste0(c("PFG", "PAG", "MOV", "SOS", "SRS", "OSRS", "DSRS"), "_roll")
-  ) |>
-  ungroup() 
 
-## Efficiency Stats ----
+
+# SRS ----
+## STEP 1: Extract Base SRS Values from seasonWeekStandings ----
+# (Assuming seasonWeekStandings already contains cumulative, week-by-week computed SRS values)
+srsData <- seasonWeekStandings |>
+  select(season, week, team, 
+         PFG = team_PPG,   # Points For per game
+         PAG = opp_PPG,    # Points Against per game
+         MOV, SOS, SRS, OSRS, DSRS)
+
+srs_cols <- c("PFG", "PAG", "MOV", "SOS", "SRS", "OSRS", 'DSRS')
+
+## STEP 2: Merge SRS Features with Game-Level Data ----
+# Use gameDataLong to enforce consistent ordering (one row per game).
+srsFeatures <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(srsData, by = join_by(season, week, team))
+
+## STEP 3: Create Season-Specific (Cum) Features by Lagging ####
+# Since the raw values are already cumulative (and normalized per week),
+# we simply lag them so that each game’s predictor uses only prior data.
+srsSeason <- srsFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
+  mutate(
+    across(all_of(srs_cols), #contains(epa_cols),
+           ~cummean(.x),
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
+  ) |>
+  mutate(
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+# The lagged values here serve as your “cum” feature since the raw values are cumulative.
+
+## STEP 4: Compute Multi-Season Rolling Averages ####
+# These features are computed across seasons (grouped by team)
+# They will help smooth out the volatility (especially early in the season)
+srsMulti <- srsFeatures |>
+  #group_by(team) |>
+  #arrange(season, week) |>
+  mutate(
+    across(all_of(srs_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(srs_cols),
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(srs_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
+
+## STEP 5: Combine All SRS Features ----
+# Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
+srsFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(srsSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(srsMulti,  by = join_by(game_id, season, week, team, opponent))
+
+
+# Efficiency Stats ----
 nflStatsWeek <- calculate_stats(seasons = allSeasons,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
 
+# Scores Stats ----
+## STEP 1: Calculate Weekly Efficiency/Scoring Stats ----
 scoresData <- nflStatsWeek |>
-  select(season, week, team, 
-         passing_tds, rushing_tds, special_teams_tds, def_tds,
-         fumble_recovery_tds, 
-         passing_2pt_conversions, rushing_2pt_conversions,
-         pat_att, pat_made, pat_pct,
-         fg_att, fg_made, fg_pct, 
-         def_safeties,
-         off_interceptions = passing_interceptions,
-         sack_fumbles_lost, rushing_fumbles_lost, receiving_fumbles_lost,
-         def_fumbles_forced,
-         def_interceptions
-  ) |>
-  rowwise() |>
-  mutate(
-    offTD = passing_tds + rushing_tds,
-    totalTD = offTD + special_teams_tds + def_tds + fumble_recovery_tds,
-    twoPtConv = passing_2pt_conversions + rushing_2pt_conversions,
-    twoPtAtt = totalTD - pat_att,
-    off_fumbles = sack_fumbles_lost + rushing_fumbles_lost + receiving_fumbles_lost,
-    def_fumbles = def_fumbles_forced
-  ) |>
-  ungroup() |>
-  right_join(
-    gameDataLong |> select(game_id, season, week, team)
-  ) |>
-  select(game_id, everything()) |>
-  mutate(
-    rowID = row_number()
+  select(
+    season, week, team, 
+    passing_tds, 
+    rushing_tds, 
+    td_special = special_teams_tds,
+    def_tds,
+    fumble_recovery_tds, 
+    passing_2pt_conversions, 
+    rushing_2pt_conversions,
+    pat_att,
+    pat_made, #pat_pct,
+    fg_att,
+    fg_made, #fg_pct, 
+    safeties_def = def_safeties
+    # interceptions_lost = passing_interceptions,
+    # sack_fumbles_lost, rushing_fumbles_lost, receiving_fumbles_lost,
+    # interceptions_won = def_interceptions,
+    # fumbles_forced = def_fumbles_forced,
+    # fumbles_won = def_fumbles
   )
 
-scoresData3 <- scoresData |>
-  select(rowID, everything()) |>
-  group_by(season, team) |>
-  tk_augment_slidify(
-    .value   = c(everything(), -c(1:3)), #c(-game_id, -season, -team, -rowID),
-    # Multiple rolling windows
-    .period  = 5,
-    .f       = ~mean(., na.rm = T),
-    .partial = TRUE,
-    .align = "right"#,
-    #.names = c("pat_att_roll", "fg_att_roll", "offTD_roll", "totalTD_roll")
-  ) |>
-  ungroup() |>
-  mutate(
-    across(where(is.numeric), ~na_if(.x, NaN))
-  ) |> #arrange(rowID)
-  group_by(team) |>
-  mutate(
-    across(contains("roll_5"), ~lag(.x, 1))
-  ) |>
-  mutate(
-    across(contains("roll_5"), 
-           ~ts_impute_vec(.x, period = 4))
-  ) |>
-  ungroup() |>
-  arrange(rowID)
+### STEP 1B: Fix Wrong data ----
+#scoresData |> filter(season == 2011, week == 13, team == "DET") |> View()
+scoresGameFilter2011_13_DET <- 
+  scoresData$season == 2011 & scoresData$week == 13 & scoresData$team == "DET"
+scoresData$rushing_tds[scoresGameFilter2011_13_DET] <- 1
+scoresData$pat_att[scoresGameFilter2011_13_DET] <- 2
+scoresData$pat_made[scoresGameFilter2011_13_DET] <- 2
 
-scoresData <- scoresData3 |>
-  select(-c(rowID, season, week))
+#scoresData |> filter(season == 2019, week == 15, team == "ARI") |> View()
+scoresGameFilter2019_15_ARI <- 
+  scoresData$season == 2019 & scoresData$week == 15 & scoresData$team == "ARI"
+scoresData$rushing_tds[scoresGameFilter2019_15_ARI] <- 4
+scoresData$td_special[scoresGameFilter2019_15_ARI] <- 0
 
-## Series ----
-seriesWeekData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
+#scoresData |> filter(season == 2019, week == 15, team == "CLE") |> View()
+scoresGameFilter2019_15_CLE <- 
+  scoresData$season == 2019 & scoresData$week == 15 & scoresData$team == "CLE"
+scoresData$passing_tds[scoresGameFilter2019_15_CLE] <- 2
+scoresData$pat_att[scoresGameFilter2019_15_CLE] <- 3
+scoresData$pat_made[scoresGameFilter2019_15_CLE] <- 3
+
+
+## STEP 2: Aggregate scores ----
+scoresDataAgg <- scoresData |>
+  mutate(
+    td_off = passing_tds + rushing_tds,
+    td_def = def_tds + fumble_recovery_tds,
+    td_total = td_off + td_special + td_def
+    #two_pt_made = passing_2pt_conversions + rushing_2pt_conversions,
+    #two_pt_att = td_total - pat_att
+    # fumbles_lost = sack_fumbles_lost + rushing_fumbles_lost + receiving_fumbles_lost,
+    # turnovers_won = interceptions_won + fumbles_forced,
+    # turnovers_won2 = interceptions_won + fumbles_won,
+    # turnovers_lost = interceptions_lost + fumbles_lost,
+    # turnovers_diff = turnovers_won - turnovers_lost,
+    # turnovers_diff2 = turnovers_won2 - turnovers_lost
+  )
+
+two_pt_df <- pbpData |> 
+  select(
+    game_id, season, week,
+    posteam, defteam,
+    two_point_attempt,
+    two_point_conv_result,
+    defensive_two_point_conv, 
+    defensive_extra_point_conv
+  ) |>
+  filter(!is.na(posteam)) |> 
+  #filter(two_point_attempt == 1) |> #filter(!is.na(two_point_conv_result))
+  mutate(two_point_made = ifelse(two_point_conv_result == "success", 1, 0)) |>
+  summarise(
+    two_pt_att = sum(two_point_attempt, na.rm = TRUE),
+    two_pt_made = sum(two_point_made, na.rm = TRUE),
+    two_pt_def = sum(defensive_two_point_conv, na.rm = TRUE),
+    .by = c(season, week, posteam)
+  )
+
+scoresDataAgg <- scoresDataAgg |>
+  left_join(two_pt_df, by = join_by(season, week, team == posteam)) 
+
+## STEP 3: Join with game-level ordering from gameDataLong ----
+scores_cols<- c(
+  "td_off",
+  "td_def",
+  "td_special",
+  "td_total",
+  "fg_made",
+  "fg_att",
+  "pat_made",
+  "pat_att",
+  "two_pt_made",
+  "two_pt_att",
+  "two_pt_def",
+  #"two_pt_made2",
+  #"two_pt_att2",
+  #"two_pt_def2",
+  "safeties_def"
+  #"passing_tds", 
+  #"rushing_tds", 
+  #"special_teams_tds", 
+  #"def_tds",
+  #"fumble_recovery_tds"
+  # "passing_2pt_conversions", 
+  # "rushing_2pt_conversions",
+  # "pat_att",
+  # "pat_made", 
+  # "fg_att", 
+  # "fg_made", 
+  # "def_safeties",
+  # "off_TD",
+  # "totalTD",
+  # "twoPtConv",
+  # "twoPtAtt"
+)
+
+scoresFeatures <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(
+    scoresDataAgg |> select(season, week, team, all_of(scores_cols)),
+    by = join_by(season, week, team)) |>
+  mutate(
+    two_pt_def = rev(two_pt_def),
+    .by = c(game_id)
+  ) #|>
+#mutate(rowID = row_number())
+
+# check
+scores_check <- scoresFeatures |>
+  left_join(gameDataLong |> select(game_id, team, team_score, opponent_score),
+            by = join_by(game_id, team)) |>
+  mutate(
+    team_score2 = 6*td_total + 3*fg_made + pat_made + 2*two_pt_made + 2*safeties_def + 2*two_pt_def,
+    .after = team_score
+  ) |>
+  filter(team_score != team_score2)
+
+
+## STEP 4: Season-Specific Aggregates (Cumulative Mean) ----
+# For each season and team, order by week, lag each EPA metric by one game, then compute cumulative mean.
+scoresSeason <- scoresFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
+  mutate(
+    across(all_of(scores_cols), #contains(scores_cols),
+           ~cummean(.x),
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
+  ) |>
+  mutate(
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+
+## check
+# scoresFeatures |>
+#   filter(season == 2023, team == "KC") |>
+#   pull(off_scores_mean) |>
+#   mean()
+
+## STEP 5: Multi-Season Aggregates (5-Game Rolling Average) ----
+# For continuity across seasons, group by team (ordered by season then week), lag, then compute a 5-game rolling average.
+scoresMulti <- scoresFeatures |>
+  mutate(
+    across(all_of(scores_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(scores_cols), #c(contains(scores_cols), -contains("roll"))
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(scores_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
+
+# check
+# scoresMulti |> filter(season > 2006) |> nrow()
+# scoresMulti |> filter(season > 2006) |> complete.cases() |> sum()
+
+## STEP 6: Combine scores Features ----
+scoresFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(scoresFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(scoresSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(scoresMulti,  by = join_by(game_id, season, week, team, opponent))
+
+
+# Turnovers ----
+## STEP 1: Calculate Weekly Turnover Stats ----
+turnoverData <- pbpData |>
+  select(#play_id,
+    game_id, season, week,
+    posteam, defteam,
+    interception, fumble_forced, fumble_lost, fumble
+  ) |>
+  filter(!is.na(posteam)) |>
+  #group_by(game_id, season, week, posteam) |>
+  summarise(
+    across(c(interception, fumble_forced, fumble_lost, fumble),
+           ~sum(.x, na.rm = TRUE)),
+    .by = c(game_id, season, week, posteam, defteam),
+  ) |>
+  rename(interception_lost = interception) |>
+  mutate(turnover_lost = interception_lost + fumble_lost) |>
+  mutate(
+    interception_won = rev(interception_lost),
+    fumble_won = rev(fumble_lost),
+    turnover_won = rev(turnover_lost),
+    .by = game_id
+  ) |>
+  select(-fumble_forced, -fumble) |>
+  mutate(turnover_diff = turnover_won - turnover_lost)
+
+turnover_cols <- c(
+  "turnover_diff",
+  "turnover_won",
+  "turnover_lost",
+  "interception_won",
+  "interception_lost",
+  "fumble_won",
+  "fumble_lost"
+)
+
+## STEP 2: Merge turnover Features with Game-Level Data ----
+# Use gameDataLong to enforce consistent ordering (one row per game).
+turnoverFeatures <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(turnoverData |> 
+              select(game_id, posteam, all_of(turnover_cols)), 
+            by = join_by(game_id, team == posteam))
+
+## STEP 3: Create Season-Specific (Cum) Features by Lagging ####
+# Since the raw values are already cumulative (and normalized per week),
+# we simply lag them so that each game’s predictor uses only prior data.
+turnoverSeason <- turnoverFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
+  mutate(
+    across(all_of(turnover_cols), #contains(epa_cols),
+           ~cummean(.x),
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
+  ) |>
+  mutate(
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+# The lagged values here serve as your “cum” feature since the raw values are cumulative.
+
+## STEP 4: Compute Multi-Season Rolling Averages ####
+# These features are computed across seasons (grouped by team)
+# They will help smooth out the volatility (especially early in the season)
+turnoverMulti <- turnoverFeatures |>
+  #group_by(team) |>
+  #arrange(season, week) |>
+  mutate(
+    across(all_of(turnover_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(turnover_cols),
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(turnover_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
+
+## STEP 5: Combine All turnover Features ----
+# Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
+turnoverFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(turnoverSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(turnoverMulti,  by = join_by(game_id, season, week, team, opponent))
+
+# check
+# stats <- nfl_stats_variables
+# stats_turnover <- stats |> filter(str_detect(variable, "interceptions|fumbles"))
+# turnover_df2 <- scoresFeatures |> 
+#   select(game_id, season, week, team, opponent,
+#          contains("interceptions"), 
+#          contains("fumbles"),
+#          contains("turnovers")) |>
+#   arrange(game_id, team)
+
+
+# Series ----
+## STEP 1: Calculate Weekly Series Stats ----
+seriesData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
 #seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
 
-seriesData <- gameDataLong |>
+## STEP 2: Merge Series Features with Game-Level Data ----
+# Use gameDataLong to enforce consistent ordering (one row per game).
+seriesFeatures <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
-  left_join(seriesWeekData) |>
-  group_by(season, team) |>
-  mutate(
-    across(-c(game_id, week, opponent),
-           ~cummean(.x))
-  ) |>
+  left_join(seriesData, by = join_by(season, week, team))
+
+mutate(
+  across(-c(game_id, week, opponent),
+         ~cummean(.x))
+) |>
   ungroup() |>
   group_by(team) |>
   mutate(
@@ -371,94 +680,195 @@ seriesData <- gameDataLong |>
   ) |>
   ungroup()
 
-## Red Zone -----
-red_zone_pbp <- pbpData |>
-  filter(!is.na(posteam)) |>
-  group_by(game_id, season, week, posteam, home_team, away_team) |>
-  select(fixed_drive, fixed_drive_result, drive_inside20, drive_ended_with_score) |>
-  distinct() |>
-  arrange(posteam, .by_group = TRUE)
+series_cols <- seriesData |>
+  select(contains("off"), contains("def")) |>
+  colnames()
 
-red_zone_sum_week <- red_zone_pbp |>
-  summarise(
+## STEP 3: Create Season-Specific (Cum) Features by Lagging ####
+# Since the raw values are already cumulative (and normalized per week),
+# we simply lag them so that each game’s predictor uses only prior data.
+seriesSeason <- seriesFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
+  mutate(
+    across(all_of(series_cols), #contains(epa_cols),
+           ~cummean(.x),
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
+  ) |>
+  mutate(
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+# The lagged values here serve as your “cum” feature since the raw values are cumulative.
+
+## STEP 4: Compute Multi-Season Rolling Averages ####
+# These features are computed across seasons (grouped by team)
+# They will help smooth out the volatility (especially early in the season)
+seriesMulti <- seriesFeatures |>
+  #group_by(team) |>
+  #arrange(season, week) |>
+  mutate(
+    across(all_of(series_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(series_cols),
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(series_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
+
+## STEP 5: Combine All series Features ----
+# Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
+seriesFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(seriesSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(seriesMulti,  by = join_by(game_id, season, week, team, opponent))
+
+
+# Red Zone -----
+redzoneData <- pbpData |>
+  filter(!is.na(posteam)) |>
+  select(
+    game_id, season, week, posteam, home_team, away_team,
+    fixed_drive, fixed_drive_result, drive_inside20, drive_ended_with_score
+  ) |>
+  group_by(game_id, season, week, posteam, home_team, away_team) |>
+  distinct() |>
+  arrange(posteam, .by_group = TRUE) |>
+  reframe(
     drives_num = n(),
     red_zone_app = sum(drive_inside20, na.rm = TRUE),
     red_zone_td = sum(fixed_drive_result == "Touchdown" & drive_inside20, na.rm = TRUE),
     red_zone_app_perc = red_zone_app/drives_num,
     red_zone_eff = red_zone_td/red_zone_app,
     red_zone_eff = ifelse(red_zone_app == 0, 0, red_zone_eff)
-  ) 
-
-red_zone_sum_season <- red_zone_sum_week |> 
-  ungroup() |>
-  group_by(season, posteam) |>
-  summarise(
-    red_zone_eff = mean(red_zone_eff)
   )
-  
-red_zone_data <- red_zone_sum_week |>
-  ungroup() |>
-  group_by(game_id) |>
-  mutate(
-    opponent = rev(posteam), .after = posteam
-  ) |>
-  rename(
-    team = posteam
-  ) |>
-  ungroup()
 
-red_zone_data2 <-
+# red_zone_sum_season <- red_zone_sum_week |> 
+#   ungroup() |>
+#   group_by(season, posteam) |>
+#   summarise(
+#     red_zone_eff = mean(red_zone_eff)
+#   )
+
+
+redzoneFeatures <- redzoneData |>
+  #group_by(game_id) |>
+  mutate(
+    opponent = rev(posteam), 
+    .by = game_id,
+    .after = posteam
+  ) |>
+  rename(team = posteam) |>
+  select(-home_team, -away_team)
+
+redzoneFeaturesOff <- redzoneFeatures |> 
+  select(game_id, season, week, team, opponent,
+         off_red_zone_app_perc = red_zone_app_perc, 
+         off_red_zone_eff = red_zone_eff)
+
+redzoneFeaturesDef <- redzoneFeatures |> 
+  select(game_id, opponent, 
+         def_red_zone_app_perc = red_zone_app_perc, 
+         def_red_zone_eff = red_zone_eff)
+
+redzoneFeatures <-
   left_join(
-    red_zone_data |> 
-      select(game_id, season, week, team, opponent, home_team, away_team, 
-             off_red_zone_app_perc = red_zone_app_perc, 
-             off_red_zone_eff = red_zone_eff),
-    red_zone_data |> 
-      select(game_id, opponent, 
-             def_red_zone_app_perc = red_zone_app_perc, 
-             def_red_zone_eff = red_zone_eff),
-      #rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
+    redzoneFeaturesOff,
+    redzoneFeaturesDef,
     by = join_by(game_id, team == opponent)
   )
 
-red_zone_data3 <- red_zone_data2 |>
-  group_by(season, team) |>
+redzone_cols <- redzoneFeatures |>
+  select(off_red_zone_app_perc, off_red_zone_eff,
+         def_red_zone_app_perc, def_red_zone_eff) |>
+  colnames()
+
+
+redzoneSeason <- redzoneFeatures |>
+  #group_by(season, team) |>
+  #arrange(week) |>
   mutate(
-    across(c(off_red_zone_app_perc, off_red_zone_eff,
-             def_red_zone_app_perc, def_red_zone_eff),
+    across(all_of(redzone_cols), #contains(epa_cols),
            ~cummean(.x),
-           .names = "{.col}_cum")
-  ) |>
-  ungroup() |>
-  group_by(team) |>
-  tk_augment_slidify(
-    #.value   = c(everything(), -c(1:3)), #c(-game_id, -season, -team, -rowID),
-    .value = c(off_red_zone_app_perc, off_red_zone_eff,
-               def_red_zone_app_perc, def_red_zone_eff),
-    # Multiple rolling windows
-    .period  = 5,
-    .f       = ~mean(., na.rm = T),
-    .partial = TRUE,
-    .align = "right"#,
-    #.names = c("pat_att_roll", "fg_att_roll", "offTD_roll", "totalTD_roll")
+           .names = "{.col}_cum"),
+    .by = c(season, team),
+    .keep = "unused"
   ) |>
   mutate(
-    across(c(contains("cum"), contains("roll")),
-           ~lag(.x, default = 0),
-           .names = "{.col}")
-  ) |>
-  ungroup() |>
-  select(
-    game_id, team, 
-    off_red_zone_app_perc_cum, off_red_zone_app_perc_roll_5,
-    off_red_zone_eff_cum, off_red_zone_eff_roll_5,
-    def_red_zone_app_perc_cum, def_red_zone_app_perc_roll_5,
-    def_red_zone_eff_cum, def_red_zone_eff_roll_5
-  )
+    across(contains("_cum"), 
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team)
+  ) 
+# The lagged values here serve as your “cum” feature since the raw values are cumulative.
 
-red_zone_data <- red_zone_data3
+## STEP 4: Compute Multi-Season Rolling Averages ####
+# These features are computed across seasons (grouped by team)
+# They will help smooth out the volatility (especially early in the season)
+redzoneMulti <- redzoneFeatures |>
+  #group_by(team) |>
+  #arrange(season, week) |>
+  mutate(
+    across(all_of(redzone_cols),
+           ~slidify_vec(
+             .x = .x,
+             .period  = 5,
+             .f       = mean,
+             .partial = TRUE,
+             .align   = "right"
+           ),
+           .names = "{.col}_roll"),
+    .by = c(team),
+    .keep = "all"
+  ) |> #arrange(season, team, week)
+  mutate(
+    across(all_of(redzone_cols),
+           ~movavg(.x, n = 5, type = "e"),
+           .names = "{.col}_ewma"),
+    .by = c(team),
+    .keep = "all"
+  ) |> 
+  select(-all_of(redzone_cols)) |>
+  mutate(
+    across(c(contains("_roll"), contains("_ewma")),
+           ~lag(.x, n = 1, default = NA)),
+    .by = c(team),
+    .keep = "unused"
+  ) #|> arrange(season, team, week)
 
-## Weather -----
+## STEP 5: Combine All redzone Features ----
+# Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
+redzoneFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(redzoneSeason, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(redzoneMulti,  by = join_by(game_id, season, week, team, opponent))
+
+
+
+# Weather -----
 weatherData <- pbpData |>
   select(game_id, home_team, away_team, weather) |>
   distinct() |>
@@ -485,60 +895,74 @@ modData <- gameData |>
     stadium_id
   )) |>
   left_join(
-    srsData |> 
-      select(game_id, team, 
-             contains("cum"), contains("roll"),
-             contains("PFG"), contains("PAG"), 
-             contains("MOV"), contains("SOS"), 
-             contains("SRS"), contains("OSRS"), contains("DSRS")
-             #c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS)
-             ) |>
+    epaFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    srsData |> 
-      select(game_id, team, 
-             contains("cum"), contains("roll"),
-             contains("PFG"), contains("PAG"), 
-             contains("MOV"), contains("SOS"), 
-             contains("SRS"), contains("OSRS"), contains("DSRS")
-             #c(PFG, PAG, MOV, SOS, SRS, OSRS, DSRS)
-      ) |>
+    epaFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
   left_join(
-    scoresData |>
+    srsFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    scoresData |>
+    srsFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
   left_join(
-    seriesData |>
-      select(-c(season, week, opponent)) |>
+    scoresFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    seriesData |>
-      select(-c(season, week, opponent))  |>
+    scoresFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
   left_join(
-    red_zone_data |>
-      #select(-c(season, week, opponent))  |>
+    turnoverFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    red_zone_data |>
-      #select(-c(season, week, opponent))  |>
+    turnoverFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, away_team == team)
+  ) |>
+  left_join(
+    seriesFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    seriesFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, away_team == team)
+  ) |>
+  left_join(
+    redzoneFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    redzoneFinal |> 
+      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>

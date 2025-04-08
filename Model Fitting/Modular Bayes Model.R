@@ -48,15 +48,36 @@ source("./app/R/clean_modData.R")
 # Load XGBoost models, variable importance, and predictions.
 #file_loc <- "~/Desktop/NFL Analysis Data/finalXGBmodels/"
 
+# home
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_home.rda")
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_home.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_importance_home.rda")
+# away
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_away.rda")
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_away.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_importance_away.rda")
+# result
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_result.rda")
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_result.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_importance_result.rda")
+# total
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_model_total.rda")
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_forecasts_total.rda")
+load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/final_xgb_importance_total.rda")
+# cv preds
 load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_cv_preds_native.rda")
+
+final_xgb_importance_home <- final_xgb_importance_home |> data.frame()
+final_xgb_importance_away <- final_xgb_importance_away |> data.frame()
+final_xgb_importance_result <- final_xgb_importance_result |> data.frame()
+final_xgb_importance_total <- final_xgb_importance_total |> data.frame()
+
+print(final_xgb_importance_home)
+print(final_xgb_importance_away)
+print(final_xgb_importance_result)
+print(final_xgb_importance_total)
+
+
 
 # load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_away_model_final.rda")
 # load(file = "~/Desktop/NFL Analysis Data/finalXGBmodels/xgb_result_model_final.rda")
@@ -115,18 +136,21 @@ time_slices <- list(train = train_indices, test = test_indices)
 cat("Total Seasonal CV folds:", length(time_slices$train), "\n")
 
 # 3. Modular Model Fitting Function -------------------------------------------
-fit_seasonal_model <- function(train_data, test_data, 
+fit_seasonal_model <- function(train_data,
+                               test_data, 
                                response = "result",
                                use_calc = FALSE,
                                use_home_team_RE = TRUE, 
                                use_away_team_RE = TRUE,
                                use_season_FE = TRUE,
                                # Numeric predictors to center & scale.
-                               preprocess_vars = c("xgb_result", 
-                                                   "home_rest",
-                                                   "away_rest",
-                                                   "temp",
-                                                   "wind"),
+                               preprocess_vars = c(
+                                 "xgb_result", 
+                                 "home_rest",
+                                 "away_rest",
+                                 "temp",
+                                 "wind"
+                               ),
                                iters = 4000, burn = 2000, chains = 4,
                                rstanBackend = FALSE) {
   
