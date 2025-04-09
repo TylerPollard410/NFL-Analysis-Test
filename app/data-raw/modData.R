@@ -150,7 +150,7 @@ epaData <- epaOffData |>
       rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
     by = join_by(game_id, team == opponent)
   )
-colnames(epaData)
+#colnames(epaData)
 
 ## STEP 3: Merge EPA data with game-level ordering (from gameDataLong) ----
 epaFeatures <- gameDataLong |>
@@ -229,11 +229,68 @@ epaMulti <- epaFeatures |>
 # epaMulti |> filter(season > 2006) |> complete.cases() |> sum()
 
 ## STEP 6: Combine EPA Features ----
-epaFinal <- gameDataLong |>
+epaNets <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(epaSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(epaMulti,  by = join_by(game_id, season, week, team, opponent))
+
+epaFinal_ordered <- epaNets |>
+  mutate(across(starts_with("off_"),
+                .names = "{.col}_net") -
+           across(starts_with("def_"))
+  ) |> 
+  rename_with(~ str_replace(., "^off_(.+)_net$", "net_\\1"), ends_with("_net")) |>
+  select(
+    game_id, season, week, team, opponent,
+    contains("cum"), contains("roll"), contains("ewma")
+  )
+#epaFinal |> filter(season == 2024, week == 18) |> View()
+
+## STEP 7: Reorder EPA Features -----
+# Define the identifier columns.
+id_cols <- c("game_id", "season", "week", "team", "opponent")
+
+# Select all feature columns (everything except the id columns).
+epa_feature_cols <- epaFinal_ordered |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+# Pivot the aggregated features from wide to long format.
+epa_long <- epaFinal_ordered |>
+  pivot_longer(
+    cols = contains(epa_feature_cols),
+    names_to = "varname",
+    values_to = "value"
+  ) |>
+  # Extract the three components from each column name.
+  # We assume names match the pattern: (net|off|def)_(base)_(cum|roll|ewma)
+  extract(varname, into = c("prefix", "base", "agg"),
+          regex = "^(net|off|def)_(.+)_(cum|roll|ewma)$") |>
+  # Set factor levels to enforce the desired order:
+  # For aggregation: cum comes first, then roll, then ewma.
+  # For prefix: net comes first, then off, then def.
+  mutate(
+    agg = factor(agg, levels = c("cum", "roll", "ewma")),
+    prefix = factor(prefix, levels = c("net", "off", "def"))
+  ) |>
+  arrange(base, agg, prefix) |>
+  # Reassemble a new variable name from the sorted parts.
+  unite("newvar", prefix, base, agg, sep = "_")
+
+# Pivot back to wide format so that each newvar becomes a column.
+epa_wide <- epa_long |>
+  pivot_wider(names_from = newvar, values_from = value)
+
+# Now, reattach the identifier columns.
+epaFinal <- epaFinal_ordered |>
+  select(all_of(id_cols)) |>
+  left_join(epa_wide, by = id_cols)
+
+# epaFinal_ordered now has columns ordered as:
+# net_pass_epa_mean_cum, off_pass_epa_mean_cum, def_pass_epa_mean_cum,
+# net_pass_epa_mean_roll, off_pass_epa_mean_roll, def_pass_epa_mean_roll,
+# net_pass_epa_mean_ewma, off_pass_epa_mean_ewma, def_pass_epa_mean_ewma, etc.
 
 # epaFinal now contains:
 # • The base EPA metrics per game (from epaFeatures)
@@ -242,7 +299,7 @@ epaFinal <- gameDataLong |>
 # • Multi-season EWMA aggregates (e.g., off_epa_mean_lag_multi_ewma_multi)
 # epaFinal
 
-#rm(epaData, epaData2, epaOffData, epaAvgs, pbpData, pbpPlayTypes, pbpPlayTypesView)
+rm(list = setdiff(ls(pattern = "epa"), c("epaFinal", "epa_cols", "epa_feature_cols")))
 
 
 
@@ -325,6 +382,151 @@ srsFinal <- gameDataLong |>
   left_join(srsSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(srsMulti,  by = join_by(game_id, season, week, team, opponent))
 
+# Select all feature columns (everything except the id columns).
+srs_feature_cols <- srsFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+#setdiff(ls(pattern = "srs"), c("srsFinal", "srs_cols", "srs_feature_cols"))
+rm(list = setdiff(ls(pattern = "srs"), c("srsFinal", "srs_cols", "srs_feature_cols")))
+
+# ELO ----
+## STEP 1: Extract Base SRS Values from seasonWeekStandings ----
+# (Assuming seasonWeekStandings already contains cumulative, week-by-week computed SRS values)
+
+# Adjust if needed instead of using all prior data
+# eloDataList <- gameData |>
+#   filter(!is.na(home_score), !is.na(away_score)) |>
+#   calc_elo_ratings(
+#     initial_elo = 1500,
+#     K = 20,
+#     home_advantage = 0,
+#     d = 400,
+#     apply_margin_multiplier = TRUE
+#   )
+
+eloDataHistory <- eloDataList$elo_history
+
+eloData <- eloDataHistory |>
+  clean_homeaway()
+
+### STEP 1B: Alternate restarting elo each season ----
+# library(purrr)
+# 
+# # Assuming gameData already exists
+# eloDataSeason <- allSeasons |>
+#   set_names() |> # names list elements by season
+#   map(~ gameData |>
+#         filter(season == .x, !is.na(home_score), !is.na(away_score)) |>
+#         calc_elo_ratings(
+#           initial_elo = 1500,
+#           K = 20,
+#           home_advantage = 0,
+#           d = 400,
+#           apply_margin_multiplier = TRUE
+#         )
+#   )
+# 
+# # Example access
+# season_elos$`2023`$elo_history
+# season_elos$`2023`$final_ratings
+# season_elos$`2023`$team_ratings
+# 
+# # Combine elo_history across seasons into one dataframe
+# elo_history_all <- map_dfr(season_elos, "elo_history", .id = "season")
+# 
+# # Combine final ratings across seasons into one dataframe
+# final_ratings_all <- map_dfr(season_elos, 
+#                              ~data.frame(team = names(.x$final_ratings),
+#                                          elo = .x$final_ratings),
+#                              .id = "season")
+# 
+# # Combine weekly team ratings across seasons into one dataframe
+# team_ratings_all <- map_dfr(season_elos, "team_ratings", .id = "season_calc")
+
+
+#elo_cols <- c("PFG", "PAG", "MOV", "SOS", "SRS", "OSRS", 'DSRS')
+
+## STEP 2: Merge ELO Features with Game-Level Data ----
+# Use gameDataLong to enforce consistent ordering (one row per game).
+eloFeatures <- eloData |>
+  select(game_id, team, opponent,
+         team_elo = team_elo_pre,
+         opponent_elo = opponent_elo_pre)
+
+## STEP 3: Create Season-Specific (Cum) Features by Lagging ####
+# Since the raw values are already cumulative (and normalized per week),
+# we simply lag them so that each game’s predictor uses only prior data.
+# eloSeason <- eloFeatures |>
+#   #group_by(season, team) |>
+#   #arrange(week) |>
+#   mutate(
+#     across(all_of(elo_cols), #contains(epa_cols),
+#            ~cummean(.x),
+#            .names = "{.col}_cum"),
+#     .by = c(season, team),
+#     .keep = "unused"
+#   ) |>
+#   mutate(
+#     across(contains("_cum"), 
+#            ~lag(.x, n = 1, default = NA)),
+#     .by = c(team)
+#   ) 
+# The lagged values here serve as your “cum” feature since the raw values are cumulative.
+
+## STEP 4: Compute Multi-Season Rolling Averages ####
+# These features are computed across seasons (grouped by team)
+# They will help smooth out the volatility (especially early in the season)
+# eloMulti <- eloFeatures |>
+#   #group_by(team) |>
+#   #arrange(season, week) |>
+#   mutate(
+#     across(all_of(elo_cols),
+#            ~slidify_vec(
+#              .x = .x,
+#              .period  = 5,
+#              .f       = mean,
+#              .partial = TRUE,
+#              .align   = "right"
+#            ),
+#            .names = "{.col}_roll"),
+#     .by = c(team),
+#     .keep = "all"
+#   ) |> #arrange(season, team, week)
+#   mutate(
+#     across(all_of(elo_cols),
+#            ~movavg(.x, n = 5, type = "e"),
+#            .names = "{.col}_ewma"),
+#     .by = c(team),
+#     .keep = "all"
+#   ) |> 
+#   select(-all_of(elo_cols)) |>
+#   mutate(
+#     across(c(contains("_roll"), contains("_ewma")),
+#            ~lag(.x, n = 1, default = NA)),
+#     .by = c(team),
+#     .keep = "unused"
+#   ) #|> arrange(season, team, week)
+
+## STEP 5: Combine All SRS Features ----
+# Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
+eloFinal <- gameDataLong |>
+  select(game_id, season, week, team, opponent) |>
+  left_join(eloFeatures, by = join_by(game_id, team, opponent)) 
+# left_join(eloSeason, by = join_by(game_id, season, week, team, opponent)) |>
+# left_join(eloMulti,  by = join_by(game_id, season, week, team, opponent))
+
+# Select all feature columns (everything except the id columns).
+elo_feature_cols <- eloFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+setdiff(ls(pattern = "elo"), 
+        c("eloFinal", "elo_cols", "elo_feature_cols", "calc_elo_ratings"))
+rm(list = setdiff(ls(pattern = "elo"), 
+                  c("eloFinal", "elo_cols", "elo_feature_cols", "calc_elo_ratings"))
+)
+
 
 # Efficiency Stats ----
 nflStatsWeek <- calculate_stats(seasons = allSeasons,
@@ -394,7 +596,7 @@ scoresDataAgg <- scoresData |>
     # turnovers_diff2 = turnovers_won2 - turnovers_lost
   )
 
-two_pt_df <- pbpData |> 
+scores_two_pt_df <- pbpData |> 
   select(
     game_id, season, week,
     posteam, defteam,
@@ -414,7 +616,7 @@ two_pt_df <- pbpData |>
   )
 
 scoresDataAgg <- scoresDataAgg |>
-  left_join(two_pt_df, by = join_by(season, week, team == posteam)) 
+  left_join(scores_two_pt_df, by = join_by(season, week, team == posteam)) 
 
 ## STEP 3: Join with game-level ordering from gameDataLong ----
 scores_cols<- c(
@@ -452,7 +654,7 @@ scores_cols<- c(
 )
 
 scoresFeatures <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   left_join(
     scoresDataAgg |> select(season, week, team, all_of(scores_cols)),
     by = join_by(season, week, team)) |>
@@ -534,11 +736,18 @@ scoresMulti <- scoresFeatures |>
 
 ## STEP 6: Combine scores Features ----
 scoresFinal <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   #left_join(scoresFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(scoresSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(scoresMulti,  by = join_by(game_id, season, week, team, opponent))
 
+# Select all feature columns (everything except the id columns).
+scores_feature_cols <- scoresFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+setdiff(ls(pattern = "scores"), c("scoresFinal", "scores_cols", "scores_feature_cols"))
+rm(list = setdiff(ls(pattern = "scores"), c("scoresFinal", "scores_cols", "scores_feature_cols")))
 
 # Turnovers ----
 ## STEP 1: Calculate Weekly Turnover Stats ----
@@ -641,10 +850,20 @@ turnoverMulti <- turnoverFeatures |>
 ## STEP 5: Combine All turnover Features ----
 # Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
 turnoverFinal <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(turnoverSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(turnoverMulti,  by = join_by(game_id, season, week, team, opponent))
+
+# Select all feature columns (everything except the id columns).
+turnover_feature_cols <- turnoverFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+setdiff(ls(pattern = "turnover"), 
+        c("turnoverFinal", "turnover_cols", "turnover_feature_cols"))
+rm(list = setdiff(ls(pattern = "turnover"),
+                  c("turnoverFinal", "turnover_cols", "turnover_feature_cols")))
 
 # check
 # stats <- nfl_stats_variables
@@ -659,28 +878,18 @@ turnoverFinal <- gameDataLong |>
 
 # Series ----
 ## STEP 1: Calculate Weekly Series Stats ----
-seriesData <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
+nflSeriesWeek <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
 #seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
+
+seriesData <- nflSeriesWeek
 
 ## STEP 2: Merge Series Features with Game-Level Data ----
 # Use gameDataLong to enforce consistent ordering (one row per game).
 seriesFeatures <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   left_join(seriesData, by = join_by(season, week, team))
 
-mutate(
-  across(-c(game_id, week, opponent),
-         ~cummean(.x))
-) |>
-  ungroup() |>
-  group_by(team) |>
-  mutate(
-    across(-c(season, game_id, week, opponent),
-           ~lag(.x))
-  ) |>
-  ungroup()
-
-series_cols <- seriesData |>
+series_cols <- seriesFeatures |>
   select(contains("off"), contains("def")) |>
   colnames()
 
@@ -741,13 +950,21 @@ seriesMulti <- seriesFeatures |>
 ## STEP 5: Combine All series Features ----
 # Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
 seriesFinal <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(seriesSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(seriesMulti,  by = join_by(game_id, season, week, team, opponent))
 
+series_feature_cols <- seriesFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
+
+setdiff(ls(pattern = "series"), c("seriesFinal", "series_cols", "series_feature_cols"))
+rm(list = setdiff(ls(pattern = "series"), c("seriesFinal", "series_cols", "series_feature_cols")))
+
 
 # Red Zone -----
+## STEP 1: Calculate zedone data ----
 redzoneData <- pbpData |>
   filter(!is.na(posteam)) |>
   select(
@@ -773,7 +990,7 @@ redzoneData <- pbpData |>
 #     red_zone_eff = mean(red_zone_eff)
 #   )
 
-
+## STEP 2: Red Zone Features ----
 redzoneFeatures <- redzoneData |>
   #group_by(game_id) |>
   mutate(
@@ -784,16 +1001,19 @@ redzoneFeatures <- redzoneData |>
   rename(team = posteam) |>
   select(-home_team, -away_team)
 
+### STEP 2B: Separate by Offense ----
 redzoneFeaturesOff <- redzoneFeatures |> 
   select(game_id, season, week, team, opponent,
          off_red_zone_app_perc = red_zone_app_perc, 
          off_red_zone_eff = red_zone_eff)
 
+### STEP 2B: Separate by Defense ----
 redzoneFeaturesDef <- redzoneFeatures |> 
   select(game_id, opponent, 
          def_red_zone_app_perc = red_zone_app_perc, 
          def_red_zone_eff = red_zone_eff)
 
+### STEP 2C: Merge back ----
 redzoneFeatures <-
   left_join(
     redzoneFeaturesOff,
@@ -806,7 +1026,7 @@ redzone_cols <- redzoneFeatures |>
          def_red_zone_app_perc, def_red_zone_eff) |>
   colnames()
 
-
+## STEP 3: Season-Specific Aggregation ----
 redzoneSeason <- redzoneFeatures |>
   #group_by(season, team) |>
   #arrange(week) |>
@@ -824,7 +1044,7 @@ redzoneSeason <- redzoneFeatures |>
   ) 
 # The lagged values here serve as your “cum” feature since the raw values are cumulative.
 
-## STEP 4: Compute Multi-Season Rolling Averages ####
+## STEP 4: Compute Multi-Season Rolling Averages -----
 # These features are computed across seasons (grouped by team)
 # They will help smooth out the volatility (especially early in the season)
 redzoneMulti <- redzoneFeatures |>
@@ -861,25 +1081,152 @@ redzoneMulti <- redzoneFeatures |>
 ## STEP 5: Combine All redzone Features ----
 # Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
 redzoneFinal <- gameDataLong |>
-  select(game_id, season, week, team, opponent) |>
+  select(all_of(id_cols)) |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(redzoneSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(redzoneMulti,  by = join_by(game_id, season, week, team, opponent))
 
+# Select all feature columns (everything except the id columns).
+redzone_feature_cols <- redzoneFinal |>
+  select(-all_of(id_cols)) |>
+  colnames()
 
+setdiff(ls(pattern = "redzone"),
+        c("redzoneFinal", "redzone_cols", "redzone_feature_cols"))
+rm(list = setdiff(ls(pattern = "redzone"),
+                  c("redzoneFinal", "redzone_cols", "redzone_feature_cols")))
 
 # Weather -----
-weatherData <- pbpData |>
-  select(game_id, home_team, away_team, weather) |>
-  distinct() |>
-  left_join(
-    gameData |> select(game_id, gameday, gametime, home_team, away_team, temp, wind, roof)
+# weatherData <- pbpData |>
+#   select(game_id, home_team, away_team, weather) |>
+#   distinct() |>
+#   left_join(
+#     gameData |> select(game_id, gameday, gametime, home_team, away_team, temp, wind, roof)
+#   ) |>
+#   mutate(
+#     rain = str_split_i(weather, "Temp", i = 1)
+#   )
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ----
+# Model Data ----
+## Long Data ----
+## for modeling home and away scores
+colnames(gameDataLong)
+epa_feature_cols
+srs_feature_cols
+elo_feature_cols
+scores_feature_cols
+turnover_feature_cols
+series_feature_cols
+redzone_feature_cols
+
+modDataLong <- gameDataLong |>
+  select(-c(
+    old_game_id,
+    gsis,
+    nfl_detail_id,
+    pfr,
+    pff,
+    espn,
+    ftn,
+    contains("qb_id"),
+    #home_qb_name, away_qb_name,
+    referee,
+    stadium_id,
+    team_GP, team_W, team_L, team_T, team_PF, team_PFG, team_PA, team_PAG
+  )) |>
+  mutate(
+    locationID = ifelse(location == "home", 1, 0)
   ) |>
   mutate(
-    rain = str_split_i(weather, "Temp", i = 1)
+    FEATURE_COLS = 1
+  ) |>
+  # EPA
+  left_join(
+    epaFinal |> select(
+      all_of(id_cols), 
+      all_of(epa_feature_cols),
+      -contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # SRS
+  left_join(
+    srsFinal |> select(
+      all_of(id_cols), 
+      all_of(srs_feature_cols)
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # ELO
+  left_join(
+    eloFinal |> select(
+      all_of(id_cols), 
+      all_of(elo_feature_cols)
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # SCORES
+  left_join(
+    scoresFinal |> select(
+      all_of(id_cols), 
+      all_of(scores_feature_cols)
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # TURNOVERS
+  left_join(
+    turnoverFinal |> select(
+      all_of(id_cols), 
+      all_of(turnover_feature_cols),
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # SERIES
+  left_join(
+    seriesFinal |> select(
+      all_of(id_cols), 
+      all_of(series_feature_cols),
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  # REDZONE
+  left_join(
+    redzoneFinal |> select(
+      all_of(id_cols), 
+      all_of(redzone_feature_cols),
+      #-contains("net")
+    ),
+    by = join_by(game_id, season, week, team, opponent)
   )
 
-# Model Data ----
+modDataLong_features <- modDataLong |>
+  select(
+    (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
+  ) |>
+  colnames()
+
+modDataLong_team <- modDataLong |>
+  relocate(contains("elo"), .before = "FEATURE_COLS")
+  rename_with(
+    .fn = ~paste0("team_", .x),
+    .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
+  )
+
+modDataLong_opponent <- modDataLong |>
+  rename_with(
+    .fn = ~paste0("opponent_", .x),
+    .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
+  )
+
+save(modDataLong, file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
+
+## Wide Data ----
 modData <- gameData |>
   select(-c(
     old_game_id,
@@ -895,155 +1242,196 @@ modData <- gameData |>
     stadium_id
   )) |>
   left_join(
-    epaFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+    modDataLong |> 
+      select(game_id, team, all_of(modDataLong_features), -contains("opponent")) |>
+      rename(elo = team_elo) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    epaFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+    modDataLong |> 
+      select(game_id, team, all_of(modDataLong_features), -contains("opponent")) |>
+      rename(elo = team_elo) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
-  ) |>
-  left_join(
-    srsFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    srsFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  left_join(
-    scoresFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    scoresFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  left_join(
-    turnoverFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    turnoverFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  left_join(
-    seriesFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    seriesFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  left_join(
-    redzoneFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    redzoneFinal |> 
-      select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
-      rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  rename_with(~str_remove(.x, "_mean"), contains("mean")) |>
-  mutate(
-    home_net_epa_cum = home_off_epa_cum - home_def_epa_cum,
-    home_net_epa_roll = home_off_epa_roll - home_def_epa_roll,
-    home_off_net_epa_cum = home_off_epa_cum + away_def_epa_cum,
-    home_off_net_epa_roll = home_off_epa_roll + away_def_epa_roll,
-    home_pass_net_epa_cum = home_off_pass_epa_cum + away_def_pass_epa_cum,
-    home_pass_net_epa_roll = home_off_pass_epa_roll + away_def_pass_epa_roll,
-    home_rush_net_epa_cum = home_off_rush_epa_cum + away_def_rush_epa_cum,
-    home_rush_net_epa_roll = home_off_rush_epa_roll + away_def_rush_epa_roll,
-    home_penalty_net_epa_cum = home_off_penalty_epa_cum + away_def_penalty_epa_cum,
-    home_penalty_net_epa_roll = home_off_penalty_epa_roll + away_def_penalty_epa_roll,
-    away_net_epa_cum = away_off_epa_cum - away_def_epa_cum,
-    away_net_epa_roll = away_off_epa_roll - away_def_epa_roll,
-    away_off_net_epa_cum = away_off_epa_cum + home_def_epa_cum,
-    away_off_net_epa_roll = away_off_epa_roll + home_def_epa_roll,
-    away_pass_net_epa_cum = away_off_pass_epa_cum + home_def_pass_epa_cum,
-    away_pass_net_epa_roll = away_off_pass_epa_roll + home_def_pass_epa_roll,
-    away_rush_net_epa_cum = away_off_rush_epa_cum + home_def_rush_epa_cum,
-    away_rush_net_epa_roll = away_off_rush_epa_roll + home_def_rush_epa_roll,
-    away_penalty_net_epa_cum = away_off_penalty_epa_cum + home_def_penalty_epa_cum,
-    away_penalty_net_epa_roll = away_off_penalty_epa_roll + home_def_penalty_epa_roll,
-    
-    home_PFG_net = home_PFG - away_PAG,
-    home_PAG_net = away_PFG - home_PAG,
-    home_MOV_net = home_MOV - away_MOV,
-    home_SOS_net = home_SOS - away_SOS,
-    home_SRS_net = home_SRS - away_SRS,
-    home_OSRS_net = home_OSRS - away_DSRS,
-    home_DSRS_net = home_DSRS - away_OSRS,
-    
-    away_PFG_net = away_PFG - home_PAG,
-    away_PAG_net = home_PFG - away_PAG,
-    away_MOV_net = away_MOV - home_MOV,
-    away_SOS_net = away_SOS - home_SOS,
-    away_SRS_net = away_SRS - home_SRS,
-    away_OSRS_net = away_OSRS - home_DSRS,
-    away_DSRS_net = away_DSRS - home_OSRS,
-    
-    home_PFG_ewma_net = home_PFG_ewma - away_PAG_ewma,
-    home_PAG_ewma_net = away_PFG_ewma - home_PAG_ewma,
-    home_MOV_ewma_net = home_MOV_ewma - away_MOV_ewma,
-    home_SOS_ewma_net = home_SOS_ewma - away_SOS_ewma,
-    home_SRS_ewma_net = home_SRS_ewma - away_SRS_ewma,
-    home_OSRS_ewma_net = home_OSRS_ewma - away_DSRS_ewma,
-    home_DSRS_ewma_net = home_DSRS_ewma - away_OSRS_ewma,
-    
-    away_PFG_ewma_net = away_PFG_ewma - home_PAG_ewma,
-    away_PAG_ewma_net = home_PFG_ewma - away_PAG_ewma,
-    away_MOV_ewma_net = away_MOV_ewma - home_MOV_ewma,
-    away_SOS_ewma_net = away_SOS_ewma - home_SOS_ewma,
-    away_SRS_ewma_net = away_SRS_ewma - home_SRS_ewma,
-    away_OSRS_ewma_net = away_OSRS_ewma - home_DSRS_ewma,
-    away_DSRS_ewma_net = away_DSRS_ewma - home_OSRS_ewma,
-    
-    home_PFG_roll_net = home_PFG_roll - away_PAG_roll,
-    home_PAG_roll_net = away_PFG_roll - home_PAG_roll,
-    home_MOV_roll_net = home_MOV_roll - away_MOV_roll,
-    home_SOS_roll_net = home_SOS_roll - away_SOS_roll,
-    home_SRS_roll_net = home_SRS_roll - away_SRS_roll,
-    home_OSRS_roll_net = home_OSRS_roll - away_DSRS_roll,
-    home_DSRS_roll_net = home_DSRS_roll - away_OSRS_roll,
-    
-    away_PFG_roll_net = away_PFG_roll - home_PAG_roll,
-    away_PAG_roll_net = home_PFG_roll - away_PAG_roll,
-    away_MOV_roll_net = away_MOV_roll - home_MOV_roll,
-    away_SOS_roll_net = away_SOS_roll - home_SOS_roll,
-    away_SRS_roll_net = away_SRS_roll - home_SRS_roll,
-    away_OSRS_roll_net = away_OSRS_roll - home_DSRS_roll,
-    away_DSRS_roll_net = away_DSRS_roll - home_OSRS_roll
   ) |>
   mutate(
     temp = ifelse(is.na(temp), 68, temp),
     wind = ifelse(is.na(wind), 0, wind)
   )
 
-modDataLong <- modData |>
-  clean_homeaway(invert = c("result", "spread_line"))
+save(modData, file = "~/Desktop/NFL Analysis Data/modData.rda")
+
+# modData |> 
+#   filter(season == 2024) |> 
+#   select(game_id, home_team, away_team, home_elo, away_elo) |>
+#   View()
+
+# For modeling result and total directly
+# modData <- gameData |>
+#   select(-c(
+#     old_game_id,
+#     gsis,
+#     nfl_detail_id,
+#     pfr,
+#     pff,
+#     espn,
+#     ftn,
+#     home_qb_id, away_qb_id,
+#     home_qb_name, away_qb_name,
+#     referee,
+#     stadium_id
+#   )) |>
+#   left_join(
+#     epaFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     epaFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   left_join(
+#     srsFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     srsFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   left_join(
+#     scoresFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     scoresFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   left_join(
+#     turnoverFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     turnoverFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   left_join(
+#     seriesFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     seriesFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   left_join(
+#     redzoneFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, home_team == team)
+#   ) |>
+#   left_join(
+#     redzoneFinal |> 
+#       select(game_id, team, contains("cum"), contains("roll"), contains("ewma")) |>
+#       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
+#     by = join_by(game_id, away_team == team)
+#   ) |>
+#   rename_with(~str_remove(.x, "_mean"), contains("mean")) |>
+#   mutate(
+#     home_net_epa_cum = home_off_epa_cum - home_def_epa_cum,
+#     home_net_epa_roll = home_off_epa_roll - home_def_epa_roll,
+#     home_off_net_epa_cum = home_off_epa_cum + away_def_epa_cum,
+#     home_off_net_epa_roll = home_off_epa_roll + away_def_epa_roll,
+#     home_pass_net_epa_cum = home_off_pass_epa_cum + away_def_pass_epa_cum,
+#     home_pass_net_epa_roll = home_off_pass_epa_roll + away_def_pass_epa_roll,
+#     home_rush_net_epa_cum = home_off_rush_epa_cum + away_def_rush_epa_cum,
+#     home_rush_net_epa_roll = home_off_rush_epa_roll + away_def_rush_epa_roll,
+#     home_penalty_net_epa_cum = home_off_penalty_epa_cum + away_def_penalty_epa_cum,
+#     home_penalty_net_epa_roll = home_off_penalty_epa_roll + away_def_penalty_epa_roll,
+#     away_net_epa_cum = away_off_epa_cum - away_def_epa_cum,
+#     away_net_epa_roll = away_off_epa_roll - away_def_epa_roll,
+#     away_off_net_epa_cum = away_off_epa_cum + home_def_epa_cum,
+#     away_off_net_epa_roll = away_off_epa_roll + home_def_epa_roll,
+#     away_pass_net_epa_cum = away_off_pass_epa_cum + home_def_pass_epa_cum,
+#     away_pass_net_epa_roll = away_off_pass_epa_roll + home_def_pass_epa_roll,
+#     away_rush_net_epa_cum = away_off_rush_epa_cum + home_def_rush_epa_cum,
+#     away_rush_net_epa_roll = away_off_rush_epa_roll + home_def_rush_epa_roll,
+#     away_penalty_net_epa_cum = away_off_penalty_epa_cum + home_def_penalty_epa_cum,
+#     away_penalty_net_epa_roll = away_off_penalty_epa_roll + home_def_penalty_epa_roll,
+#     
+#     home_PFG_net = home_PFG - away_PAG,
+#     home_PAG_net = away_PFG - home_PAG,
+#     home_MOV_net = home_MOV - away_MOV,
+#     home_SOS_net = home_SOS - away_SOS,
+#     home_SRS_net = home_SRS - away_SRS,
+#     home_OSRS_net = home_OSRS - away_DSRS,
+#     home_DSRS_net = home_DSRS - away_OSRS,
+#     
+#     away_PFG_net = away_PFG - home_PAG,
+#     away_PAG_net = home_PFG - away_PAG,
+#     away_MOV_net = away_MOV - home_MOV,
+#     away_SOS_net = away_SOS - home_SOS,
+#     away_SRS_net = away_SRS - home_SRS,
+#     away_OSRS_net = away_OSRS - home_DSRS,
+#     away_DSRS_net = away_DSRS - home_OSRS,
+#     
+#     home_PFG_ewma_net = home_PFG_ewma - away_PAG_ewma,
+#     home_PAG_ewma_net = away_PFG_ewma - home_PAG_ewma,
+#     home_MOV_ewma_net = home_MOV_ewma - away_MOV_ewma,
+#     home_SOS_ewma_net = home_SOS_ewma - away_SOS_ewma,
+#     home_SRS_ewma_net = home_SRS_ewma - away_SRS_ewma,
+#     home_OSRS_ewma_net = home_OSRS_ewma - away_DSRS_ewma,
+#     home_DSRS_ewma_net = home_DSRS_ewma - away_OSRS_ewma,
+#     
+#     away_PFG_ewma_net = away_PFG_ewma - home_PAG_ewma,
+#     away_PAG_ewma_net = home_PFG_ewma - away_PAG_ewma,
+#     away_MOV_ewma_net = away_MOV_ewma - home_MOV_ewma,
+#     away_SOS_ewma_net = away_SOS_ewma - home_SOS_ewma,
+#     away_SRS_ewma_net = away_SRS_ewma - home_SRS_ewma,
+#     away_OSRS_ewma_net = away_OSRS_ewma - home_DSRS_ewma,
+#     away_DSRS_ewma_net = away_DSRS_ewma - home_OSRS_ewma,
+#     
+#     home_PFG_roll_net = home_PFG_roll - away_PAG_roll,
+#     home_PAG_roll_net = away_PFG_roll - home_PAG_roll,
+#     home_MOV_roll_net = home_MOV_roll - away_MOV_roll,
+#     home_SOS_roll_net = home_SOS_roll - away_SOS_roll,
+#     home_SRS_roll_net = home_SRS_roll - away_SRS_roll,
+#     home_OSRS_roll_net = home_OSRS_roll - away_DSRS_roll,
+#     home_DSRS_roll_net = home_DSRS_roll - away_OSRS_roll,
+#     
+#     away_PFG_roll_net = away_PFG_roll - home_PAG_roll,
+#     away_PAG_roll_net = home_PFG_roll - away_PAG_roll,
+#     away_MOV_roll_net = away_MOV_roll - home_MOV_roll,
+#     away_SOS_roll_net = away_SOS_roll - home_SOS_roll,
+#     away_SRS_roll_net = away_SRS_roll - home_SRS_roll,
+#     away_OSRS_roll_net = away_OSRS_roll - home_DSRS_roll,
+#     away_DSRS_roll_net = away_DSRS_roll - home_OSRS_roll
+#   ) |>
+#   mutate(
+#     temp = ifelse(is.na(temp), 68, temp),
+#     wind = ifelse(is.na(wind), 0, wind)
+#   )
+# 
+# modDataLong <- modData |>
+#   clean_homeaway(invert = c("result", "spread_line"))
 
 
 

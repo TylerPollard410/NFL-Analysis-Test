@@ -46,64 +46,71 @@ source("./app/data-raw/gameDataLong.R")
 source("./app/data-raw/pbpData.R")
 
 ### Update
-gameIDsCurrent <- pbpData |>
-  filter(season == 2024) |>
-  distinct(game_id) |>
-  pull(game_id)
-
-gameIDsUpdate <- gameData |>
-  filter(season == 2024) |>
-  filter(!is.na(result)) |>
-  filter(!(game_id %in% gameIDsCurrent)) |>
-  pull(game_id)
-
-pbpDataUpdate <- load_pbp(seasons = most_recent_season()) |>
-  filter(game_id %in% gameIDsUpdate)
-
-if(nrow(pbpDataUpdate) > 0){
-  dbAppendTable(con, "pbpData", pbpDataUpdate)
-}else{
-  print("No play-by-play data to update")
-}
-
-pbpData_tbl <- tbl(con, "pbpData")
-
-pbpDataUpdateRows <- pbpData_tbl |>
-  pull(game_id) |>
-  length()
-
-pbpDataUpdateCols <- length(pbpData_tbl$lazy_query$vars)
-
-pbpDataDate <- attributes(pbpDataUpdate)$nflverse_timestamp
-paste0("pbpData updated ", pbpDataDate, 
-       " with ", pbpDataUpdateRows, " rows and ",
-       pbpDataUpdateCols, " cols.")
-
-save(pbpDataDate, file = "./app/data/pbpDataDate.rda")
+# gameIDsCurrent <- pbpData |>
+#   filter(season == 2024) |>
+#   distinct(game_id) |>
+#   pull(game_id)
+# 
+# gameIDsUpdate <- gameData |>
+#   filter(season == 2024) |>
+#   filter(!is.na(result)) |>
+#   filter(!(game_id %in% gameIDsCurrent)) |>
+#   pull(game_id)
+# 
+# pbpDataUpdate <- load_pbp(seasons = most_recent_season()) |>
+#   filter(game_id %in% gameIDsUpdate)
+# 
+# if(nrow(pbpDataUpdate) > 0){
+#   dbAppendTable(con, "pbpData", pbpDataUpdate)
+# }else{
+#   print("No play-by-play data to update")
+# }
+# 
+# pbpData_tbl <- tbl(con, "pbpData")
+# 
+# pbpDataUpdateRows <- pbpData_tbl |>
+#   pull(game_id) |>
+#   length()
+# 
+# pbpDataUpdateCols <- length(pbpData_tbl$lazy_query$vars)
+# 
+pbpDataDate <- attributes(pbpData)$nflverse_timestamp
+# paste0("pbpData updated ", pbpDataDate,
+#        " with ", pbpDataUpdateRows, " rows and ",
+#        pbpDataUpdateCols, " cols.")
+# 
+# save(pbpDataDate, file = "./app/data/pbpDataDate.rda")
 
 #dbListTables(con)
 #rm(pbpDataUpdate, pbpData_tbl, pbpDataUpdateRows, pbpDataUpdateCols)
 
 
 ## playerOffenseData ---------------------------
-tic()
+#tic()
 source("./app/data-raw/playerOffenseData.R")
 save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
-toc()
+#toc()
 
 ## seasonStandings ------------------------------
 ### Initial
-tic()
+#tic()
 source("./app/data-raw/seasonStandings.R")
 save(seasonStandings, file = "./app/data/seasonStandings.rda")
-toc()
+#toc()
 
 ## seasonWeekStandings ------------------------------
 ### Initial
-tic()
+#tic()
 source("./app/data-raw/seasonWeekStandings.R")
 save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
-toc()
+#toc()
+
+## elo ------------------------------
+### Initial
+#tic()
+source("./app/data-raw/eloData.R")
+save(eloData, file = "./app/data/eloData.rda")
+#toc()
 
 ## modData ----
 # About 8 minutes
