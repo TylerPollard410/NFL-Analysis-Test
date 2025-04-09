@@ -1112,6 +1112,22 @@ for (yr in forecast_years) {
 # Combine all forecasts:
 all_forecasts <- do.call(rbind, rolling_results)
 
+all_forecasts_wide <- nfl_data |>
+  select(game_id, home_team, away_team, home_score, away_score, result, total) |>
+  left_join(
+    all_forecasts |> 
+      select(game_id, team, pred_home_score = pred_result),
+    by = join_by(game_id, home_team == team)
+  ) |>
+  left_join(
+    all_forecasts |> 
+      select(game_id, team, pred_away_score = pred_result),
+    by = join_by(game_id, away_team == team)
+  ) |>
+  mutate(
+    pred_result = pred_home_score - pred_away_score,
+    pred_total = pred_home_score + pred_away_score
+  )
 
 # If actual outcomes are available in nfl_data_model for forecast years,
 # evaluate the overall out-of-sample performance:
@@ -1243,26 +1259,42 @@ load(file = paste0(file_loc, "final_xgb_forecasts_result", ".rda"))
 xgb_cv_preds <- nfl_data |> 
   select(
     game_id, season, week,
+    home_team,
+    away_team,
     home_score,
     away_score,
     result,
     total
   ) |>
   left_join(
-    final_xgb_forecasts_home |> 
-      select(game_id, xgb_home_score = pred_home_score),
-    by = join_by(game_id)
+    all_forecasts |> 
+      select(game_id, team, xgb_home_score = pred_result),
+    by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    final_xgb_forecasts_away |> 
-      select(game_id, xgb_away_score = pred_away_score),
-    by = join_by(game_id)
+    all_forecasts |> 
+      select(game_id, team, xgb_away_score = pred_result),
+    by = join_by(game_id, away_team == team)
   ) |>
-  left_join(
-    final_xgb_forecasts_result |>
-      select(game_id, xgb_result = pred_result),
-    by = join_by(game_id)
+  mutate(
+    xgb_result = xgb_home_score - xgb_away_score,
+    xgb_total = xgb_home_score + xgb_away_score
   ) |>
+  # left_join(
+  #   final_xgb_forecasts_home |> 
+  #     select(game_id, xgb_home_score = pred_home_score),
+  #   by = join_by(game_id)
+  # ) |>
+  # left_join(
+  #   final_xgb_forecasts_away |> 
+  #     select(game_id, xgb_away_score = pred_away_score),
+  #   by = join_by(game_id)
+  # ) |>
+  # left_join(
+  #   final_xgb_forecasts_result |>
+  #     select(game_id, xgb_result = pred_result),
+  #   by = join_by(game_id)
+  # ) |>
   # left_join(
   #   xgb_total_pred |> 
   #     select(game_id, xgb_total = pred),
@@ -1320,14 +1352,14 @@ betting_eval <- function(bet_df,
         exp_result < spread_line ~ "Away",
         TRUE ~ NA_character_
       ),
-      exp_result2 = xgb_home_score - xgb_away_score,
-      exp_result2_cover = case_when(
-        exp_result2 > spread_line ~ "Home",
-        exp_result2 < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      correct_result = exp_result_cover == actual_result_cover,
-      correct_result2 = exp_result2_cover == actual_result_cover
+      # exp_result2 = xgb_home_score - xgb_away_score,
+      # exp_result2_cover = case_when(
+      #   exp_result2 > spread_line ~ "Home",
+      #   exp_result2 < spread_line ~ "Away",
+      #   TRUE ~ NA_character_
+      # ),
+      correct_result = exp_result_cover == actual_result_cover
+      # correct_result2 = exp_result2_cover == actual_result_cover
     ) |>
     mutate(
       actual_total_cover = case_when(
@@ -1335,20 +1367,20 @@ betting_eval <- function(bet_df,
         total < total_line ~ "Under",
         TRUE ~ NA_character_
       ),
-      # exp_total = xgb_total,
-      # exp_total_cover = case_when(
-      #   exp_total > total_line ~ "Over",
-      #   exp_total < total_line ~ "Under",
-      #   TRUE ~ NA_character_
-      # ),
-      exp_total2 = xgb_home_score + xgb_away_score,
-      exp_total2_cover = case_when(
-        exp_total2 > total_line ~ "Over",
-        exp_total2 < total_line ~ "Under",
+      exp_total = xgb_total,
+      exp_total_cover = case_when(
+        exp_total > total_line ~ "Over",
+        exp_total < total_line ~ "Under",
         TRUE ~ NA_character_
       ),
-      #correct_total = exp_total_cover == actual_total_cover,
-      correct_total2 = exp_total2_cover == actual_total_cover
+      # exp_total2 = xgb_home_score + xgb_away_score,
+      # exp_total2_cover = case_when(
+      #   exp_total2 > total_line ~ "Over",
+      #   exp_total2 < total_line ~ "Under",
+      #   TRUE ~ NA_character_
+      # ),
+      correct_total = exp_total_cover == actual_total_cover,
+      #correct_total2 = exp_total2_cover == actual_total_cover
     )
   
   if(group_season & group_week){
@@ -1369,10 +1401,10 @@ betting_eval <- function(bet_df,
       Games = n(),
       Result_Bets = sum(!is.na(correct_result)),
       Acc_Result = round(mean(correct_result, na.rm = TRUE)*100, 2),
-      Acc_Result2 = round(mean(correct_result2, na.rm = TRUE)*100, 2),
-      Total_Bets = sum(!is.na(correct_total2)),
-      #Acc_Total = round(mean(correct_total, na.rm = TRUE)*100, 2),
-      Acc_Total2 = round(mean(correct_total2, na.rm = TRUE)*100, 2)
+      #Acc_Result2 = round(mean(correct_result2, na.rm = TRUE)*100, 2),
+      Total_Bets = sum(!is.na(correct_total)),
+      Acc_Total = round(mean(correct_total, na.rm = TRUE)*100, 2)
+      #Acc_Total2 = round(mean(correct_total2, na.rm = TRUE)*100, 2)
     )
   
   return(acc_df)
