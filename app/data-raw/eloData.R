@@ -8,6 +8,7 @@ calc_elo_ratings <- function(games,
                              apply_margin_multiplier = TRUE) {
   # Ensure games are ordered by date
   games <- games[order(as.Date(games$gameday)), ]
+  games <- games |> filter(!is.na(home_score), !is.na(away_score))
   
   # Get a sorted list of teams from both home and away columns
   teams <- sort(unique(c(games$home_team, games$away_team)))
@@ -20,7 +21,8 @@ calc_elo_ratings <- function(games,
   #   )
   
   # Initialize a dataframe to store Elo history information
-  elo_history <- games[, c("game_id", "gameday", "home_team", "away_team", "home_score", "away_score")]
+  elo_history <- games[, c("game_id", "season", "week", "gameday", 
+                           "home_team", "away_team", "home_score", "away_score")]
   elo_history$home_elo_pre <- NA_real_
   elo_history$away_elo_pre <- NA_real_
   elo_history$home_elo_post <- NA_real_
@@ -119,17 +121,49 @@ calc_elo_ratings <- function(games,
   #return(elo_history)
 }
 
+# Compute all seasons starting fresh ----
+# eloData <- unique(gameData$season) |>
+#   map_dfr(~ {
+#     season_data <- gameData |> filter(season == .x)
+#     season_data_list <- calc_elo_ratings(
+#       season_data,
+#       initial_elo = 1500,
+#       K = 20,
+#       home_advantage = 0,
+#       d = 400,
+#       apply_margin_multiplier = TRUE
+#     )
+#     season_data_list$elo_history
+#   })
+# save(eloData, file = "./app/data/eloData.rda")
 
-## Calc Elo 
-eloDataList <- gameData |>
-  filter(!is.na(home_score), !is.na(away_score)) |>
-  calc_elo_ratings(
-    initial_elo = 1500,
-    K = 20,
-    home_advantage = 0,
-    d = 400,
-    apply_margin_multiplier = TRUE
-  )
+
+## Load Previously Calculated Data ----
+load(file = "./app/data/eloData.rda")
+eloData <- eloData |>
+  filter(season != get_current_season())
+
+newSeasons <- get_current_season()
+current_season_data <- gameData |> filter(season == get_current_season())
+
+eloData_update_list <- calc_elo_ratings(
+  current_season_data,
+  initial_elo = 1500,
+  K = 20,
+  home_advantage = 0,
+  d = 400,
+  apply_margin_multiplier = TRUE
+)
+eloData_update <- eloData_update_list$elo_history
+eloData <- bind_rows(eloData,
+                     eloData_update)
+
+# Remove supp Vars ----
+#allSeasons <- 2006:most_recent_season()
+rm(newSeasons,
+   current_season_data,
+   eloData_update_list,
+   eloData_update)
 
 # 
 # # Check functionality 

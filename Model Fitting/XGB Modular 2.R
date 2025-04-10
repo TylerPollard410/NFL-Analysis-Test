@@ -14,12 +14,12 @@ library(parallel)             # For parallel processing
 
 # General libraries for data manipulation, plotting and date handling
 library(data.table)
-library(tidyverse)
+# library(tidyverse)
 
 library(readr)
 library(tidytext)
-library(tidyr)
-library(purrr)
+# library(tidyr)
+# library(purrr)
 library(plotly)
 library(patchwork)
 library(doParallel)
@@ -507,6 +507,30 @@ setwd("~/Desktop/NFLAnalysisTest")
 # 
 # return(results_list)
 
+
+finished_models <- list.files("~/XGB")
+finished_models2 <- str_subset(finished_models, "forecast_results")
+finished_models3 <- str_extract(finished_models2, "[:digit:]+")
+
+finished_seasons <- as.numeric(finished_models3)
+file_loc <- "~/XGB/"
+
+xgb_models_list <- list()
+best_feature_df <- data.frame()
+for(s in finished_seasons){
+  filename <- paste0(file_loc, "forecast_results_season_", s, ".rda")
+  load(file = filename)
+  
+  xgb_models_list[[as.character(s)]] <- results_list_temp
+  
+  season_features <- results_list_temp$tuning$best_features
+  feature_temp <- data.frame(
+    Feature = season_features,
+    Season = s
+  )
+  best_feature_df <- rbind(best_feature_df, feature_temp)
+}
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Betting Evaluation (XGB Model Raw) ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -719,29 +743,6 @@ print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
 # BRMS MODELING ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-finished_models <- list.files("~/Desktop/NFL Analysis Data/XGBoost Historic Tune")
-finished_models2 <- str_subset(finished_models, "forecast_results")
-finished_models3 <- str_extract(finished_models2, "[:digit:]+")
-
-finished_seasons <- as.numeric(finished_models3)
-file_loc <- "~/Desktop/NFL Analysis Data/XGBoost Historic Tune/"
-
-xgb_models_list <- list()
-best_feature_df <- data.frame()
-for(s in finished_seasons){
-  filename <- paste0(file_loc, "forecast_results_season_", s, ".rda")
-  load(file = filename)
-  
-  xgb_models_list[[as.character(s)]] <- results_list_temp
-  
-  season_features <- results_list_temp$tuning$best_features
-  feature_temp <- data.frame(
-    Feature = season_features,
-    Season = s
-  )
-  best_feature_df <- rbind(best_feature_df, feature_temp)
-}
-
 best_feature_rep <- best_feature_df |>
   mutate(Rank = row_number(), .by = Season, .keep = "all") |>
   group_by(Feature) |>
@@ -782,6 +783,9 @@ brms_data <- brms_data |>
     net_redzone = home_off_red_zone_app_perc_roll - away_def_red_zone_app_perc_roll
   )
 
+# Filter to complete.cases
+brms_seasons <- as.numeric(names(xgb_models_list))
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 3. Results and Total Model ----
@@ -789,7 +793,6 @@ brms_data <- brms_data |>
 
 # Create rolling CV folds for wide data based on season:
 brms_seasons <- sort(unique(brms_data$season))
-brms_seasons <- 2011:2018
 brms_folds <- list()
 for(i in seq(from = 4, to = length(brms_seasons))) {
   train_seasons <- brms_seasons[(i-3):(i-1)]
@@ -876,17 +879,6 @@ for(season in names(brms_folds)) {
   )
 }
 
-brms_models$`2014`$result
-brms_models$`2015`$result
-brms_models$`2016`$result
-brms_models$`2017`$result
-brms_models$`2018`$result
-
-brms_models$`2014`$total
-brms_models$`2015`$total
-brms_models$`2016`$total
-brms_models$`2017`$total
-brms_models$`2018`$total
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Post Processing & Model Evaluation ----
@@ -925,21 +917,31 @@ for(season in names(brms_folds)) {
 ## 7. PPC Plots ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+ppc_plots <- list()
+
 # Generate PPC Plots for brms models.
 for(season in names(brms_models)) {
-  pp_check(brms_models[[season]]$result) +
-    ggtitle(paste("PPC Plot - Result Model (Season", season, ")"))
-  pp_check(brms_models[[season]]$total) +
-    ggtitle(paste("PPC Plot - Total Model (Season", season, ")"))
+  result_ppc <- pp_check(brms_models[[season]]$result, ndraws = 100) +
+    ggtitle(paste(season))
+    #ggtitle(paste("PPC Plot - Result Model (Season", season, ")"))
+  total_ppc <- pp_check(brms_models[[season]]$total, ndraws = 100) +
+    ggtitle(paste(season))
+    #ggtitle(paste("PPC Plot - Total Model (Season", season, ")"))
   # Optionally, save these plots (e.g., with ggsave()).
+  
+  ppc_plots[[season]] <- list(
+    result = result_ppc,
+    total = total_ppc
+    # Similarly, compute metrics for the total model if desired.
+  )
 }
+
+wrap_plots(lapply(ppc_plots, "[[", "result"), guides = "collect")
+wrap_plots(lapply(ppc_plots, "[[", "total"), guides = "collect")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # BETTING EVALUATION ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-result_folds <- lapply(performance_metrics, "[[", "result")
-total_folds <- lapply(performance_metrics, "[[", "total")
 
 betting_eval_fold <- function(fold_result,
                               threshold = 0.6) {
@@ -1038,11 +1040,30 @@ betting_eval_fold <- function(fold_result,
   ))
 }
 
+result_folds <- lapply(performance_metrics, "[[", "result")
+total_folds <- lapply(performance_metrics, "[[", "total")
+
 # Apply the betting evaluation to each fold.
 betting_evals <- lapply(result_folds, function(fold) {
-  betting_eval_fold(fold, 
+  betting_eval_fold(season_fold, 
                     threshold = 0.6)
 })
+
+map
+
+betting_evals <- map_dfr(~ {
+    season_data <- gameData |> filter(season == .x)
+    season_data_list <- calc_elo_ratings(
+      season_data,
+      initial_elo = 1500,
+      K = 20,
+      home_advantage = 0,
+      d = 400,
+      apply_margin_multiplier = TRUE
+    )
+    season_data_list$elo_history
+  })
+
 betting_evals
 
 # Extract and print metrics.

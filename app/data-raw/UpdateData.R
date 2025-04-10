@@ -24,7 +24,7 @@ library(nflverse)
 library(tidyverse)
 
 # Set wd ----
-setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
+#setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
 
 # Universal Variables ----
 allSeasons <- 2006:most_recent_season()
@@ -109,7 +109,7 @@ source("./app/data-raw/seasonWeekStandings.R")
 ### Initial
 #tic()
 source("./app/data-raw/eloData.R")
-#save(eloDataList, file = "./app/data/eloDataList.rda")
+#save(eloData, file = "./app/data/eloDataList.rda")
 #toc()
 
 ## modData ----
@@ -119,6 +119,4 @@ source("./app/data-raw/modData.R")
 # save(modDataLong, file = "./app/data/modDataLong.rda")
 # save(modData, file = "./app/data/modData.rda")
 )
-
-
 
