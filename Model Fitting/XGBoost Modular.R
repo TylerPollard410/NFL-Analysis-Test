@@ -350,11 +350,11 @@ get_time_based_cv_indices <- function(train_data,
 # then:
 # boundaries are implicitly set by our rule.
 # We call:
-# cv_indices <- get_time_based_cv_indices(rolling_folds$`2018`$train, 
-#                                         season_col = "season",
-#                                         week_col = "week", 
-#                                         bound1 = 6, 
-#                                         bound2 = 12)
+cv_indices <- get_time_based_cv_indices(rolling_folds$`2021`$train,
+                                        season_col = "season",
+                                        week_col = "week",
+                                        bound1 = 6,
+                                        bound2 = 12)
 # cv_indices$train and cv_indices$test are lists of indices that you pass to xgb.cv as:
 #    train_folds = cv_indices$train, folds = cv_indices$test
 
@@ -991,6 +991,13 @@ ggplot(importance_matrix, aes(x = reorder(Feature, Gain), y = Gain)) +
 top_features <- head(importance_matrix[order(-importance_matrix$Gain), ], 20)$Feature
 cat("\n=== Top 20 Features ===\n")
 print(top_features)
+
+ggplot(importance_matrix |> filter(Feature %in% top_features),
+       aes(x = reorder(Feature, Gain), y = Gain)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "XGBoost Variable Importance", x = "Feature", y = "Gain") +
+  theme_minimal()
 
 
 ### 7.B.1. Threshold Based ----

@@ -88,36 +88,37 @@ pbpDataDate <- attributes(pbpData)$nflverse_timestamp
 ## playerOffenseData ---------------------------
 #tic()
 source("./app/data-raw/playerOffenseData.R")
-save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
+#save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
 #toc()
 
 ## seasonStandings ------------------------------
 ### Initial
 #tic()
 source("./app/data-raw/seasonStandings.R")
-save(seasonStandings, file = "./app/data/seasonStandings.rda")
+#save(seasonStandings, file = "./app/data/seasonStandings.rda")
 #toc()
 
 ## seasonWeekStandings ------------------------------
 ### Initial
 #tic()
 source("./app/data-raw/seasonWeekStandings.R")
-save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
+#save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 #toc()
 
 ## elo ------------------------------
 ### Initial
 #tic()
 source("./app/data-raw/eloData.R")
-save(eloData, file = "./app/data/eloData.rda")
+#save(eloDataList, file = "./app/data/eloDataList.rda")
 #toc()
 
 ## modData ----
 # About 8 minutes
-tic()
+system.time(
 source("./app/data-raw/modData.R")
-save(modData, file = "./app/data/modData.rda")
-toc()
+# save(modDataLong, file = "./app/data/modDataLong.rda")
+# save(modData, file = "./app/data/modData.rda")
+)
 
 
 

@@ -46,6 +46,8 @@ require(tidyverse)
 #source("./app/data-raw/gameDataLong.R")
 #source("./app/data-raw/pbpData.R")
 
+cat("Generating EPA Data", "\n")
+
 # EPA ----
 ## Penalty Structure 1 ----
 # epaOffData <- pbpData |>
@@ -301,9 +303,11 @@ epaFinal <- epaFinal_ordered |>
 
 rm(list = setdiff(ls(pattern = "epa"), c("epaFinal", "epa_cols", "epa_feature_cols")))
 
-
+cat("Finished EPA Data", "\n")
 
 # SRS ----
+cat("Generating SRS Data", "\n")
+
 ## STEP 1: Extract Base SRS Values from seasonWeekStandings ----
 # (Assuming seasonWeekStandings already contains cumulative, week-by-week computed SRS values)
 srsData <- seasonWeekStandings |>
@@ -391,6 +395,8 @@ srs_feature_cols <- srsFinal |>
 rm(list = setdiff(ls(pattern = "srs"), c("srsFinal", "srs_cols", "srs_feature_cols")))
 
 # ELO ----
+cat("Generating ELO Data", "\n")
+
 ## STEP 1: Extract Base SRS Values from seasonWeekStandings ----
 # (Assuming seasonWeekStandings already contains cumulative, week-by-week computed SRS values)
 
@@ -529,12 +535,15 @@ rm(list = setdiff(ls(pattern = "elo"),
 
 
 # Efficiency Stats ----
+cat("Generating Efficiency Stats Data", "\n")
 nflStatsWeek <- calculate_stats(seasons = allSeasons,
                                 summary_level = "week",
                                 stat_type = "team",
                                 season_type = "REG+POST")
 
 # Scores Stats ----
+cat("Generating Scores Data", "\n")
+
 ## STEP 1: Calculate Weekly Efficiency/Scoring Stats ----
 scoresData <- nflStatsWeek |>
   select(
@@ -750,6 +759,8 @@ setdiff(ls(pattern = "scores"), c("scoresFinal", "scores_cols", "scores_feature_
 rm(list = setdiff(ls(pattern = "scores"), c("scoresFinal", "scores_cols", "scores_feature_cols")))
 
 # Turnovers ----
+cat("Generating Turnover Data", "\n")
+
 ## STEP 1: Calculate Weekly Turnover Stats ----
 turnoverData <- pbpData |>
   select(#play_id,
@@ -877,6 +888,8 @@ rm(list = setdiff(ls(pattern = "turnover"),
 
 
 # Series ----
+cat("Generating Series Data", "\n")
+
 ## STEP 1: Calculate Weekly Series Stats ----
 nflSeriesWeek <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
 #seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
@@ -964,6 +977,8 @@ rm(list = setdiff(ls(pattern = "series"), c("seriesFinal", "series_cols", "serie
 
 
 # Red Zone -----
+cat("Generating Redzone Data", "\n")
+
 ## STEP 1: Calculate zedone data ----
 redzoneData <- pbpData |>
   filter(!is.na(posteam)) |>
@@ -1111,15 +1126,16 @@ rm(list = setdiff(ls(pattern = "redzone"),
 # Model Data ----
 ## Long Data ----
 ## for modeling home and away scores
-colnames(gameDataLong)
-epa_feature_cols
-srs_feature_cols
-elo_feature_cols
-scores_feature_cols
-turnover_feature_cols
-series_feature_cols
-redzone_feature_cols
+# colnames(gameDataLong)
+# epa_feature_cols
+# srs_feature_cols
+# elo_feature_cols
+# scores_feature_cols
+# turnover_feature_cols
+# series_feature_cols
+# redzone_feature_cols
 
+cat("Generating modDataLong", "\n")
 modDataLong <- gameDataLong |>
   select(-c(
     old_game_id,
@@ -1203,6 +1219,10 @@ modDataLong <- gameDataLong |>
       #-contains("net")
     ),
     by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  mutate(
+    temp = ifelse(is.na(temp), 68, temp),
+    wind = ifelse(is.na(wind), 0, wind)
   )
 
 modDataLong_features <- modDataLong |>
@@ -1212,7 +1232,7 @@ modDataLong_features <- modDataLong |>
   colnames()
 
 modDataLong_team <- modDataLong |>
-  relocate(contains("elo"), .before = "FEATURE_COLS")
+  relocate(contains("elo"), .before = "FEATURE_COLS") |>
   rename_with(
     .fn = ~paste0("team_", .x),
     .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
@@ -1224,9 +1244,8 @@ modDataLong_opponent <- modDataLong |>
     .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
   )
 
-save(modDataLong, file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
-
 ## Wide Data ----
+cat("Generating modData", "\n")
 modData <- gameData |>
   select(-c(
     old_game_id,
@@ -1260,7 +1279,15 @@ modData <- gameData |>
     wind = ifelse(is.na(wind), 0, wind)
   )
 
-save(modData, file = "~/Desktop/NFL Analysis Data/modData.rda")
+## Remove unwanted columns and Save ----
+modDataLong <- modDataLong |> select(-FEATURE_COLS)
+
+#save(modDataLong, file = "~/Desktop/NFLAnalysisTest/modDataLong.rda")
+#save(modData, file = "~/Desktop/NFL Analysis Data/modData.rda")
+
+rm(modDataLong_features,
+   modDataLong_team,
+   modDataLong_opponent)
 
 # modData |> 
 #   filter(season == 2024) |> 
