@@ -611,7 +611,7 @@ xgb_preds_df %>%
 
 
 evaluate_betting_performance <- function(bet_df,
-                                         result_pred_col = NA,
+                                         result_pred_col = "xgb_result",
                                          total_pred_col = "xgb_total",
                                          group_season = FALSE,
                                          group_week = FALSE) {
@@ -701,6 +701,15 @@ xgb_betting_accuracy <- evaluate_betting_performance(
   xgb_preds_df, 
   result_pred_col = "xgb_result",
   total_pred_col = "xgb_total",
+  group_season = FALSE,
+  group_week = FALSE
+)
+print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
+
+xgb_betting_accuracy <- evaluate_betting_performance(
+  xgb_preds_df, 
+  result_pred_col = "xgb_result",
+  total_pred_col = "xgb_total",
   group_season = TRUE,
   group_week = FALSE
 )
@@ -780,7 +789,7 @@ brms_data <- brms_data |>
 
 # Create rolling CV folds for wide data based on season:
 brms_seasons <- sort(unique(brms_data$season))
-brms_seasons <- 2011:2017
+brms_seasons <- 2011:2018
 brms_folds <- list()
 for(i in seq(from = 4, to = length(brms_seasons))) {
   train_seasons <- brms_seasons[(i-3):(i-1)]
@@ -867,6 +876,18 @@ for(season in names(brms_folds)) {
   )
 }
 
+brms_models$`2014`$result
+brms_models$`2015`$result
+brms_models$`2016`$result
+brms_models$`2017`$result
+brms_models$`2018`$result
+
+brms_models$`2014`$total
+brms_models$`2015`$total
+brms_models$`2016`$total
+brms_models$`2017`$total
+brms_models$`2018`$total
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Post Processing & Model Evaluation ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -877,19 +898,25 @@ for(season in names(brms_folds)) {
   test_brms <- brms_folds[[season]]$test
   
   # Posterior predictions for the result model.
-  pp_result <- posterior_predict(brms_models[[season]]$result, newdata = test_brms)
-  ci_result <- apply(pp_result, 2, quantile, probs = c(0.025, 0.975))
-  coverage_result <- mean(test_brms$result >= ci_result[1, ] & test_brms$result <= ci_result[2, ])
-  rmse_result <- sqrt(mean((colMeans(pp_result) - test_brms$result)^2))
+  pp_result <- posterior_predict(brms_models[[season]]$result, 
+                                 newdata = test_brms,
+                                 re_formula = NULL,
+                                 allow_new_levels = TRUE)
+  ci_result <- apply(pp_result, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
+  coverage_result <- mean(test_brms$result >= ci_result[1, ] & test_brms$result <= ci_result[2, ], na.rm = TRUE)
+  rmse_result <- sqrt(mean((colMeans(pp_result) - test_brms$result)^2, na.rm = TRUE))
   
-  pp_total <- posterior_predict(brms_models[[season]]$total, newdata = test_brms)
-  ci_total <- apply(pp_total, 2, quantile, probs = c(0.025, 0.975))
-  coverage_total <- mean(test_brms$total >= ci_total[1, ] & test_brms$total <= ci_total[2, ])
-  rmse_total <- sqrt(mean((colMeans(pp_total) - test_brms$total)^2))
+  pp_total <- posterior_predict(brms_models[[season]]$total, 
+                                newdata = test_brms,
+                                re_formula = NULL,
+                                allow_new_levels = TRUE)
+  ci_total <- apply(pp_total, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
+  coverage_total <- mean(test_brms$total >= ci_total[1, ] & test_brms$total <= ci_total[2, ], na.rm = TRUE)
+  rmse_total <- sqrt(mean((colMeans(pp_total) - test_brms$total)^2, na.rm = TRUE))
   
   performance_metrics[[season]] <- list(
-    result = list(coverage = coverage_result, RMSE = rmse_result),
-    result = list(coverage = coverage_total, RMSE = rmse_total)
+    result = list(coverage = coverage_result, RMSE = rmse_result, pp_result = pp_result),
+    total = list(coverage = coverage_total, RMSE = rmse_total, pp_total = pp_total)
     # Similarly, compute metrics for the total model if desired.
   )
 }
@@ -911,10 +938,13 @@ for(season in names(brms_models)) {
 # BETTING EVALUATION ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+result_folds <- lapply(performance_metrics, "[[", "result")
+total_folds <- lapply(performance_metrics, "[[", "total")
+
 betting_eval_fold <- function(fold_result,
                               threshold = 0.6) {
-  test_df <- fold_result$test_data
-  test_df$result_pred <- colMeans(fold_result$ppd)
+  test_df <- brms_folds[[season]]$test
+  test_df$result_pred <- colMeans(fold_result$pp_result)
   
   test_df <- test_df %>%
     mutate(
@@ -924,7 +954,7 @@ betting_eval_fold <- function(fold_result,
         result < spread_line ~ "Away",
         TRUE ~ NA_character_
       ),
-      exp_result = result_pred,
+      exp_result = xgb_result,
       exp_spread_line = spread_line,
       exp_diff = exp_result - exp_spread_line,
       exp_cover = case_when(
@@ -937,7 +967,7 @@ betting_eval_fold <- function(fold_result,
   
   acc_posterior_mean <- mean(test_df$correct_cover, na.rm = TRUE) * 100
   
-  ppd_decision <- sweep(fold_result$ppd, 2, test_df$spread_line, 
+  ppd_decision <- sweep(fold_result$pp_result, 2, test_df$spread_line, 
                         FUN = function(pred, line) {
                           ifelse(pred > line, "Home", ifelse(pred < line, "Away", NA))
                         })
@@ -1009,13 +1039,39 @@ betting_eval_fold <- function(fold_result,
 }
 
 # Apply the betting evaluation to each fold.
-betting_evals <- lapply(fold_results, function(fold) {
+betting_evals <- lapply(result_folds, function(fold) {
   betting_eval_fold(fold, 
-                    final_xgb_model_home,
-                    final_xgb_model_away, 
-                    final_xgb_model_result, 
                     threshold = 0.6)
 })
+betting_evals
+
+# Extract and print metrics.
+posterior_mean_accs <- sapply(betting_evals, function(x) x$acc_posterior_mean)
+full_ppd_accs     <- sapply(betting_evals, function(x) x$acc_full)
+vegas_accs        <- sapply(betting_evals, function(x) x$acc_vegas)
+thresh_accs       <- sapply(betting_evals, function(x) x$acc_thresh)
+xgb_accs          <- sapply(betting_evals, function(x) x$acc_xgb)
+xgb2_accs         <- sapply(betting_evals, function(x) x$acc_xgb2)
+
+cat("Posterior Mean Accuracy per fold (%):\n", round(posterior_mean_accs, 2), "\n")
+cat("Full PPD Accuracy per fold (%):\n", round(full_ppd_accs, 2), "\n")
+cat("Vegas-based Accuracy per fold (%):\n", round(vegas_accs, 2), "\n")
+cat("Threshold-based Accuracy per fold (%):\n", round(thresh_accs, 2), "\n")
+cat("XGB Accuracy (model 1) per fold (%):\n", round(xgb_accs, 2), "\n")
+cat("XGB Accuracy (model 2) per fold (%):\n", round(xgb2_accs, 2), "\n")
+
+accuracy_metrics_result_temp <- tibble(
+  Fold = names(betting_evals),
+  PostMean = posterior_mean_accs,
+  PostFull = full_ppd_accs,
+  BetVegas = vegas_accs,
+  BetThresh = thresh_accs,
+  XGB = xgb_accs,
+  XGB2 = xgb2_accs
+)
+
+print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
+print(accuracy_metrics_result_temp)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
