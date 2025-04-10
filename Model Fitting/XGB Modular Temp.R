@@ -50,11 +50,7 @@ modData <- modData |>
   filter(season >= 2007)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# XGBOOST MODEL ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 2. Pre-Processing ----
+# 2. PRE-PROCESSING ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # --- 1. Remove Near-Zero Variance Predictors ---
@@ -140,7 +136,7 @@ cat("Final candidate predictor columns:\n", paste(candidate_features, collapse =
 candidate_features
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 3. Scores Model ----
+# 3. XGBOOST MODELING (LONG FORMAT SCORE MODEL) ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # For XGBoost, we will work with team-level predictions (e.g., predicting team_score).
@@ -155,8 +151,7 @@ candidate_features
 # the response variable 'team_score', and all candidate predictors.
 
 xgb_data <- data_long_clean |> 
-  select(game_id, season, week, location,
-         team, opponent,
+  select(game_id, season, week, location, 
          team_score, opponent_score,
          total, result,
          spread_line, total_line,
@@ -166,11 +161,11 @@ xgb_data <- data_long_clean |>
 glimpse(xgb_data)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 4. Modular Functions for Tuning and Forecasting ----
+# 4. MODULAR FUNCTIONS FOR TUNING & FORECASTING ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-### ----- Function 1: tune_and_select_features() -----
+# ----- Function 1: tune_and_select_features() -----
 # For a given forecast season, this function:
 #   - Uses a tuning training set and a tuning test set.
 #   - Performs Bayesian Optimization to tune hyperparameters.
@@ -278,13 +273,7 @@ tune_and_select_features <- function(forecast_season, data, candidate_features,
   vi <- xgb.importance(feature_names = feature_cols, model = full_model)
   vi <- vi %>% arrange(desc(Gain))
   
-  if(length(feature_cols) > 20){
-    candidate_k <- c(1:20, seq(25, length(feature_cols), by = 5))
-  }else{
-    candidate_k <- 1:length(feature_cols)
-  }
-  
-  #candidate_k <- seq(5, length(feature_cols), by = 5)
+  candidate_k <- seq(5, length(feature_cols), by = 5)
   best_error <- Inf
   best_features <- feature_cols
   for(k in candidate_k) {
@@ -317,7 +306,7 @@ tune_and_select_features <- function(forecast_season, data, candidate_features,
               tuning_error = best_error))
 }
 
-### ----- Function 2: train_production_model() -----
+# ----- Function 2: train_production_model() -----
 # Trains an XGBoost model on production data using the tuned hyperparameters and selected feature set.
 train_production_model <- function(train_data, hyperparams, feature_set) {
   dtrain <- xgb.DMatrix(data = as.matrix(train_data %>% select(all_of(feature_set))),
@@ -346,7 +335,7 @@ train_production_model <- function(train_data, hyperparams, feature_set) {
   return(model)
 }
 
-### ----- Function 3: iterative_weekly_forecast() -----
+# ----- Function 3: iterative_weekly_forecast() -----
 # For a given forecast season, this function performs iterative one-week-ahead forecasting.
 iterative_weekly_forecast <- function(forecast_season, 
                                       prod_train_data, 
@@ -362,6 +351,7 @@ iterative_weekly_forecast <- function(forecast_season,
     cat("Forecasting season", forecast_season, "week", wk, "\n")
     
     this_week_data <- forecast_data %>% filter(week == wk)
+    assign("this_week_data", this_week_data, envir = .GlobalEnv)
     model <- train_production_model(current_train, hyperparams, feature_set)
     
     dtest <- xgb.DMatrix(data = as.matrix(this_week_data %>% select(all_of(feature_set))))
@@ -376,10 +366,10 @@ iterative_weekly_forecast <- function(forecast_season,
     current_train <- bind_rows(current_train, this_week_data)
   }
   all_forecasts <- bind_rows(forecast_results)
-  return(list(model = model, all_forecasts = all_forecasts))
+  return(all_forecasts)
 }
 
-### ----- Function 4: run_full_pipeline() -----
+# ----- Function 4: run_full_pipeline() -----
 # Loops over each forecast season. For each season:
 #   - Uses tuning window: tuning training from (fs - 4):(fs - 2) and tuning test = (fs - 1)
 #   - Uses production training window: seasons (fs - 3):(fs - 1)
@@ -419,380 +409,113 @@ run_full_pipeline <- function(forecast_seasons, data, candidate_features) {
     forecasts <- iterative_weekly_forecast(fs, prod_train, forecast_data, 
                                            best_hyperparams, best_features)
     
-    results_list_temp <- list(
+    results_list[[as.character(fs)]] <- list(
       forecast_season = fs,
       tuning = tuning_output,
-      forecasts = forecasts$all_forecasts
+      forecasts = forecasts
     )
-    results_list[[as.character(fs)]] <- results_list_temp
-    save(results_list_temp,
-         file = paste0("forecast_results_season_", fs, ".rda"))
     
-    
-    forecast_model <- forecasts$model
-    save(forecast_model,
-         file = paste0("forecast_model_season_", fs, ".rda"))
+    saveRDS(results_list[[as.character(fs)]],
+            file = paste0("forecast_results_season_", fs, ".rds"))
   }
   return(results_list)
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 5. Run Full Pipeline ----
+# 5. RUN THE FULL PIPELINE ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Define which forecast seasons to run.
 # With our splitting approach: to forecast 2011, we need tuning training from 2007-2009 and tuning test = 2010.
 # For example, run forecast seasons from 2011 through 2024.
-forecast_seasons <- seq(2011, 2024)
+forecast_seasons <- seq(2024, 2024)
+
+fs <- 2024
+data <- xgb_data
+results_list <- list()
+
+cat("\n============================\n")
+cat("Processing forecast season:", fs, "\n")
+# Set tuning windows.
+# For forecasting season fs, use:
+#   - Tuning training: seasons (fs - 4) to (fs - 2)
+#   - Tuning test: season (fs - 1)
+#   - Production training: seasons (fs - 3) to (fs - 1)
+tune_train_seasons <- seq(fs - 4, fs - 2)
+tune_test_season   <- fs - 1
+prod_train_seasons <- seq(fs - 3, fs - 1)
+
+cat("Tuning: Train seasons:", paste(tune_train_seasons, collapse = ", "), 
+    " | Test season:", tune_test_season, "\n")
+
+tune_data <- data %>% filter(season %in% c(tune_train_seasons, tune_test_season))
+
+tuning_output <- tune_and_select_features(fs, tune_data, candidate_features, 
+                                          tune_train_seasons, tune_test_season)
+
+best_hyperparams <- tuning_output$best_hyperparams
+best_features <- tuning_output$best_features
+cat("For forecast season", fs, ": Best hyperparameters found;",
+    length(best_features), "features selected.\n")
+cat(best_features, sep = "\n")
+
+prod_train <- data %>% filter(season %in% prod_train_seasons)
+
+forecast_data <- data %>% filter(season == fs)
+
+forecasts <- iterative_weekly_forecast(fs, prod_train, forecast_data, 
+                                       best_hyperparams, best_features)
+
+results_list[[as.character(fs)]] <- list(
+  forecast_season = fs,
+  tuning = tuning_output,
+  forecasts = forecasts
+)
+
+saveRDS(results_list[[as.character(fs)]],
+        file = paste0("forecast_results_season_", fs, ".rds"))
+
+return(results_list)
 
 # Run the full pipeline on the long-format (XGBoost) data.
 # This will take tuning windows, perform hyperparameter/feature selection,
 # then do iterative week-by-week forecasting.
-setwd("~/Desktop/NFL Analysis Data/XGBoost Historic Tune")
 pipeline_results <- run_full_pipeline(forecast_seasons, xgb_data, candidate_features)
 
-save(pipeline_results, file = "full_xgb_pipeline_results.rda")
-
-setwd("~/Desktop/NFLAnalysisTest")
-
-# Test pipeline on one season %%%%%%%%%%%%%%%%%%%%%%%%%
-# fs <- 2024
-# data <- xgb_data
-# results_list <- list()
-# 
-# cat("\n============================\n")
-# cat("Processing forecast season:", fs, "\n")
-# # Set tuning windows.
-# # For forecasting season fs, use:
-# #   - Tuning training: seasons (fs - 4) to (fs - 2)
-# #   - Tuning test: season (fs - 1)
-# #   - Production training: seasons (fs - 3) to (fs - 1)
-# tune_train_seasons <- seq(fs - 4, fs - 2)
-# tune_test_season   <- fs - 1
-# prod_train_seasons <- seq(fs - 3, fs - 1)
-# 
-# cat("Tuning: Train seasons:", paste(tune_train_seasons, collapse = ", "), 
-#     " | Test season:", tune_test_season, "\n")
-# 
-# tune_data <- data %>% filter(season %in% c(tune_train_seasons, tune_test_season))
-# 
-# tuning_output <- tune_and_select_features(fs, tune_data, candidate_features, 
-#                                           tune_train_seasons, tune_test_season)
-# 
-# best_hyperparams <- tuning_output$best_hyperparams
-# best_features <- tuning_output$best_features
-# cat("For forecast season", fs, ": Best hyperparameters found;",
-#     length(best_features), "features selected.\n")
-# cat(best_features, sep = "\n")
-# 
-# prod_train <- data %>% filter(season %in% prod_train_seasons)
-# 
-# forecast_data <- data %>% filter(season == fs)
-# 
-# forecasts <- iterative_weekly_forecast(fs, prod_train, forecast_data, 
-#                                        best_hyperparams, best_features)
-# 
-# results_list_temp <- list(
-#   forecast_season = fs,
-#   tuning = tuning_output,
-#   forecasts = forecasts
-# )
-# 
-# results_list[[as.character(fs)]] <- results_list_temp
-# 
-# save(results_list_temp,
-#      file = paste0(
-#        "~/Desktop/NFL Analysis Data/XGBoost Historic Tune/",
-#        "forecast_results_season_", fs, ".rda"))
-# 
-# return(results_list)
+saveRDS(pipeline_results, file = "full_pipeline_results.rds")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 6. Betting Evaluation (XGB Model Raw) ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-all_forecasts <- lapply(pipeline_results, function(x) x[["forecasts"]])
-all_forecasts <- lapply(xgb_models_list, function(x) x[["forecasts"]])
-all_forecasts_df <- bind_rows(all_forecasts)
-
-# Summarize performance by forecast year (season)
-yearly_summary <- all_forecasts_df %>%
-  group_by(season) %>%
-  summarise(
-    RMSE = rmse(team_score, pred_score),
-    MAE  = mae(team_score, pred_score),
-    n    = n()
-  )
-print(yearly_summary)
-
-# Summarize performance by forecast week
-weekly_summary <- all_forecasts_df %>%
-  group_by(week) %>%
-  summarise(
-    RMSE = rmse(team_score, pred_score),
-    MAE  = mae(team_score, pred_score),
-    n    = n()
-  )
-print(weekly_summary, n = nrow(weekly_summary))
-
-## Pivot forecasts wider for direct comparison of home_score, away_score, result, total
-betting_vars <- c("spread_line", "spreadCover", 
-                  "home_spread_odds", "home_spread_prob",
-                  "away_spread_odds", "away_spread_prob",
-                  "total_line", "totalCover",
-                  "over_odds", "over_prob",
-                  "under_odds", "under_prob",
-                  "winner", 
-                  "home_moneyline", "home_moneyline_prob",
-                  "away_moneyline", "away_moneyline_prob")
-
-xgb_preds_df <- modData |> 
-  select(
-    game_id, season, week,
-    home_team,
-    away_team,
-    home_score,
-    away_score,
-    result,
-    total,
-    all_of(betting_vars)
-  ) |>
-  left_join(
-    all_forecasts_df |> 
-      select(game_id, team, xgb_home_score = pred_score),
-    by = join_by(game_id, home_team == team)
-  ) |>
-  left_join(
-    all_forecasts_df |> 
-      select(game_id, team, xgb_away_score = pred_score),
-    by = join_by(game_id, away_team == team)
-  ) |>
-  mutate(
-    xgb_result = xgb_home_score - xgb_away_score,
-    xgb_total = xgb_home_score + xgb_away_score
-  ) |>
-  relocate(xgb_home_score, .after = home_score) |>
-  relocate(xgb_away_score, .after = away_score) |>
-  relocate(xgb_result, .after = result) |>
-  relocate(xgb_total, .after = total)
-
-# Summarize performance by forecast year (season)
-xgb_preds_df %>%
-  group_by(season) %>%
-  summarise(
-    RMSE_home = rmse(home_score, xgb_home_score),
-    MAE_home  = mae(home_score, xgb_home_score),
-    RMSE_away = rmse(away_score, xgb_away_score),
-    MAE_away  = mae(away_score, xgb_away_score),
-    RMSE_result = rmse(result, xgb_result),
-    MAE_result  = mae(result, xgb_result),
-    RMSE_total = rmse(total, xgb_total),
-    MAE_total  = mae(total, xgb_total),
-    n    = n()
-  ) |>
-  print(n = 50)
-
-# Summarize performance by forecast week
-xgb_preds_df %>%
-  filter(complete.cases(xgb_preds_df)) |>
-  group_by(week) %>%
-  summarise(
-    RMSE_home = rmse(home_score, xgb_home_score),
-    MAE_home  = mae(home_score, xgb_home_score),
-    RMSE_away = rmse(away_score, xgb_away_score),
-    MAE_away  = mae(away_score, xgb_away_score),
-    RMSE_result = rmse(result, xgb_result),
-    MAE_result  = mae(result, xgb_result),
-    RMSE_total = rmse(total, xgb_total),
-    MAE_total  = mae(total, xgb_total),
-    n    = n()
-  ) |>
-  print(n = 50)
-
-
-
-evaluate_betting_performance <- function(bet_df,
-                                         result_pred_col = NA,
-                                         total_pred_col = "xgb_total",
-                                         group_season = FALSE,
-                                         group_week = FALSE) {
-  
-  # Conditionally process result predictions if a column name is provided.
-  if (!is.na(result_pred_col)) {
-    bet_df <- bet_df %>%
-      mutate(
-        exp_result = .data[[result_pred_col]],
-        actual_result_cover = case_when(
-          result > spread_line ~ "Home",
-          result < spread_line ~ "Away",
-          TRUE ~ NA_character_
-        ),
-        exp_result_cover = case_when(
-          exp_result > spread_line ~ "Home",
-          exp_result < spread_line ~ "Away",
-          TRUE ~ NA_character_
-        ),
-        correct_result = exp_result_cover == actual_result_cover
-      )
-  } else {
-    bet_df <- bet_df %>%
-      mutate(
-        exp_result = NA_real_,
-        actual_result_cover = NA_character_,
-        exp_result_cover = NA_character_,
-        correct_result = NA
-      )
-  }
-  
-  # Conditionally process total predictions if a column name is provided.
-  if (!is.na(total_pred_col)) {
-    bet_df <- bet_df %>%
-      mutate(
-        exp_total = .data[[total_pred_col]],
-        actual_total_cover = case_when(
-          total > total_line ~ "Over",
-          total < total_line ~ "Under",
-          TRUE ~ NA_character_
-        ),
-        exp_total_cover = case_when(
-          exp_total > total_line ~ "Over",
-          exp_total < total_line ~ "Under",
-          TRUE ~ NA_character_
-        ),
-        correct_total = exp_total_cover == actual_total_cover
-      )
-  } else {
-    bet_df <- bet_df %>%
-      mutate(
-        exp_total = NA_real_,
-        actual_total_cover = NA_character_,
-        exp_total_cover = NA_character_,
-        correct_total = NA
-      )
-  }
-  
-  # Group the output by season/week as requested.
-  if (group_season & group_week) {
-    bet_out_df <- bet_df %>%
-      group_by(season, week)
-  } else if (group_season & !group_week) {
-    bet_out_df <- bet_df %>%
-      group_by(season)
-  } else if (!group_season & group_week) {
-    bet_out_df <- bet_df %>%
-      group_by(week)
-  } else {
-    bet_out_df <- bet_df
-  }
-  
-  # Compute summary accuracy.
-  acc_df <- bet_out_df %>%
-    summarise(
-      games = n(),
-      result_bets = if (!is.na(result_pred_col)) sum(!is.na(correct_result)) else NA_integer_,
-      result_accuracy = if (!is.na(result_pred_col)) round(mean(correct_result, na.rm = TRUE) * 100, 2) else NA_real_,
-      total_bets = if (!is.na(total_pred_col)) sum(!is.na(correct_total)) else NA_integer_,
-      total_accuracy = if (!is.na(total_pred_col)) round(mean(correct_total, na.rm = TRUE) * 100, 2) else NA_real_
-    )
-  
-  return(acc_df)
-}
-
-xgb_betting_accuracy <- evaluate_betting_performance(
-  xgb_preds_df, 
-  result_pred_col = "xgb_result",
-  total_pred_col = "xgb_total",
-  group_season = TRUE,
-  group_week = FALSE
-)
-print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# BRMS MODELING ----
+# 6. BRMS MODELING (WIDE FORMAT: RESULT & TOTAL MODELS) ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-finished_models <- list.files("~/Desktop/NFL Analysis Data/XGBoost Historic Tune")
-finished_models2 <- str_subset(finished_models, "forecast_results")
-finished_models3 <- str_extract(finished_models2, "[:digit:]+")
-
-finished_seasons <- as.numeric(finished_models3)
-file_loc <- "~/Desktop/NFL Analysis Data/XGBoost Historic Tune/"
-
-xgb_models_list <- list()
-best_feature_df <- data.frame()
-for(s in finished_seasons){
-  filename <- paste0(file_loc, "forecast_results_season_", s, ".rda")
-  load(file = filename)
-  
-  xgb_models_list[[as.character(s)]] <- results_list_temp
-  
-  season_features <- results_list_temp$tuning$best_features
-  feature_temp <- data.frame(
-    Feature = season_features,
-    Season = s
-  )
-  best_feature_df <- rbind(best_feature_df, feature_temp)
-}
-
-best_feature_rep <- best_feature_df |>
-  mutate(Rank = row_number(), .by = Season, .keep = "all") |>
-  group_by(Feature) |>
-  summarise(
-    Total_Rank = sum(Rank),
-    Seasons = n()
-  ) |>
-  ungroup() |>
-  mutate(Total_Rank = Total_Rank/Seasons) |>
-  arrange(desc(Seasons), Total_Rank)
-print(best_feature_rep, n = nrow(best_feature_rep))
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 2. Pre-Processing ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Preprocess wide data as needed.
+modData <- modData |> 
+  mutate(net_off_epa_cum = home_off_epa_mean_cum - away_off_epa_mean_cum)
 
 # Merge XGBoost predictions into wide data by game_id.
 # (Ensure that xgb_predictions exist; if not, you may need to load them or run the xgb pipeline first.)
-brms_data <- modData |>
-  left_join(
-    xgb_preds_df |> 
-      select(game_id, home_team, away_team, contains("xgb")),
-    by = join_by(game_id, home_team, away_team)
-  ) |>
-  relocate(xgb_home_score, .after = home_score) |>
-  relocate(xgb_away_score, .after = away_score) |>
-  relocate(xgb_result, .after = result) |>
-  relocate(xgb_total, .after = total)
+xgb_preds_all <- bind_rows(lapply(pipeline_results, function(x) x$tuning$forecast)) # if available; adjust accordingly
+# If your XGBoost predictions are in a separate object, use that.
+modData_wide <- modData |> 
+  left_join(xgb_preds_all |> select(game_id, pred_score), by = "game_id") |>
+  rename(xgb_pred = pred_score)
 
-# Add Net Features
-brms_data <- brms_data |>
-  mutate(
-    net_elo = home_elo - away_elo,
-    net_SRS = home_SRS_cum - away_SRS_cum,
-    net_off_epa = home_off_epa_mean_cum - away_def_epa_mean_cum,
-    net_def_epa = away_off_epa_mean_cum - home_def_epa_mean_cum,
-    net_turnover_diff = home_turnover_diff_cum - away_turnover_diff_cum,
-    net_redzone = home_off_red_zone_app_perc_roll - away_def_red_zone_app_perc_roll
-  )
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 3. Results and Total Model ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Ensure key time variables remain and that other relevant context is preserved.
 
 # Create rolling CV folds for wide data based on season:
-brms_seasons <- sort(unique(brms_data$season))
-brms_seasons <- 2011:2017
-brms_folds <- list()
-for(i in seq(from = 4, to = length(brms_seasons))) {
-  train_seasons <- brms_seasons[(i-3):(i-1)]
-  test_season   <- brms_seasons[i]
-  brms_folds[[as.character(test_season)]] <- list(
-    train = brms_data |> filter(season %in% train_seasons),
-    test  = brms_data |> filter(season == test_season)
+wide_seasons <- sort(unique(modData_wide$season))
+wide_folds <- list()
+for(i in seq(from = 4, to = length(wide_seasons))) {
+  train_seasons <- wide_seasons[(i-3):(i-1)]
+  test_season   <- wide_seasons[i]
+  wide_folds[[as.character(test_season)]] <- list(
+    train = modData_wide |> filter(season %in% train_seasons),
+    test  = modData_wide |> filter(season == test_season)
   )
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 3. Function to Fit brms Model ----
+# 7. DEFINE A FUNCTION TO FIT BRMS MODELS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fit_brms_model <- function(train_data, 
@@ -818,7 +541,7 @@ fit_brms_model <- function(train_data,
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 5. Fit brms Models across CV Folds ----
+# 8. FIT BRMS MODELS ACROSS CV FOLDS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 brms_models <- list()
@@ -829,13 +552,9 @@ brms_summaries <- list()
 brms_formula_result <- 
   bf(
     result ~
-      xgb_result + 
-      net_elo +
-      net_SRS +
-      net_off_epa +
-      net_def_epa +
-      net_turnover_diff +
-      net_redzone +
+      xgb_pred + 
+      week +
+      net_off_epa_cum +
       (1|home_team) +
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
@@ -843,22 +562,18 @@ brms_formula_result <-
 brms_formula_total <- 
   bf(
     total ~ 
-      xgb_total + 
-      net_elo +
-      net_SRS +
-      net_off_epa +
-      net_def_epa +
-      net_turnover_diff +
-      net_redzone +
-      (1|home_team) +
+      xgb_pred +
+      week +
+      net_off_epa_cum + 
+      (1|home_team) + 
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
 
-for(season in names(brms_folds)) {
+for(season in names(wide_folds)) {
   cat("Fitting brms models for test season:", season, "\n")
-  train_brms <- brms_folds[[season]]$train
-  model_result <- fit_brms_model(train_brms, brms_formula_result)
-  model_total  <- fit_brms_model(train_brms, brms_formula_total)
+  train_wide <- wide_folds[[season]]$train
+  model_result <- fit_brms_model(train_wide, brms_formula_result)
+  model_total  <- fit_brms_model(train_wide, brms_formula_total)
   
   brms_models[[season]] <- list(result = model_result, total = model_total)
   brms_summaries[[season]] <- list(
@@ -868,35 +583,32 @@ for(season in names(brms_folds)) {
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 6. Post Processing & Model Evaluation ----
+# 9. POST-PROCESSING & MODEL EVALUATION ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 performance_metrics <- list()
 
-for(season in names(brms_folds)) {
-  test_brms <- brms_folds[[season]]$test
+for(season in names(wide_folds)) {
+  test_wide <- wide_folds[[season]]$test
   
   # Posterior predictions for the result model.
-  pp_result <- posterior_predict(brms_models[[season]]$result, newdata = test_brms)
+  pp_result <- posterior_predict(brms_models[[season]]$result, newdata = test_wide)
   ci_result <- apply(pp_result, 2, quantile, probs = c(0.025, 0.975))
-  coverage_result <- mean(test_brms$result >= ci_result[1, ] & test_brms$result <= ci_result[2, ])
-  rmse_result <- sqrt(mean((colMeans(pp_result) - test_brms$result)^2))
-  
-  pp_total <- posterior_predict(brms_models[[season]]$total, newdata = test_brms)
-  ci_total <- apply(pp_total, 2, quantile, probs = c(0.025, 0.975))
-  coverage_total <- mean(test_brms$total >= ci_total[1, ] & test_brms$total <= ci_total[2, ])
-  rmse_total <- sqrt(mean((colMeans(pp_total) - test_brms$total)^2))
+  coverage_result <- mean(test_wide$result >= ci_result[1, ] & test_wide$result <= ci_result[2, ])
+  rmse_result <- sqrt(mean((colMeans(pp_result) - test_wide$result)^2))
   
   performance_metrics[[season]] <- list(
-    result = list(coverage = coverage_result, RMSE = rmse_result),
-    result = list(coverage = coverage_total, RMSE = rmse_total)
+    result = list(coverage = coverage_result, RMSE = rmse_result)
     # Similarly, compute metrics for the total model if desired.
   )
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## 7. PPC Plots ----
+# 10. BETTING EVALUATION & PPC PLOTS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# Betting Evaluation:
+# (Insert your project-specific betting performance evaluation code here.)
 
 # Generate PPC Plots for brms models.
 for(season in names(brms_models)) {
@@ -908,118 +620,7 @@ for(season in names(brms_models)) {
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# BETTING EVALUATION ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-betting_eval_fold <- function(fold_result,
-                              threshold = 0.6) {
-  test_df <- fold_result$test_data
-  test_df$result_pred <- colMeans(fold_result$ppd)
-  
-  test_df <- test_df %>%
-    mutate(
-      diff = result - spread_line,
-      actual_cover = case_when(
-        result > spread_line ~ "Home",
-        result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      exp_result = result_pred,
-      exp_spread_line = spread_line,
-      exp_diff = exp_result - exp_spread_line,
-      exp_cover = case_when(
-        exp_result > spread_line ~ "Home",
-        exp_result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      correct_cover = (actual_cover == exp_cover)
-    )
-  
-  acc_posterior_mean <- mean(test_df$correct_cover, na.rm = TRUE) * 100
-  
-  ppd_decision <- sweep(fold_result$ppd, 2, test_df$spread_line, 
-                        FUN = function(pred, line) {
-                          ifelse(pred > line, "Home", ifelse(pred < line, "Away", NA))
-                        })
-  comparison_matrix <- sweep(ppd_decision, 2, test_df$actual_cover,
-                             FUN = function(pred, actual) {
-                               ifelse(is.na(pred) | is.na(actual), NA, pred == actual)
-                             })
-  game_accuracy <- colMeans(comparison_matrix, na.rm = TRUE)
-  acc_full <- mean(game_accuracy, na.rm = TRUE) * 100
-  
-  test_home_prob <- colMeans(ppd_decision == "Home", na.rm = TRUE)
-  test_away_prob <- colMeans(ppd_decision == "Away", na.rm = TRUE)
-  
-  test_bet_side_vegas <- ifelse(test_home_prob > test_df$home_spread_prob, "Home",
-                                ifelse(test_away_prob > test_df$away_spread_prob, "Away", NA))
-  test_bet_vegas_correct <- ifelse(is.na(test_bet_side_vegas) | is.na(test_df$actual_cover),
-                                   NA, test_bet_side_vegas == test_df$actual_cover)
-  acc_vegas <- mean(test_bet_vegas_correct, na.rm = TRUE) * 100
-  bet_vegas_count <- sum(!is.na(test_bet_vegas_correct))
-  
-  test_bet_side_thresh <- ifelse(test_home_prob > threshold, "Home",
-                                 ifelse(test_away_prob > threshold, "Away", NA))
-  test_bet_thresh_correct <- ifelse(is.na(test_bet_side_thresh) | is.na(test_df$actual_cover),
-                                    NA, test_bet_side_thresh == test_df$actual_cover)
-  acc_thresh <- mean(test_bet_thresh_correct, na.rm = TRUE) * 100
-  bet_thresh_count <- sum(!is.na(test_bet_thresh_correct))
-  
-  test_df <- test_df %>%
-    mutate(
-      # xgb_home_score = predict(home_model, newdata = test_df),
-      # xgb_away_score = predict(away_model, newdata = test_df),
-      #xgb_result = xgb_home_score - xgb_away_score,
-      xgb_spread_line = spread_line,
-      xgb_diff = xgb_result - xgb_spread_line,
-      xgb_cover = case_when(
-        xgb_result > spread_line ~ "Home",
-        xgb_result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      xgb_correct_cover = (actual_cover == xgb_cover)
-    ) %>%
-    mutate(
-      # xgb_result2 = predict(xgb_result_model, newdata = test_df),
-      xgb_result2 = xgb_home_score - xgb_away_score,
-      xgb_spread_line2 = spread_line,
-      xgb_diff2 = xgb_result2 - xgb_spread_line2,
-      xgb_cover2 = case_when(
-        xgb_result2 > spread_line ~ "Home",
-        xgb_result2 < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      xgb_correct_cover2 = (actual_cover == xgb_cover2)
-    )
-  
-  acc_xgb <- mean(test_df$xgb_correct_cover, na.rm = TRUE) * 100
-  acc_xgb2 <- mean(test_df$xgb_correct_cover2, na.rm = TRUE) * 100
-  
-  return(list(
-    test_df = test_df,
-    acc_posterior_mean = acc_posterior_mean,
-    acc_full = acc_full,
-    acc_vegas = acc_vegas,
-    bet_vegas_count = bet_vegas_count,
-    acc_thresh = acc_thresh,
-    bet_thresh_count = bet_thresh_count,
-    acc_xgb = acc_xgb,
-    acc_xgb2 = acc_xgb2
-  ))
-}
-
-# Apply the betting evaluation to each fold.
-betting_evals <- lapply(fold_results, function(fold) {
-  betting_eval_fold(fold, 
-                    final_xgb_model_home,
-                    final_xgb_model_away, 
-                    final_xgb_model_result, 
-                    threshold = 0.6)
-})
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# SAVE FINAL OUTPUTS ----
+# 11. SAVE FINAL OUTPUTS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 saveRDS(brms_models, file = "brms_models.rds")
