@@ -411,7 +411,7 @@ cat("Generating ELO Data", "\n")
 #     apply_margin_multiplier = TRUE
 #   )
 
-eloDataHistory <- eloDataList$elo_history
+eloDataHistory <- eloData
 
 eloData <- eloDataHistory |>
   clean_homeaway()
@@ -536,10 +536,27 @@ rm(list = setdiff(ls(pattern = "elo"),
 
 # Efficiency Stats ----
 cat("Generating Efficiency Stats Data", "\n")
-nflStatsWeek <- calculate_stats(seasons = allSeasons,
-                                summary_level = "week",
-                                stat_type = "team",
-                                season_type = "REG+POST")
+
+nflStatsWeek_loc <- paste0("~/Desktop/NFLAnalysisTest/scripts/UpdateData/PriorData/",
+                           "nflStatsWeek.rda")
+
+if(file.exists(nflStatsWeek_loc)){
+  load(file = nflStatsWeek_loc)
+  nflStatsWeek <- nflStatsWeek |>
+    filter(season != get_current_season())
+  nflStatsWeekTemp <- calculate_stats(seasons = get_current_season(),
+                                      summary_level = "week",
+                                      stat_type = "team",
+                                      season_type = "REG+POST") 
+  nflStatsWeek <- bind_rows(nflStatsWeek, nflStatsWeekTemp)
+}else{
+  nflStatsWeek <- calculate_stats(seasons = allSeasons,
+                                  summary_level = "week",
+                                  stat_type = "team",
+                                  season_type = "REG+POST") 
+}
+
+save(nflStatsWeek, file = nflStatsWeek_loc)
 
 # Scores Stats ----
 cat("Generating Scores Data", "\n")
@@ -891,8 +908,24 @@ rm(list = setdiff(ls(pattern = "turnover"),
 cat("Generating Series Data", "\n")
 
 ## STEP 1: Calculate Weekly Series Stats ----
-nflSeriesWeek <- calculate_series_conversion_rates(pbpData, weekly = TRUE)
-#seriesSeasonData <- calculate_series_conversion_rates(pbpData, weekly = FALSE)
+nflSeriesWeek_loc <- paste0("~/Desktop/NFLAnalysisTest/scripts/UpdateData/PriorData/",
+                           "nflSeriesWeek.rda")
+
+if(file.exists(nflSeriesWeek_loc)){
+  load(file = nflSeriesWeek_loc)
+  nflSeriesWeek <- nflSeriesWeek |>
+    filter(season != get_current_season())
+  pbpData_series <- pbpData |> filter(season == get_current_season())
+  nflSeriesWeekTemp <- calculate_series_conversion_rates(pbpData_series, 
+                                                         weekly = TRUE)
+  nflSeriesWeek <- bind_rows(nflSeriesWeek, nflSeriesWeekTemp)
+}else{
+  nflSeriesWeek <- calculate_series_conversion_rates(pbpData, 
+                                                     weekly = TRUE)
+}
+
+save(nflSeriesWeek, file = nflSeriesWeek_loc)
+
 
 seriesData <- nflSeriesWeek
 

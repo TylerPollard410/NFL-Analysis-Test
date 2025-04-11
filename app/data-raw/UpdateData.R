@@ -24,7 +24,7 @@ library(nflverse)
 library(tidyverse)
 
 # Set wd ----
-#setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
+setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
 
 # Universal Variables ----
 allSeasons <- 2006:most_recent_season()
@@ -36,14 +36,32 @@ gameIDs <- load_schedules(seasons = allSeasons) |>
 
 # Load/Updata Data ----
 ## gameData -------------------------------
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating gameData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/gameData.R")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished gameData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## gameDataLong -------------------------------
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating gameDataLong", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/gameDataLong.R")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished gameDataLong", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## pbpData ------------------------------
 ### Initial
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating pbpData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/pbpData.R")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished pbpData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ### Update
 # gameIDsCurrent <- pbpData |>
@@ -87,36 +105,66 @@ pbpDataDate <- attributes(pbpData)$nflverse_timestamp
 
 ## playerOffenseData ---------------------------
 #tic()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating playerOffenseData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/playerOffenseData.R")
-#save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
+save(playerOffenseData, file = "./app/data/playerOffenseData.rda")
 #toc()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished playerOffenseData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## seasonStandings ------------------------------
 ### Initial
 #tic()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating seasonStandings", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/seasonStandings.R")
-#save(seasonStandings, file = "./app/data/seasonStandings.rda")
+save(seasonStandings, file = "./app/data/seasonStandings.rda")
 #toc()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished seasonStandings", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## seasonWeekStandings ------------------------------
 ### Initial
 #tic()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating seasonWeekStandings", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/seasonWeekStandings.R")
-#save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
+save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 #toc()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished seasonWeekStandings", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## elo ------------------------------
 ### Initial
 #tic()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating eloData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 source("./app/data-raw/eloData.R")
-#save(eloData, file = "./app/data/eloDataList.rda")
+save(eloData, file = "./app/data/eloData.rda")
 #toc()
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished eloData", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
 ## modData ----
 # About 8 minutes
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Generating modData and modDataLong", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 system.time(
-source("./app/data-raw/modData.R")
-# save(modDataLong, file = "./app/data/modDataLong.rda")
-# save(modData, file = "./app/data/modData.rda")
+  source("./app/data-raw/modData.R")
 )
+save(modDataLong, file = "./app/data/modDataLong.rda")
+save(modData, file = "./app/data/modData.rda")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
+    "Finished modData and modDataLong", "\n",
+    "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
 
