@@ -29,6 +29,8 @@ library(caret)
 library(brms)
 library(bayesplot)
 library(Metrics)  # for MAE, RMSE
+library(broom.mixed)
+library(tidybayes)
 library(nflverse)
 library(tidyverse)
 
@@ -507,21 +509,27 @@ setwd("~/Desktop/NFLAnalysisTest")
 # 
 # return(results_list)
 
-
-finished_models <- list.files("~/XGB")
+### 5B. 
+# for checking single fits as they populate
+finished_models <- list.files("~/Desktop/NFL Analysis Data/XGBoost Historic Tune")
 finished_models2 <- str_subset(finished_models, "forecast_results")
 finished_models3 <- str_extract(finished_models2, "[:digit:]+")
 
 finished_seasons <- as.numeric(finished_models3)
-file_loc <- "~/XGB/"
+file_loc <- "~/Desktop/NFL Analysis Data/XGBoost Historic Tune/"
 
 xgb_models_list <- list()
 best_feature_df <- data.frame()
 for(s in finished_seasons){
-  filename <- paste0(file_loc, "forecast_results_season_", s, ".rda")
-  load(file = filename)
+  filename_results <- paste0(file_loc, "forecast_results_season_", s, ".rda")
+  load(file = filename_results)
   
-  xgb_models_list[[as.character(s)]] <- results_list_temp
+  filename_models <- paste0(file_loc, "forecast_model_season_", s, ".rda")
+  load(file = filename_models)
+  
+  comb_list <- 
+  xgb_models_list[[as.character(s)]] <- list_modify(results_list_temp, 
+                                                    model = forecast_model)
   
   season_features <- results_list_temp$tuning$best_features
   feature_temp <- data.frame(
@@ -531,11 +539,11 @@ for(s in finished_seasons){
   best_feature_df <- rbind(best_feature_df, feature_temp)
 }
 
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Betting Evaluation (XGB Model Raw) ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 all_forecasts <- lapply(pipeline_results, function(x) x[["forecasts"]])
-all_forecasts <- lapply(xgb_models_list, function(x) x[["forecasts"]])
 all_forecasts_df <- bind_rows(all_forecasts)
 
 # Summarize performance by forecast year (season)
@@ -600,7 +608,7 @@ xgb_preds_df <- modData |>
   relocate(xgb_total, .after = total)
 
 # Summarize performance by forecast year (season)
-xgb_preds_df %>%
+xgb_performance_season <- xgb_preds_df %>%
   group_by(season) %>%
   summarise(
     RMSE_home = rmse(home_score, xgb_home_score),
@@ -612,11 +620,11 @@ xgb_preds_df %>%
     RMSE_total = rmse(total, xgb_total),
     MAE_total  = mae(total, xgb_total),
     n    = n()
-  ) |>
-  print(n = 50)
+  ) 
+xgb_performance_season |> print(n = 50)
 
 # Summarize performance by forecast week
-xgb_preds_df %>%
+xgb_performance_week <- xgb_preds_df %>%
   filter(complete.cases(xgb_preds_df)) |>
   group_by(week) %>%
   summarise(
@@ -629,8 +637,8 @@ xgb_preds_df %>%
     RMSE_total = rmse(total, xgb_total),
     MAE_total  = mae(total, xgb_total),
     n    = n()
-  ) |>
-  print(n = 50)
+  ) 
+xgb_performance_week |> print(n = 50)
 
 
 
@@ -730,30 +738,74 @@ xgb_betting_accuracy <- evaluate_betting_performance(
 )
 print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
 
-xgb_betting_accuracy <- evaluate_betting_performance(
+xgb_betting_accuracy_season <- evaluate_betting_performance(
   xgb_preds_df, 
   result_pred_col = "xgb_result",
   total_pred_col = "xgb_total",
   group_season = TRUE,
   group_week = FALSE
 )
-print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
+print(xgb_betting_accuracy_season, n = nrow(xgb_betting_accuracy_season))
+
+xgb_betting_accuracy_season |> 
+  left_join(xgb_performance_season |> select(-n))
+
+xgb_betting_accuracy_week <- evaluate_betting_performance(
+  xgb_preds_df, 
+  result_pred_col = "xgb_result",
+  total_pred_col = "xgb_total",
+  group_season = FALSE,
+  group_week = TRUE
+)
+print(xgb_betting_accuracy_week, n = nrow(xgb_betting_accuracy_week))
+
+xgb_betting_accuracy_week |> 
+  left_join(xgb_performance_week |> select(-n)) |>
+  print(n = 22)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # BRMS MODELING ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-best_feature_rep <- best_feature_df |>
-  mutate(Rank = row_number(), .by = Season, .keep = "all") |>
+## 1. Get Best Features from XGB ---
+# Extract feature importances from each model and bind into a single dataframe
+feature_importance_df <- pipeline_results |>
+  imap_dfr(\(res, season) {
+    # Skip if model is missing (optional defensive check)
+    if (is.null(res$model)) return(NULL)
+    
+    xgb.importance(model = res$model) |>
+      as_tibble() |>
+      mutate(season = as.integer(season))
+  })
+
+feature_importance_summary <- feature_importance_df |>
   group_by(Feature) |>
   summarise(
-    Total_Rank = sum(Rank),
-    Seasons = n()
+    seasons_used = n_distinct(season),
+    mean_gain = mean(Gain),
+    mean_cover = mean(Cover),
+    mean_freq = mean(Frequency),
+    .groups = "drop"
   ) |>
-  ungroup() |>
-  mutate(Total_Rank = Total_Rank/Seasons) |>
-  arrange(desc(Seasons), Total_Rank)
-print(best_feature_rep, n = nrow(best_feature_rep))
+  arrange(desc(mean_gain))
+
+season_feature_matrix <- pipeline_results |>
+  imap_dfr(\(res, season) {
+    tibble(
+      season = as.integer(season),
+      feature = res$tuning$best_features
+    )
+  }) |>
+  mutate(used = 1) |>
+  pivot_wider(names_from = season, values_from = used, values_fill = 0)
+
+combined_features_df <- feature_importance_summary |>
+  left_join(season_feature_matrix, by = c("Feature" = "feature"))
+print(combined_features_df, n = nrow(combined_features_df))
+head(combined_features_df, 20)
+
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 2. Pre-Processing ----
@@ -784,7 +836,8 @@ brms_data <- brms_data |>
   )
 
 # Filter to complete.cases
-brms_seasons <- as.numeric(names(xgb_models_list))
+brms_seasons <- as.numeric(names(pipeline_results))
+brms_data <- brms_data |> filter(season %in% brms_seasons)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -792,7 +845,6 @@ brms_seasons <- as.numeric(names(xgb_models_list))
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Create rolling CV folds for wide data based on season:
-brms_seasons <- sort(unique(brms_data$season))
 brms_folds <- list()
 for(i in seq(from = 4, to = length(brms_seasons))) {
   train_seasons <- brms_seasons[(i-3):(i-1)]
@@ -818,7 +870,7 @@ fit_brms_model <- function(train_data,
     #family = gaussian(),  # Adjust family if necessary
     save_pars = save_pars(all = TRUE),
     chains = 4, iter = 4000, warmup = 2000,
-    cores = detectCores(),
+    cores = parallel::detectCores(),
     normalize = TRUE,
     drop_unused_levels = FALSE,
     control = list(adapt_delta = 0.95),
@@ -879,220 +931,355 @@ for(season in names(brms_folds)) {
   )
 }
 
+# Assuming brms_models is your nested list
+brms_model_summary_df <- brms_models |>
+  imap_dfr(~ {
+    season <- .y
+    imap_dfr(.x, ~ {
+      model <- .x
+      outcome <- .y
+      
+      tidy(model, effects = "fixed", conf.int = TRUE) |>
+        mutate(
+          season = season,
+          outcome = outcome,
+          effect_type = "fixed"
+        ) |>
+        bind_rows(
+          tidy(model, effects = "ran_pars", conf.int = TRUE) |>
+            mutate(
+              season = season,
+              outcome = outcome,
+              effect_type = "ran_pars"
+            )
+        )
+    })
+  }) |> filter(outcome == "result")
+
+print(brms_model_summary_df, n = nrow(brms_model_summary_df))
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Post Processing & Model Evaluation ----
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%
 
-performance_metrics <- list()
-
-for(season in names(brms_folds)) {
-  test_brms <- brms_folds[[season]]$test
+performance_metrics <- imap(brms_folds, \(fold, season) {
+  test_brms <- fold$test
   
-  # Posterior predictions for the result model.
-  pp_result <- posterior_predict(brms_models[[season]]$result, 
-                                 newdata = test_brms,
-                                 re_formula = NULL,
-                                 allow_new_levels = TRUE)
+  # Result model
+  pp_result <- posterior_predict(
+    brms_models[[season]]$result,
+    newdata = test_brms,
+    re_formula = NULL,
+    allow_new_levels = TRUE
+  )
   ci_result <- apply(pp_result, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
   coverage_result <- mean(test_brms$result >= ci_result[1, ] & test_brms$result <= ci_result[2, ], na.rm = TRUE)
   rmse_result <- sqrt(mean((colMeans(pp_result) - test_brms$result)^2, na.rm = TRUE))
   
-  pp_total <- posterior_predict(brms_models[[season]]$total, 
-                                newdata = test_brms,
-                                re_formula = NULL,
-                                allow_new_levels = TRUE)
+  # Total model
+  pp_total <- posterior_predict(
+    brms_models[[season]]$total,
+    newdata = test_brms,
+    re_formula = NULL,
+    allow_new_levels = TRUE
+  )
   ci_total <- apply(pp_total, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
   coverage_total <- mean(test_brms$total >= ci_total[1, ] & test_brms$total <= ci_total[2, ], na.rm = TRUE)
   rmse_total <- sqrt(mean((colMeans(pp_total) - test_brms$total)^2, na.rm = TRUE))
   
-  performance_metrics[[season]] <- list(
-    result = list(coverage = coverage_result, RMSE = rmse_result, pp_result = pp_result),
-    total = list(coverage = coverage_total, RMSE = rmse_total, pp_total = pp_total)
-    # Similarly, compute metrics for the total model if desired.
+  # Return result for this season
+  list(
+    result = list(
+      coverage = coverage_result,
+      RMSE = rmse_result,
+      pp_result = pp_result,
+      game_ids = test_brms$game_id
+    ),
+    total = list(
+      coverage = coverage_total,
+      RMSE = rmse_total,
+      pp_total = pp_total,
+      game_ids = test_brms$game_id
+    )
   )
-}
+})
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 7. PPC Plots ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-ppc_plots <- list()
-
 # Generate PPC Plots for brms models.
-for(season in names(brms_models)) {
-  result_ppc <- pp_check(brms_models[[season]]$result, ndraws = 100) +
-    ggtitle(paste(season))
-    #ggtitle(paste("PPC Plot - Result Model (Season", season, ")"))
-  total_ppc <- pp_check(brms_models[[season]]$total, ndraws = 100) +
-    ggtitle(paste(season))
-    #ggtitle(paste("PPC Plot - Total Model (Season", season, ")"))
-  # Optionally, save these plots (e.g., with ggsave()).
+ppc_plots <- imap(brms_models, \(model, season) {
+  result_ppc <- pp_check(model$result, ndraws = 100) +
+    ggtitle(season)
   
-  ppc_plots[[season]] <- list(
+  total_ppc <- pp_check(model$total, ndraws = 100) +
+    ggtitle(season)
+  
+  list(
     result = result_ppc,
     total = total_ppc
-    # Similarly, compute metrics for the total model if desired.
   )
-}
+})
 
-wrap_plots(lapply(ppc_plots, "[[", "result"), guides = "collect")
-wrap_plots(lapply(ppc_plots, "[[", "total"), guides = "collect")
+wrap_plots(lapply(ppc_plots, "[[", "result"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of result for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
+
+wrap_plots(lapply(ppc_plots, "[[", "total"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of total for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # BETTING EVALUATION ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+betting_vars <- c("spread_line", "spreadCover", 
+                  "home_spread_odds", "home_spread_prob",
+                  "away_spread_odds", "away_spread_prob",
+                  "total_line", "totalCover",
+                  "over_odds", "over_prob",
+                  "under_odds", "under_prob",
+                  "winner", 
+                  "home_moneyline", "home_moneyline_prob",
+                  "away_moneyline", "away_moneyline_prob")
 
-betting_eval_fold <- function(fold_result,
-                              threshold = 0.6) {
-  test_df <- brms_folds[[season]]$test
-  test_df$result_pred <- colMeans(fold_result$pp_result)
+aggregate_posterior_predictions <- function(performance_metrics,
+                                            target = c("result", "total")) {
+  target <- match.arg(target)
+  posterior_col <- if (target == "result") "pp_result" else "pp_total"
   
-  test_df <- test_df %>%
-    mutate(
-      diff = result - spread_line,
-      actual_cover = case_when(
-        result > spread_line ~ "Home",
-        result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      exp_result = xgb_result,
-      exp_spread_line = spread_line,
-      exp_diff = exp_result - exp_spread_line,
-      exp_cover = case_when(
-        exp_result > spread_line ~ "Home",
-        exp_result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      correct_cover = (actual_cover == exp_cover)
+  # Collect matrices and annotate with season + column index
+  extracted <- imap(performance_metrics, \(season_data, season) {
+    target_list <- season_data[[target]]
+    posterior_matrix <- target_list[[posterior_col]]
+    if (is.null(posterior_matrix)) return(NULL)
+    
+    num_games <- ncol(posterior_matrix)
+    
+    list(
+      matrix = posterior_matrix,
+      game_info = tibble(
+        season = as.integer(season),
+        game_index = seq_len(num_games),
+        game_id = target_list[["game_ids"]]
+      )
     )
+  })
   
-  acc_posterior_mean <- mean(test_df$correct_cover, na.rm = TRUE) * 100
+  # Filter NULLs
+  extracted <- compact(extracted)
   
-  ppd_decision <- sweep(fold_result$pp_result, 2, test_df$spread_line, 
-                        FUN = function(pred, line) {
-                          ifelse(pred > line, "Home", ifelse(pred < line, "Away", NA))
-                        })
-  comparison_matrix <- sweep(ppd_decision, 2, test_df$actual_cover,
-                             FUN = function(pred, actual) {
-                               ifelse(is.na(pred) | is.na(actual), NA, pred == actual)
-                             })
-  game_accuracy <- colMeans(comparison_matrix, na.rm = TRUE)
-  acc_full <- mean(game_accuracy, na.rm = TRUE) * 100
+  # Combine matrices
+  full_matrix <- map(extracted, "matrix") |>
+    reduce(cbind)
   
-  test_home_prob <- colMeans(ppd_decision == "Home", na.rm = TRUE)
-  test_away_prob <- colMeans(ppd_decision == "Away", na.rm = TRUE)
-  
-  test_bet_side_vegas <- ifelse(test_home_prob > test_df$home_spread_prob, "Home",
-                                ifelse(test_away_prob > test_df$away_spread_prob, "Away", NA))
-  test_bet_vegas_correct <- ifelse(is.na(test_bet_side_vegas) | is.na(test_df$actual_cover),
-                                   NA, test_bet_side_vegas == test_df$actual_cover)
-  acc_vegas <- mean(test_bet_vegas_correct, na.rm = TRUE) * 100
-  bet_vegas_count <- sum(!is.na(test_bet_vegas_correct))
-  
-  test_bet_side_thresh <- ifelse(test_home_prob > threshold, "Home",
-                                 ifelse(test_away_prob > threshold, "Away", NA))
-  test_bet_thresh_correct <- ifelse(is.na(test_bet_side_thresh) | is.na(test_df$actual_cover),
-                                    NA, test_bet_side_thresh == test_df$actual_cover)
-  acc_thresh <- mean(test_bet_thresh_correct, na.rm = TRUE) * 100
-  bet_thresh_count <- sum(!is.na(test_bet_thresh_correct))
-  
-  test_df <- test_df %>%
-    mutate(
-      # xgb_home_score = predict(home_model, newdata = test_df),
-      # xgb_away_score = predict(away_model, newdata = test_df),
-      #xgb_result = xgb_home_score - xgb_away_score,
-      xgb_spread_line = spread_line,
-      xgb_diff = xgb_result - xgb_spread_line,
-      xgb_cover = case_when(
-        xgb_result > spread_line ~ "Home",
-        xgb_result < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      xgb_correct_cover = (actual_cover == xgb_cover)
-    ) %>%
-    mutate(
-      # xgb_result2 = predict(xgb_result_model, newdata = test_df),
-      xgb_result2 = xgb_home_score - xgb_away_score,
-      xgb_spread_line2 = spread_line,
-      xgb_diff2 = xgb_result2 - xgb_spread_line2,
-      xgb_cover2 = case_when(
-        xgb_result2 > spread_line ~ "Home",
-        xgb_result2 < spread_line ~ "Away",
-        TRUE ~ NA_character_
-      ),
-      xgb_correct_cover2 = (actual_cover == xgb_cover2)
-    )
-  
-  acc_xgb <- mean(test_df$xgb_correct_cover, na.rm = TRUE) * 100
-  acc_xgb2 <- mean(test_df$xgb_correct_cover2, na.rm = TRUE) * 100
+  # Combine game info
+  game_info <- map_dfr(extracted, "game_info")
   
   return(list(
-    test_df = test_df,
-    acc_posterior_mean = acc_posterior_mean,
-    acc_full = acc_full,
-    acc_vegas = acc_vegas,
-    bet_vegas_count = bet_vegas_count,
-    acc_thresh = acc_thresh,
-    bet_thresh_count = bet_thresh_count,
-    acc_xgb = acc_xgb,
-    acc_xgb2 = acc_xgb2
+    posterior = full_matrix,  # draws x all games
+    game_info = game_info     # maps each column to season + index
   ))
 }
 
-result_folds <- lapply(performance_metrics, "[[", "result")
-total_folds <- lapply(performance_metrics, "[[", "total")
-
-# Apply the betting evaluation to each fold.
-betting_evals <- lapply(result_folds, function(fold) {
-  betting_eval_fold(season_fold, 
-                    threshold = 0.6)
-})
-
-map
-
-betting_evals <- map_dfr(~ {
-    season_data <- gameData |> filter(season == .x)
-    season_data_list <- calc_elo_ratings(
-      season_data,
-      initial_elo = 1500,
-      K = 20,
-      home_advantage = 0,
-      d = 400,
-      apply_margin_multiplier = TRUE
+compute_betting_accuracy <- function(posterior_matrix,
+                                     game_data,
+                                     target = c("result", "total"),
+                                     vegas_line_col = NULL,
+                                     vegas_prob_col1 = NULL,
+                                     vegas_prob_col2 = NULL,
+                                     actual_col = NULL,
+                                     xgb_pred_col = NULL,
+                                     prob_threshold = 0.6,
+                                     group_vars = NULL) {
+  target <- match.arg(target)
+  
+  # Target-specific label choices
+  target_labels <- if (target == "result") c("Home", "Away") else c("Over", "Under")
+  
+  vegas_line_col <- vegas_line_col %||% ifelse(target == "result", "spread_line", "total_line")
+  vegas_prob_col1 <- vegas_prob_col1 %||% ifelse(target == "result", "home_spread_prob", "over_prob")
+  vegas_prob_col2 <- vegas_prob_col1 %||% ifelse(target == "result", "away_spread_prob", "under_prob")
+  actual_col     <- actual_col     %||% target
+  xgb_pred_col   <- xgb_pred_col   %||% paste0("xgb_", target)
+  
+  # Match posterior columns to game data
+  df <- game_data |>
+    mutate(
+      posterior_mean = colMeans(posterior_matrix, na.rm = TRUE),
+      actual_cover = case_when(
+        .data[[actual_col]] > .data[[vegas_line_col]] ~ target_labels[1],
+        .data[[actual_col]] < .data[[vegas_line_col]] ~ target_labels[2],
+        TRUE ~ NA_character_
+      ),
+      predicted_cover_mean = case_when(
+        posterior_mean > .data[[vegas_line_col]] ~ target_labels[1],
+        posterior_mean < .data[[vegas_line_col]] ~ target_labels[2],
+        TRUE ~ NA_character_
+      ),
+      correct_cover_mean = predicted_cover_mean == actual_cover
     )
-    season_data_list$elo_history
+  
+  # Full posterior coverage decisions
+  df <- df |>
+    mutate(
+      predicted_covers = map2(
+        .x = asplit(posterior_matrix, 2),
+        .y = .data[[vegas_line_col]],
+        .f = \(draws, line) {
+          ifelse(draws > line, target_labels[1],
+                 ifelse(draws < line, target_labels[2], NA_character_))
+        }
+      ),
+      correct_posterior = map2_dbl(predicted_covers, actual_cover, \(preds, actual) {
+        mean(preds == actual, na.rm = TRUE)
+      })
+    )
+  
+  # Threshold-based decision (only bet if confident enough)
+  df <- df |>
+    mutate(
+      vegas_prob_side1 = map_dbl(predicted_covers, ~ mean(.x == target_labels[1], na.rm = TRUE)),
+      vegas_prob_side2 = map_dbl(predicted_covers, ~ mean(.x == target_labels[2], na.rm = TRUE)),
+      vegas_bet = case_when(
+        vegas_prob_side1 > .data[[vegas_prob_col1]] ~ target_labels[1],
+        vegas_prob_side2 > .data[[vegas_prob_col2]] ~ target_labels[2],
+        TRUE ~ NA_character_
+      ),
+      vegas_correct = vegas_bet == actual_cover
+    )
+  
+  # Threshold-based decision (only bet if confident enough)
+  df <- df |>
+    mutate(
+      threshold_prob_side1 = map_dbl(predicted_covers, ~ mean(.x == target_labels[1], na.rm = TRUE)),
+      threshold_prob_side2 = map_dbl(predicted_covers, ~ mean(.x == target_labels[2], na.rm = TRUE)),
+      threshold_bet = case_when(
+        threshold_prob_side1 > prob_threshold ~ target_labels[1],
+        threshold_prob_side2 > prob_threshold ~ target_labels[2],
+        TRUE ~ NA_character_
+      ),
+      threshold_correct = threshold_bet == actual_cover
+    )
+  
+  # XGBoost prediction (optional)
+  if (xgb_pred_col %in% colnames(df)) {
+    df <- df |>
+      mutate(
+        xgb_cover = case_when(
+          .data[[xgb_pred_col]] > .data[[vegas_line_col]] ~ target_labels[1],
+          .data[[xgb_pred_col]] < .data[[vegas_line_col]] ~ target_labels[2],
+          TRUE ~ NA_character_
+        ),
+        xgb_correct = xgb_cover == actual_cover
+      )
+  }
+  
+  # Group if needed
+  grouped_df <- if (!is.null(group_vars)) df |> group_by(across(all_of(group_vars))) else df
+  
+  # Flag if xgb column exists
+  has_xgb <- "xgb_correct" %in% colnames(df)
+  
+  # Summary
+  summary <- grouped_df |>
+    summarise(
+      target = target,
+      games = n(),
+      PostMean_Acc = mean(correct_cover_mean, na.rm = TRUE) * 100,
+      PostFull_Acc = mean(correct_posterior, na.rm = TRUE) * 100,
+      Vegas_Acc = mean(vegas_correct, na.rm = TRUE) * 100,
+      Vegas_Bets = sum(!is.na(vegas_correct)),
+      Thresh_Acc = mean(threshold_correct, na.rm = TRUE) * 100,
+      Thresh_Bets = sum(!is.na(threshold_correct)),
+      Thresh = prob_threshold,
+      XGB_Acc = if (has_xgb) mean(xgb_correct, na.rm = TRUE) * 100 else NA_real_,
+      XGB_Bets = if (has_xgb) sum(!is.na(xgb_correct)) else NA_integer_,
+      .groups = "drop"
+    )
+  
+  return(summary)
+}
+
+# Generate full-season aggregated posterior for result predictions
+agg_result <- aggregate_posterior_predictions(performance_metrics, target = "result")
+agg_total  <- aggregate_posterior_predictions(performance_metrics, target = "total")
+
+# Join this with full game data (vegas lines, scores, etc.)
+result_input_df <- agg_result$game_info |> left_join(brms_data, by = c("game_id", "season"))
+total_input_df  <- agg_total$game_info  |> left_join(brms_data, by = c("game_id", "season"))
+
+# Compute betting accuracy
+run_betting_accuracy_for_targets <- function(performance_metrics,
+                                             brms_data,
+                                             targets = c("result", "total"),
+                                             prob_threshold = 0.6,
+                                             out_format = "long",
+                                             group_vars = "season") {
+  summary_df <- map_dfr(targets, \(target_type) {
+    # Aggregate posterior for this target
+    agg <- aggregate_posterior_predictions(performance_metrics, target = target_type)
+    
+    # Join game info with game-level data
+    df <- agg$game_info |> 
+      left_join(brms_data, by = c("game_id", "season"))
+    
+    # Compute betting accuracy
+    compute_betting_accuracy(
+      posterior_matrix = agg$posterior,
+      game_data = df,
+      target = target_type,
+      prob_threshold = prob_threshold,
+      group_vars = group_vars
+    ) |> 
+      mutate(target = target_type)
   })
+  if(out_format == "wide"){
+    summary_df <- summary_df |> pivot_wider(names_from = target, values_from = c(PostMean_Acc:XGB_Bets))
+  }
+  return(summary_df)
+}
 
-betting_evals
-
-# Extract and print metrics.
-posterior_mean_accs <- sapply(betting_evals, function(x) x$acc_posterior_mean)
-full_ppd_accs     <- sapply(betting_evals, function(x) x$acc_full)
-vegas_accs        <- sapply(betting_evals, function(x) x$acc_vegas)
-thresh_accs       <- sapply(betting_evals, function(x) x$acc_thresh)
-xgb_accs          <- sapply(betting_evals, function(x) x$acc_xgb)
-xgb2_accs         <- sapply(betting_evals, function(x) x$acc_xgb2)
-
-cat("Posterior Mean Accuracy per fold (%):\n", round(posterior_mean_accs, 2), "\n")
-cat("Full PPD Accuracy per fold (%):\n", round(full_ppd_accs, 2), "\n")
-cat("Vegas-based Accuracy per fold (%):\n", round(vegas_accs, 2), "\n")
-cat("Threshold-based Accuracy per fold (%):\n", round(thresh_accs, 2), "\n")
-cat("XGB Accuracy (model 1) per fold (%):\n", round(xgb_accs, 2), "\n")
-cat("XGB Accuracy (model 2) per fold (%):\n", round(xgb2_accs, 2), "\n")
-
-accuracy_metrics_result_temp <- tibble(
-  Fold = names(betting_evals),
-  PostMean = posterior_mean_accs,
-  PostFull = full_ppd_accs,
-  BetVegas = vegas_accs,
-  BetThresh = thresh_accs,
-  XGB = xgb_accs,
-  XGB2 = xgb2_accs
+betting_summary <- run_betting_accuracy_for_targets(
+  performance_metrics = performance_metrics,
+  brms_data = brms_data,
+  targets = c("result", "total"),
+  prob_threshold = 0.6,
+  out_format = "long", #"wide"
+  group_vars = NULL #c("season", "week")
 )
 
-print(xgb_betting_accuracy, n = nrow(xgb_betting_accuracy))
-print(accuracy_metrics_result_temp)
+
+# Compute betting accuracy
+betting_summary_groups <- NULL #"season"
+
+betting_summary_result <- compute_betting_accuracy(
+  posterior_matrix = agg_result$posterior,
+  game_data = result_input_df,
+  target = "result",
+  prob_threshold = 0.6,
+  group_vars = betting_summary_groups # c("season", "week")
+)
+betting_summary_total <- compute_betting_accuracy(
+  posterior_matrix = agg_total$posterior,
+  game_data = total_input_df,
+  target = "total",
+  prob_threshold = 0.6,
+  group_vars = betting_summary_groups # c("season", "week")
+)
+betting_summary <- bind_rows(
+  betting_summary_result,
+  betting_summary_total
+) #|> arrange(!!sym(betting_summary_groups))
+print(betting_summary, n = nrow(betting_summary))
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

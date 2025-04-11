@@ -1346,12 +1346,19 @@ print(paste("Model Accuracy Percent XGBoost:",
             round(train_result_acc_prob_xgb2, 2), "%"))
 
 ## Test ----
-test_result_bet_df <- modelData |>
+
+games24 <- which(agg_result$game_info$season == 2024)
+posteriorPred_result <- agg_result$posterior[,games24]
+posteriorPredMean_result <- colMeans(posteriorPred_result)
+
+test_result_bet_df <- brms_data |> #modelData |>
+  filter(season == 2024) |>
   select(
     game_id, season, season_type, week,
     home_team, away_team, 
     home_score, away_score,
     result, spread_line,
+    xgb_home_score, xgb_away_score, xgb_result, xgb_total,
     home_spread_prob, away_spread_prob,
     home_spread_odds, away_spread_odds
   ) |>
@@ -1379,9 +1386,9 @@ test_result_bet_df <- modelData |>
     .after = actual_cover
   ) |>
   mutate(
-    xgb_home_score = predict(home_model, newdata = modelData),
-    xgb_away_score = predict(away_model, newdata = modelData),
-    xgb_result = xgb_home_score - xgb_away_score,
+    #xgb_home_score = predict(home_model, newdata = modelData),
+    #xgb_away_score = predict(away_model, newdata = modelData),
+    #xgb_result = xgb_home_score - xgb_away_score,
     xgb_spread_line = spread_line,
     xgb_diff = xgb_result - xgb_spread_line,
     xgb_cover = case_when(
@@ -1391,19 +1398,19 @@ test_result_bet_df <- modelData |>
     ),
     xgb_correct_cover = actual_cover == xgb_cover,
     .after = correct_cover
-  ) |>
-  mutate(
-    xgb_result2 = predict(xgb_result_model, newdata = modelData),
-    xgb_spread_line2 = spread_line,
-    xgb_diff2 = xgb_result2 - xgb_spread_line2,
-    xgb_cover2 = case_when(
-      xgb_result2 > spread_line ~ "Home",
-      xgb_result2 < spread_line ~ "Away",
-      .default = NA
-    ),
-    xgb_correct_cover2 = actual_cover == xgb_cover2,
-    .after = xgb_correct_cover
-  )
+  ) #|>
+  # mutate(
+  #   xgb_result2 = predict(xgb_result_model, newdata = modelData),
+  #   xgb_spread_line2 = spread_line,
+  #   xgb_diff2 = xgb_result2 - xgb_spread_line2,
+  #   xgb_cover2 = case_when(
+  #     xgb_result2 > spread_line ~ "Home",
+  #     xgb_result2 < spread_line ~ "Away",
+  #     .default = NA
+  #   ),
+  #   xgb_correct_cover2 = actual_cover == xgb_cover2,
+  #   .after = xgb_correct_cover
+  # )
 
 ### Accuracy ----
 test_result_spread_line <- test_result_bet_df$spread_line
@@ -1488,11 +1495,11 @@ test_result_acc_prob_xgb <-
   mean(test_result_bet_df$xgb_correct_cover, na.rm = TRUE)*100
 test_result_acc_prob_xgb
 
-table(train_result_bet_df$xgb_correct_cover2, useNA = "ifany")
-
-test_result_acc_prob_xgb2 <-
-  mean(test_result_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
-test_result_acc_prob_xgb2
+# table(test_result_bet_df$xgb_correct_cover2, useNA = "ifany")
+# 
+# test_result_acc_prob_xgb2 <-
+#   mean(test_result_bet_df$xgb_correct_cover2, na.rm = TRUE)*100
+# test_result_acc_prob_xgb2
 
 ### Compare ----
 # Output
@@ -1509,50 +1516,50 @@ print(paste("Model Accuracy Percent Posterior Threshold:",
             "with", test_result_thresh*100, "% threshold"))
 print(paste("Model Accuracy Percent XGBoost:", 
             round(test_result_acc_prob_xgb, 2), "%"))
-print(paste("Model Accuracy Percent XGBoost:", 
-            round(test_result_acc_prob_xgb2, 2), "%"))
+# print(paste("Model Accuracy Percent XGBoost:", 
+#             round(test_result_acc_prob_xgb2, 2), "%"))
 
 ## Comparison Table ----
 accuracy_metrics_result_temp <- tibble(
-  Fit = rep(paste0("Fit", fitResult), 2),
-  Data = rep(c("Train", "Test"), each = 1),
-  Bet = rep(c("result"), 2), # "total"), times = 1),
-  PostMean = c(train_result_acc_prob_posterior_mean,
+  Fit = "Fit 1", # rep(paste0("Fit", fitResult), 2),
+  Data = "Test", # rep(c("Train", "Test"), each = 1),
+  Bet = "result", #rep(c("result"), 2), # "total"), times = 1),
+  PostMean = c(#train_result_acc_prob_posterior_mean,
                #train_total_acc_prob_posterior_mean,
                test_result_acc_prob_posterior_mean
                #test_total_acc_prob_posterior_mean
   ),
-  PostFull = c(train_result_acc_prob_full_posterior,
+  PostFull = c(#train_result_acc_prob_full_posterior,
                #train_total_acc_prob_full_posterior,
                test_result_acc_prob_full_posterior
                #test_total_acc_prob_full_posterior
   ),
-  BetVegas = c(train_result_bet_vegas_acc,
+  BetVegas = c(#train_result_bet_vegas_acc,
                #train_total_bet_vegas_acc,
                test_result_bet_vegas_acc
                #test_total_bet_vegas_acc
   ),
-  BetVegasCount = c(train_result_bet_vegas_count,
+  BetVegasCount = c(#train_result_bet_vegas_count,
                     #train_total_bet_vegas_count,
                     test_result_bet_vegas_count
                     #test_total_bet_vegas_count
   ),
-  BetThresh = c(train_result_bet_thresh_acc,
+  BetThresh = c(#train_result_bet_thresh_acc,
                 #train_total_bet_thresh_acc,
                 test_result_bet_thresh_acc
                 #test_total_bet_thresh_acc
   ),
-  ThreshPerc = c(train_result_thresh,
+  ThreshPerc = c(#train_result_thresh,
                  #train_total_thresh,
                  test_result_thresh
                  #test_total_thresh
   ),
-  BetThreshCount = c(train_result_bet_thresh_count,
+  BetThreshCount = c(#train_result_bet_thresh_count,
                      #train_total_bet_thresh_count,
                      test_result_bet_thresh_count
                      #test_total_bet_thresh_count
   ),
-  XGB = c(train_result_acc_prob_xgb,
+  XGB = c(#train_result_acc_prob_xgb,
           #train_total_acc_prob_xgb,
           test_result_acc_prob_xgb
           #test_total_acc_prob_xgb
