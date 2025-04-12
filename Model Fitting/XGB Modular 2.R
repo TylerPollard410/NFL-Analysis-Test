@@ -1,19 +1,19 @@
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 0. SETUP & LIBRARIES ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-# Modeling libraries:
-library(caret)                # For preprocessing utilities like nearZeroVar and findLinearCombos
-library(xgboost)              # Native XGBoost training
-library(rBayesianOptimization)  # For Bayesian hyperparameter optimization
-#library(projpred)             # Optional variable selection
-library(brms)                 # Bayesian hierarchical modeling
-library(bayesplot)
-library(pROC)                 # For performance metrics
-library(parallel)             # For parallel processing
-
-# General libraries for data manipulation, plotting and date handling
-library(data.table)
+# 
+# # Modeling libraries:
+# library(caret)                # For preprocessing utilities like nearZeroVar and findLinearCombos
+# library(xgboost)              # Native XGBoost training
+# library(rBayesianOptimization)  # For Bayesian hyperparameter optimization
+# #library(projpred)             # Optional variable selection
+# library(brms)                 # Bayesian hierarchical modeling
+# library(bayesplot)
+# library(pROC)                 # For performance metrics
+# library(parallel)             # For parallel processing
+# 
+# # General libraries for data manipulation, plotting and date handling
+# library(data.table)
 # library(tidyverse)
 
 library(readr)
@@ -39,6 +39,9 @@ set.seed(52)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 1. LOAD & PREPARE DATA ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modDataLong.rda"))
+
 
 load(file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
 load(file = "~/Desktop/NFL Analysis Data/modData.rda")
@@ -111,17 +114,22 @@ candidate_numeric_cols
 # Before checking for linear combinations, we need a complete numeric dataset.
 candidate_numeric_NA <- which(!complete.cases(candidate_numeric))
 data_long_clean_NA <- data_long_clean |> 
-  slice(candidate_numeric_NA) |>
-  select(game_id, all_of(candidate_numeric_cols))
+  select(game_id, all_of(candidate_numeric_cols)) |>
+  slice(candidate_numeric_NA)
 
 NAcols <- apply(data_long_clean_NA, 2, function(x) sum(is.na(x)))
-NAcols[NAcols != 0]
+NAcols <- NAcols[NAcols != 0]
+data_long_clean_NA <- data_long_clean_NA |> 
+  select(game_id, names(NAcols))
 
 candidate_numeric_clean <- candidate_numeric %>% 
   filter(if_all(everything(), ~ !is.na(.))) %>% 
   filter(if_all(everything(), ~ is.finite(.)))
 
-
+nflStatsWeek2 <- scoresDataAgg |> 
+  filter(!complete.cases(scoresDataAgg)) |>
+  filter(season >= 2007) |>
+  select(season, week, team, opponent, names(NAcols))
 
 # --- 5. Remove Redundant (Linearly Dependent) Predictors ---
 # Use caret::findLinearCombos to detect and remove any exact or near-exact linear combinations.
@@ -511,12 +519,13 @@ setwd("~/Desktop/NFLAnalysisTest")
 
 ### 5B. 
 # for checking single fits as they populate
+finished_models <- list.files("~/XGB/")
 finished_models <- list.files("~/Desktop/NFL Analysis Data/XGBoost Historic Tune")
 finished_models2 <- str_subset(finished_models, "forecast_results")
 finished_models3 <- str_extract(finished_models2, "[:digit:]+")
 
 finished_seasons <- as.numeric(finished_models3)
-file_loc <- "~/Desktop/NFL Analysis Data/XGBoost Historic Tune/"
+file_loc <- "~/XGB/"
 
 xgb_models_list <- list()
 best_feature_df <- data.frame()
@@ -528,8 +537,8 @@ for(s in finished_seasons){
   load(file = filename_models)
   
   comb_list <- 
-  xgb_models_list[[as.character(s)]] <- list_modify(results_list_temp, 
-                                                    model = forecast_model)
+    xgb_models_list[[as.character(s)]] <- list_modify(results_list_temp, 
+                                                      model = forecast_model)
   
   season_features <- results_list_temp$tuning$best_features
   feature_temp <- data.frame(
@@ -538,7 +547,8 @@ for(s in finished_seasons){
   )
   best_feature_df <- rbind(best_feature_df, feature_temp)
 }
-
+pipeline_results <- xgb_models_list
+save(pipeline_results, file = "~/XGB/pipeline_results.rda")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Betting Evaluation (XGB Model Raw) ----
@@ -893,13 +903,13 @@ brms_summaries <- list()
 brms_formula_result <- 
   bf(
     result ~
-      xgb_result + 
+      # xgb_result + 
       net_elo +
-      net_SRS +
-      net_off_epa +
-      net_def_epa +
-      net_turnover_diff +
-      net_redzone +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
       (1|home_team) +
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
@@ -907,13 +917,13 @@ brms_formula_result <-
 brms_formula_total <- 
   bf(
     total ~ 
-      xgb_total + 
+      # xgb_total + 
       net_elo +
-      net_SRS +
-      net_off_epa +
-      net_def_epa +
-      net_turnover_diff +
-      net_redzone +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
       (1|home_team) +
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
@@ -956,7 +966,12 @@ brms_model_summary_df <- brms_models |>
     })
   }) |> filter(outcome == "result")
 
-print(brms_model_summary_df, n = nrow(brms_model_summary_df))
+#print(brms_model_summary_df, n = nrow(brms_model_summary_df))
+
+brms_models_result <- lapply(brms_models, "[[", "result")
+brms_models_total <- lapply(brms_models, "[[", "total")
+
+brms_model_result_combined <- combine_models(brms_models_result)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1134,7 +1149,7 @@ compute_betting_accuracy <- function(posterior_matrix,
       predicted_covers = map2(
         .x = asplit(posterior_matrix, 2),
         .y = .data[[vegas_line_col]],
-        .f = \(draws, line) {
+        \(draws, line) {
           ifelse(draws > line, target_labels[1],
                  ifelse(draws < line, target_labels[2], NA_character_))
         }
@@ -1144,7 +1159,7 @@ compute_betting_accuracy <- function(posterior_matrix,
       })
     )
   
-  # Threshold-based decision (only bet if confident enough)
+  # Vegas-based decision (only bet if confident enough)
   df <- df |>
     mutate(
       vegas_prob_side1 = map_dbl(predicted_covers, ~ mean(.x == target_labels[1], na.rm = TRUE)),
@@ -1209,6 +1224,7 @@ compute_betting_accuracy <- function(posterior_matrix,
   return(summary)
 }
 
+## Generate Full Posteriors ----
 # Generate full-season aggregated posterior for result predictions
 agg_result <- aggregate_posterior_predictions(performance_metrics, target = "result")
 agg_total  <- aggregate_posterior_predictions(performance_metrics, target = "total")
@@ -1248,39 +1264,204 @@ run_betting_accuracy_for_targets <- function(performance_metrics,
   return(summary_df)
 }
 
-betting_summary <- run_betting_accuracy_for_targets(
-  performance_metrics = performance_metrics,
-  brms_data = brms_data,
-  targets = c("result", "total"),
-  prob_threshold = 0.6,
-  out_format = "long", #"wide"
-  group_vars = NULL #c("season", "week")
+## Combine Output -----
+betting_summary_model_comp <- list()
+model_fit <- 1
+betting_summary_model_comp[[model_fit]] <- list(
+  overall = run_betting_accuracy_for_targets(
+    performance_metrics = performance_metrics,
+    brms_data = brms_data,
+    targets = c("result", "total"),
+    prob_threshold = 0.6,
+    out_format = "long", #"wide"
+    group_vars = NULL #c("season", "week")
+  ), # |> mutate(Fit = 1, .before = 1),
+  season = run_betting_accuracy_for_targets(
+    performance_metrics = performance_metrics,
+    brms_data = brms_data,
+    targets = c("result", "total"),
+    prob_threshold = 0.6,
+    out_format = "long", #"wide"
+    group_vars = "season" #c("season", "week")
+  ), # |> mutate(Fit = 1, .before = 1),
+  week = run_betting_accuracy_for_targets(
+    performance_metrics = performance_metrics,
+    brms_data = brms_data,
+    targets = c("result", "total"),
+    prob_threshold = 0.6,
+    out_format = "long", #"wide"
+    group_vars = "week"
+  ), # |> mutate(Fit = 1, .before = 1)
+  brms_formula_result = brms_formula_result,
+  brms_formula_total = brms_formula_total
 )
 
 
-# Compute betting accuracy
-betting_summary_groups <- NULL #"season"
+# betting_summary_overall <- run_betting_accuracy_for_targets(
+#   performance_metrics = performance_metrics,
+#   brms_data = brms_data,
+#   targets = c("result", "total"),
+#   prob_threshold = 0.6,
+#   out_format = "long", #"wide"
+#   group_vars = NULL #c("season", "week")
+# )
 
-betting_summary_result <- compute_betting_accuracy(
-  posterior_matrix = agg_result$posterior,
-  game_data = result_input_df,
-  target = "result",
-  prob_threshold = 0.6,
-  group_vars = betting_summary_groups # c("season", "week")
-)
-betting_summary_total <- compute_betting_accuracy(
-  posterior_matrix = agg_total$posterior,
-  game_data = total_input_df,
-  target = "total",
-  prob_threshold = 0.6,
-  group_vars = betting_summary_groups # c("season", "week")
-)
-betting_summary <- bind_rows(
-  betting_summary_result,
-  betting_summary_total
-) #|> arrange(!!sym(betting_summary_groups))
-print(betting_summary, n = nrow(betting_summary))
+betting_summary_overall <- betting_summary_model_comp |>
+  map("overall") |>
+  imap_dfr(~ mutate(.x, Fit = paste0("Model", .y), .before = 1)) |>
+  arrange(target, Fit)
+betting_summary_overall
 
+best_result_bet_model <- betting_summary_overall |>
+  filter(target == "result") |>
+  arrange(desc(Thresh_Acc)) |>
+  select(Fit, target, Games = games, Thresh_Acc, Thresh_Bets, XGB_Acc, XGB_Bets) |>
+  mutate(
+    Thresh_Exp_Wins = Thresh_Acc*Thresh_Bets/100,
+    Thresh_Exp_Loss = (1-Thresh_Acc/100)*Thresh_Bets, 
+    Thresh_Exp_Pay = (Thresh_Exp_Wins*0.91 - Thresh_Exp_Loss)*100,
+    .after = Thresh_Bets
+  ) |>
+  mutate(
+    XGB_Exp_Wins = XGB_Acc*XGB_Bets/100,
+    XGB_Exp_Loss = (1-XGB_Acc/100)*XGB_Bets,
+    XGB_Exp_Pay = (XGB_Exp_Wins*0.91 - XGB_Exp_Loss)*100,
+  ) |>
+  arrange(desc(Thresh_Exp_Pay))
+best_result_bet_model
+
+best_total_bet_model <- betting_summary_overall |>
+  filter(target == "total") |>
+  arrange(desc(Thresh_Acc)) |>
+  select(Fit, target, Games = games, Thresh_Acc, Thresh_Bets, XGB_Acc, XGB_Bets) |>
+  mutate(
+    Thresh_Exp_Wins = Thresh_Acc*Thresh_Bets/100,
+    Thresh_Exp_Loss = (1-Thresh_Acc/100)*Thresh_Bets, 
+    Thresh_Exp_Pay = (Thresh_Exp_Wins*0.91 - Thresh_Exp_Loss)*100,
+    .after = Thresh_Bets
+  ) |>
+  mutate(
+    XGB_Exp_Wins = XGB_Acc*XGB_Bets/100,
+    XGB_Exp_Loss = (1-XGB_Acc/100)*XGB_Bets,
+    XGB_Exp_Pay = (XGB_Exp_Wins*0.91 - XGB_Exp_Loss)*100,
+  ) |>
+  arrange(desc(Thresh_Exp_Pay))
+best_total_bet_model
+
+
+# betting_summary_season <- run_betting_accuracy_for_targets(
+#   performance_metrics = performance_metrics,
+#   brms_data = brms_data,
+#   targets = c("result", "total"),
+#   prob_threshold = 0.6,
+#   out_format = "long", #"wide"
+#   group_vars = "season" #c("season", "week")
+# )
+
+betting_summary_season <- betting_summary_model_comp |>
+  map("season") |>
+  imap_dfr(~ mutate(.x, Fit = paste0("Model", .y), .before = 1)) |>
+  arrange(target, season, Fit)
+
+
+# betting_summary_week <- run_betting_accuracy_for_targets(
+#   performance_metrics = performance_metrics,
+#   brms_data = brms_data,
+#   targets = c("result", "total"),
+#   prob_threshold = 0.6,
+#   out_format = "long", #"wide"
+#   group_vars = "week"
+# )
+
+betting_summary_week <- betting_summary_model_comp |>
+  map("week") |>
+  imap_dfr(~ mutate(.x, Fit = paste0("Model", .y), .before = 1)) |>
+  arrange(target, week, Fit)
+
+
+## Return on Investment -----
+
+compute_roi_table <- function(posterior_matrix, new_data,
+                              target = c("result", "total"),
+                              threshold_grid = seq(0.50, 0.70, by = 0.01),
+                              odds = -110) {
+  target <- match.arg(target)
+  
+  # Define the labels and relevant columns based on target type.
+  target_labels <- if (target == "result") c("Home", "Away") else c("Over", "Under")
+  line_col <- if (target == "result") "spread_line" else "total_line"
+  actual_col <- if (target == "result") "result" else "total"
+  
+  # Calculate payout ratio from American odds (for -110, win nets ~0.91 profit).
+  payout_ratio <- ifelse(odds < 0, 100 / abs(odds), odds / 100)
+  
+  # Compute cover probabilities for each game.
+  # Note: We assume posterior_matrix is organized as draws x games.
+  new_data <- new_data %>%
+    mutate(
+      home_cover_prob = map_dbl(1:n(), ~ mean(posterior_matrix[.x, ] > .data[[line_col]][.x])),
+      away_cover_prob = map_dbl(1:n(), ~ mean(posterior_matrix[.x, ] < .data[[line_col]][.x]))
+    ) %>%
+    mutate(
+      actual_cover = case_when(
+        .data[[actual_col]] > .data[[line_col]] ~ target_labels[1],
+        .data[[actual_col]] < .data[[line_col]] ~ target_labels[2],
+        TRUE ~ NA_character_
+      )
+    )
+  
+  # Loop over the threshold grid to determine betting performance.
+  roi_table <- map_dfr(threshold_grid, function(thresh) {
+    temp <- new_data %>%
+      mutate(
+        # Apply threshold-based decision logic:
+        # If the home cover probability exceeds the threshold and is greater than the away probability, bet "Home".
+        # If the away cover probability exceeds the threshold and is greater than the home probability, bet "Away".
+        bet_choice = case_when(
+          home_cover_prob > thresh & home_cover_prob > away_cover_prob ~ target_labels[1],
+          away_cover_prob > thresh & away_cover_prob > home_cover_prob ~ target_labels[2],
+          TRUE ~ NA_character_
+        ),
+        # Check if the bet was correct.
+        bet_hit = if_else(bet_choice == actual_cover, 1, 0, missing = NA_integer_),
+        # Calculate payout: win returns payout_ratio, loss returns -1, no bet returns 0.
+        bet_payout = case_when(
+          is.na(bet_choice) ~ 0,
+          bet_hit == 1 ~ payout_ratio,
+          bet_hit == 0 ~ -1
+        )
+      )
+    
+    bets_placed <- sum(!is.na(temp$bet_choice))
+    roi_value <- if (bets_placed > 0) sum(temp$bet_payout, na.rm = TRUE) / bets_placed else NA_real_
+    accuracy_value <- if (bets_placed > 0) mean(temp$bet_hit, na.rm = TRUE) else NA_real_
+    
+    tibble(
+      threshold   = thresh,
+      bets_placed = bets_placed,
+      roi         = roi_value,
+      accuracy    = accuracy_value
+    )
+  })
+  
+  return(roi_table)
+}
+
+roi_table <- compute_roi_table(
+  posterior_matrix = agg_result$posterior, 
+  new_data = brms_data,
+  target = "result")
+print(roi_table)
+
+# Finally, plot ROI vs. threshold
+ggplot(roi_table, aes(x = threshold, y = roi)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "ROI by Posterior Betting Confidence Threshold",
+    x = "Posterior Threshold",
+    y = "ROI"
+  )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # SAVE FINAL OUTPUTS ----

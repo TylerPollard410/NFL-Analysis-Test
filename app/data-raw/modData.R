@@ -687,7 +687,10 @@ scoresFeatures <- gameDataLong |>
   mutate(
     two_pt_def = rev(two_pt_def),
     .by = c(game_id)
-  ) #|>
+  ) |>
+  mutate(across(c(everything(), -all_of(id_cols)),
+         ~ifelse(is.na(.x), 0, .x))
+  )
 #mutate(rowID = row_number())
 
 # check
