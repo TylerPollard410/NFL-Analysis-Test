@@ -27,23 +27,32 @@ modDataPlotOutput <- function(id){
   #     uiOutput(outputId = NS(id, "modDataPlotUI"))
   #   )
   # )
-  tabsetPanel(
+  tabBox(
+    width = 12,
     tabPanel(
       title = "Plot",
       br(),
       fluidRow(
-        sliderInput(
-          inputId = NS(id, "plotWidth"),
-          label = "Plot Width",
-          min = 600, max = 1200, value = 1000,
-          sep = "", step = 10
+        column(
+          width = 5,
+          sliderInput(
+            inputId = NS(id, "plotWidth"),
+            label = "Plot Width",
+            min = 600, max = 1200, value = 1000,
+            sep = "", step = 10
+            #width = "100%"
+          )
         ),
         column(width = 1),
-        sliderInput(
-          inputId = NS(id, "plotHeight"),
-          label = "Plot Height",
-          min = 400, max = 1500, value = 600,
-          sep = "", step = 10
+        column(
+          width = 5,
+          sliderInput(
+            inputId = NS(id, "plotHeight"),
+            label = "Plot Height",
+            min = 400, max = 1500, value = 600,
+            sep = "", step = 10
+            #width = "45%"
+          )
         )
       ),
       fluidRow(
@@ -253,7 +262,7 @@ modDataPlotServer <- function(id,
         need(xVar(), "Please select x variable to plot"),
         need(yVar(), "Please select y variable to plot")
       )
-
+      
       data <- modPlotData()
       
       # # 1. Check that xVar(), yVar(), colorVar(), facetVar() are in the dataset

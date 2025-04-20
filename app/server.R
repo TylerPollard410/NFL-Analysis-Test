@@ -169,27 +169,83 @@ shinyServer(function(input, output, session) {
   ### Lines ----
   #### Inputs ----
   ##### Season ----
+  # # Betting Tab  ############################################
+  # ## Games ==================================================
+  # 
+  # ### Lines ----
+  # # Betting Season and Week reactive values
+  # bettingSeasonInput <- reactive({ input$bettingSeason })
+  # bettingWeekInput <- reactive({ input$bettingWeek })
+  # 
+  # # Update Week choices when Season changes
+  # observe({
+  #   #req(bettingSeasonInput())
+  #   
+  #   current_season <- get_current_season()
+  #   current_week <- get_current_week()
+  #   
+  #   if (bettingSeasonInput() == current_season) {
+  #     updateSelectInput(session, "bettingWeek",
+  #                       choices = 1:current_week,
+  #                       selected = current_week)
+  #   } else {
+  #     # Allow full season for past years
+  #     max_week <- max(gameData$week[gameData$season == bettingSeasonInput()], na.rm = TRUE)
+  #     updateSelectInput(session, "bettingWeek",
+  #                       choices = 1:max_week,
+  #                       selected = max_week)
+  #   }
+  # }) |> bindEvent(bettingSeasonInput())
+  # 
+  # # Filter game data based on selected season & week
+  # filteredFutureGames <- reactive({
+  #   req(input$bettingSeason, input$bettingWeek)
+  #   gameData |>
+  #     filter(season == bettingSeasonInput(), week == bettingWeekInput(), !is.na(spread_line))
+  #   #futureGameIDs <- futureGames$game_id
+  #   # list(
+  #   #   ids = futureGameIDs,
+  #   #   data = futureGames
+  #   # )
+  # })
+  # 
+  # filteredFutureGamesIDs <- reactive({
+  #   filteredFutureGames()$game_id
+  # })
+  # 
+  # # Launch betting lines module
+  # observe({
+  #   filteredFutureGamesIDs <- filteredFutureGamesIDs()
+  #   filteredFutureGames <- filteredFutureGames()
+  #   bettingGamesLinesServer("gameLines",
+  #                           futureGameIDs = filteredFutureGamesIDs, #games$ids,
+  #                           futureGameData = filteredFutureGames, #games$data,
+  #                           teamsData = teamsData,
+  #                           gameDataLong = gameDataLong)
+  # }) |> bindEvent(filteredFutureGames())
+  
+  
   # Betting Tab  ############################################
   ## Games ==================================================
+  
+  # Track which game has been clicked in the Lines tab
+  selectedGameID <- reactiveVal(NULL)
   
   ### Lines ----
   # Betting Season and Week reactive values
   bettingSeasonInput <- reactive({ input$bettingSeason })
-  bettingWeekInput <- reactive({ input$bettingWeek })
+  bettingWeekInput   <- reactive({ input$bettingWeek })
   
   # Update Week choices when Season changes
   observe({
-    #req(bettingSeasonInput())
-    
     current_season <- get_current_season()
-    current_week <- get_current_week()
+    current_week   <- get_current_week()
     
     if (bettingSeasonInput() == current_season) {
       updateSelectInput(session, "bettingWeek",
                         choices = 1:current_week,
                         selected = current_week)
     } else {
-      # Allow full season for past years
       max_week <- max(gameData$week[gameData$season == bettingSeasonInput()], na.rm = TRUE)
       updateSelectInput(session, "bettingWeek",
                         choices = 1:max_week,
@@ -199,32 +255,45 @@ shinyServer(function(input, output, session) {
   
   # Filter game data based on selected season & week
   filteredFutureGames <- reactive({
-    req(input$bettingSeason, input$bettingWeek)
-    gameData |>
-      filter(season == bettingSeasonInput(), week == bettingWeekInput(), !is.na(spread_line))
-    #futureGameIDs <- futureGames$game_id
-    # list(
-    #   ids = futureGameIDs,
-    #   data = futureGames
-    # )
+    req(bettingSeasonInput(), bettingWeekInput())
+    gameData |> 
+      filter(season == bettingSeasonInput(),
+             week   == bettingWeekInput(),
+             !is.na(spread_line))
   })
   
   filteredFutureGamesIDs <- reactive({
     filteredFutureGames()$game_id
   })
   
-  # Launch betting lines module
+  # Launch the Lines module, including a callback for when a game is clicked
   observe({
-    filteredFutureGamesIDs <- filteredFutureGamesIDs()
-    filteredFutureGames <- filteredFutureGames()
-    bettingGamesLinesServer("gameLines",
-                            futureGameIDs = filteredFutureGamesIDs, #games$ids,
-                            futureGameData = filteredFutureGames, #games$data,
-                            teamsData = teamsData,
-                            gameDataLong = gameDataLong)
+    req(filteredFutureGames(), filteredFutureGamesIDs())
+    
+    bettingGamesLinesServer(
+      id             = "gameLines",
+      futureGameIDs  = filteredFutureGamesIDs,
+      futureGameData = filteredFutureGames,
+      teamsData      = teamsData,
+      gameDataLong   = gameDataLong,
+      onGameClick    = function(gid) {
+        # store the selected game and switch to Predictions tab
+        selectedGameID(gid)
+        updateTabsetPanel(session,
+                          inputId = "bettingGamesTabset",
+                          selected = "Predictions")
+      }
+    )
   }) |> bindEvent(filteredFutureGames())
   
-  
+  ### Predictions detail ----
+  # Render the header for the selected game on the Predictions tab
+  bettingGameDetailServer(
+    id             = "gameDetail",
+    selectedGameID = selectedGameID,
+    gameDataLong   = gameDataLong,
+    teamsData      = teamsData
+  )
   
   
   
@@ -245,7 +314,7 @@ shinyServer(function(input, output, session) {
   
   output$show_inputs1 <- renderTable({
     AllInputs1()
-  }, width = "100%")
+  })
   
   # AllInputs2 <- reactive({
   #   x <- reactiveValuesToList(input)

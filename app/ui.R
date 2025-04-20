@@ -443,10 +443,10 @@ shinyUI(
                           fluidRow(
                             column(
                               width = 12,
-                              #withSpinner(
+                              withSpinner(
                                 bettingGamesLinesUI("gameLines"),
-                               # type = 8
-                              #),
+                                type = 8
+                              ),
                               align = "center"
                             )
                           )
@@ -458,24 +458,8 @@ shinyUI(
                           br(),
                           h3("Betting Predictions"),
                           br(),
-                          #### Inputs ----
-                          fluidRow(
-                            ##### Season ----
-                            column(
-                              width = 1,
-                              virtualSelectInput(
-                                inputId = "bettingGamesPredSeason",
-                                label = "Select season",
-                                choices = seq(2007, get_current_season()),
-                                selected = get_current_season()
-                              )
-                            ),
-                            ##### Week ----
-                            column(
-                              width = 1,
-                              uiOutput(outputId = "bettingGamesPredWeekUI")
-                            )
-                          ) # end fluidRow
+                          # Game detail header (populated when a game is clicked on the "Lines" tab)
+                          bettingGameDetailUI("gameDetail") # end fluidRow
                         ) # end Prediction tabPanel
                       ) # end tabsetPanel
                     ), #end bettingGamesTab
@@ -499,7 +483,7 @@ shinyUI(
                         ),
                         column(width = 9,
                                modDataPlotOutput("modPlot")
-                               )
+                        )
                       )
                     )
                   ) # end tab Items

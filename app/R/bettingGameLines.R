@@ -10,74 +10,59 @@ bettingGamesLinesServer <- function(id,
                                     futureGameIDs,
                                     futureGameData,
                                     teamsData,
-                                    gameDataLong) {
-  lapply(futureGameIDs, function(x) {
-    bettingGamesLinesTableServer(
-      #id = game_id,
-      x,
-      teamsData = teamsData,
-      gameDataLong = gameDataLong,
-      gameID = x
-    )
-  })
-  
+                                    gameDataLong,
+                                    onGameClick) {
   moduleServer(id, function(input, output, session) {
+    # Register each child module anytime futureGameIDs() changes
+    observe({
+      ids <- futureGameIDs()
+      req(ids)
+      cat("[DEBUG] registering child modules for IDs:", paste(ids, collapse = ", "), "\n")
+      # Initialize each child module with a string ID
+      lapply(ids, function(gid) {
+        module_id <- paste0("game", gid)
+        bettingGamesLinesTableServer(
+          id           = module_id,
+          teamsData    = teamsData,
+          gameDataLong = gameDataLong,
+          gameID       = gid,
+          onGameClick  = onGameClick
+        )
+      })
+    })
     
-    # observe({
-    #   #req(futureGameIDs)
-    #   lapply(futureGameIDs, function(game_id) {
-    #     bettingGamesLinesTableServer(
-    #       id = game_id,
-    #       teamsData = teamsData,
-    #       gameDataLong = gameDataLong,
-    #       gameID = game_id
-    #     )
-    #   })
-    # }) |> bindEvent(futureGameIDs)
-
-
+    # Render the parent UI container for each game card
     output$bettingGamesLinesUIout <- renderUI({
-      req(nrow(futureGameData) > 0)
-
-      splitGames <- split(futureGameData, futureGameData$gameday)
-
+      df <- futureGameData()
+      cat("[DEBUG] renderUI called in bettingGamesLinesServer. df rows =", nrow(df), "\n")
+      showNotification(paste0("Debug: rendering UI with ", nrow(df), " games"), type = "message", duration = 2)
+      req(df, nrow(df) > 0)
+      
+      splitGames <- split(df, df$gameday)
+      # Build the UI tags for each day and each game
       tagList(
-        h1(strong(glue::glue("Week {futureGameData$week[1]}"))),
+        h1(strong(glue::glue("Week {unique(df$week)}"))),
         hr(),
-        lapply(names(splitGames), function(gameday) {
-          gamesOnDay <- splitGames[[gameday]]
-          
+        lapply(names(splitGames), function(day) {
+          gamesOnDay <- splitGames[[day]]
           tagList(
-            h3(format(as.Date(gameday), "%A, %B %d")),
+            h3(format(as.Date(day), "%A, %B %d")),
             fluidRow(
-              # 3 columns per row
+              # For each game, register its column and return it
               lapply(gamesOnDay$game_id, function(gid) {
-                #cat("Parent renderUI: Adding UI for game_id", gid, "\n")
-                column(
+                module_id <- paste0("game", gid)
+                col <- column(
                   width = 4,
-                  # Use the child module's UI output.
-                  bettingGamesLinesTableOutput(gid)
+                  # Use the parent session namespace for the child UI
+                  bettingGamesLinesTableOutput(
+                    session$ns(module_id)
+                  )
                 )
+                cat("[DEBUG] bettingGamesLinesTableOutput rendered for", module_id, "\n")
+                col
               })
             )
           )
-
-          # tagList(
-          #   h3(format(as.Date(gameday), "%A, %B %d")),
-          #   layout_column_wrap(
-          #     #style = "display: flex; justify-content: center;",
-          #     align = "center",
-          #     width = 1/3, # 3 cards per row
-          #     fixed_width = FALSE,
-          #     fill = FALSE,
-          #     fillable = TRUE,
-          #     heights_equal = "all",
-          #     gap = "20px",
-          #     !!!lapply(gamesOnDay$game_id, function(game_id) {
-          #       bettingGamesLinesTableOutput(game_id)
-          #     })
-          #   )
-          # )
         })
       )
     })
