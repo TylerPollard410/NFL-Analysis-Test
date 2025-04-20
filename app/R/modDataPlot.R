@@ -3,28 +3,61 @@
 # UI module ----
 
 modDataPlotOutput <- function(id){
-  tagList(
-    #verbatimTextOutput(outputId = NS(id, "modDataPrint")),
-    withSpinner(
-      reactableOutput(NS(id, "modDataTable")), type = 8
-    ),
-    fluidRow(
-      sliderInput(
-        inputId = NS(id, "plotWidth"),
-        label = "Plot Width",
-        min = 600, max = 1200, value = 1000,
-        sep = "", step = 10
+  # tagList(
+  #   #verbatimTextOutput(outputId = NS(id, "modDataPrint")),
+  #   withSpinner(
+  #     reactableOutput(NS(id, "modDataTable")), type = 8
+  #   ),
+  #   fluidRow(
+  #     sliderInput(
+  #       inputId = NS(id, "plotWidth"),
+  #       label = "Plot Width",
+  #       min = 600, max = 1200, value = 1000,
+  #       sep = "", step = 10
+  #     ),
+  #     column(width = 1),
+  #     sliderInput(
+  #       inputId = NS(id, "plotHeight"),
+  #       label = "Plot Height",
+  #       min = 400, max = 1500, value = 600,
+  #       sep = "", step = 10
+  #     )
+  #   ),
+  #   fluidRow(
+  #     uiOutput(outputId = NS(id, "modDataPlotUI"))
+  #   )
+  # )
+  tabsetPanel(
+    tabPanel(
+      title = "Plot",
+      br(),
+      fluidRow(
+        sliderInput(
+          inputId = NS(id, "plotWidth"),
+          label = "Plot Width",
+          min = 600, max = 1200, value = 1000,
+          sep = "", step = 10
+        ),
+        column(width = 1),
+        sliderInput(
+          inputId = NS(id, "plotHeight"),
+          label = "Plot Height",
+          min = 400, max = 1500, value = 600,
+          sep = "", step = 10
+        )
       ),
-      column(width = 1),
-      sliderInput(
-        inputId = NS(id, "plotHeight"),
-        label = "Plot Height",
-        min = 400, max = 1500, value = 600,
-        sep = "", step = 10
+      fluidRow(
+        uiOutput(outputId = NS(id, "modDataPlotUI"), inline = TRUE)
       )
     ),
-    fluidRow(
-      uiOutput(outputId = NS(id, "modDataPlotUI"))
+    tabPanel(
+      title = "Table",
+      br(),
+      fluidRow(
+        withSpinner(
+          reactableOutput(NS(id, "modDataTable")), type = 8
+        )
+      )
     )
   )
 }
@@ -213,21 +246,23 @@ modDataPlotServer <- function(id,
     # })
     
     output$modDataPlot <- renderPlotly({
-      # Ensure xVar and yVar exist and are not empty
+      req(modPlotData())
+      
+      # # Ensure xVar and yVar exist and are not empty
       validate(
         need(xVar(), "Please select x variable to plot"),
         need(yVar(), "Please select y variable to plot")
       )
-      
+
       data <- modPlotData()
       
-      # 1. Check that xVar(), yVar(), colorVar(), facetVar() are in the dataset
-      validate(
-        need(xVar() %in% names(data), 
-             paste("Column", xVar(), "not found in data")),
-        need(yVar() %in% names(data), 
-             paste("Column", yVar(), "not found in data"))
-      )
+      # # 1. Check that xVar(), yVar(), colorVar(), facetVar() are in the dataset
+      # validate(
+      #   need(xVar() %in% names(data), 
+      #        paste("Column", xVar(), "not found in data")),
+      #   need(yVar() %in% names(data), 
+      #        paste("Column", yVar(), "not found in data"))
+      # )
       
       # Basic aes
       plt <- ggplot(data, aes(
@@ -293,6 +328,7 @@ modDataPlotServer <- function(id,
         height = plotHeight()
       )
     })
+    outputOptions(output, name = "modDataPlotUI", suspendWhenHidden = FALSE)
   })
 }
 

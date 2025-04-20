@@ -166,6 +166,7 @@ modDataPlotInputServer <- function(id,
         )
       )
     })
+    outputOptions(output, "xVarUI", suspendWhenHidden = FALSE)
     
     output$yVarUI <- renderUI({
       yVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()
@@ -187,6 +188,7 @@ modDataPlotInputServer <- function(id,
         )
       )
     })
+    outputOptions(output, "yVarUI", suspendWhenHidden = FALSE)
     
     output$colorVarUI <- renderUI({
       colorVarOptions <- modPlotData() |> select(c(-contains("id"))) |> colnames()

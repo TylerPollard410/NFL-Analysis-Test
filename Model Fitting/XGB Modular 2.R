@@ -26,6 +26,7 @@ library(doParallel)
 library(rBayesianOptimization)
 library(xgboost)
 library(caret)
+library(cmdstanr)
 library(brms)
 library(bayesplot)
 library(Metrics)  # for MAE, RMSE
@@ -125,11 +126,6 @@ data_long_clean_NA <- data_long_clean_NA |>
 candidate_numeric_clean <- candidate_numeric %>% 
   filter(if_all(everything(), ~ !is.na(.))) %>% 
   filter(if_all(everything(), ~ is.finite(.)))
-
-nflStatsWeek2 <- scoresDataAgg |> 
-  filter(!complete.cases(scoresDataAgg)) |>
-  filter(season >= 2007) |>
-  select(season, week, team, opponent, names(NAcols))
 
 # --- 5. Remove Redundant (Linearly Dependent) Predictors ---
 # Use caret::findLinearCombos to detect and remove any exact or near-exact linear combinations.
@@ -820,10 +816,7 @@ head(combined_features_df, 20)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 2. Pre-Processing ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-# Merge XGBoost predictions into wide data by game_id.
-# (Ensure that xgb_predictions exist; if not, you may need to load them or run the xgb pipeline first.)
-brms_data <- modData |>
+brms_data_pre <- modData |>
   left_join(
     xgb_preds_df |> 
       select(game_id, home_team, away_team, contains("xgb")),
@@ -833,6 +826,95 @@ brms_data <- modData |>
   relocate(xgb_away_score, .after = away_score) |>
   relocate(xgb_result, .after = result) |>
   relocate(xgb_total, .after = total)
+
+
+
+# --- 1. Remove Near-Zero Variance Predictors ---
+# Here, caret::nearZeroVar identifies variables with almost no variation.
+nzv_info2 <- nearZeroVar(brms_data_pre, saveMetrics = TRUE)
+nzv_cols2 <- rownames(nzv_info2)[nzv_info2$nzv]
+cat("Removing near-zero variance columns:\n", paste(nzv_cols2, collapse = ", "), "\n")
+data_clean <- brms_data_pre %>% select(-all_of(nzv_cols2))
+
+# --- 2. Exclude Non-Predictor Columns ---
+# We want to remove columns that are identifiers, outcomes, or betting/odds-related,
+# but we want to keep key contextual variables such as:
+#   • week – a time indicator (helps the model capture season progression)
+#   • locationID – which serves as a proxy for home-field advantage
+#   • div_game, temp, wind – as they might influence game performance.
+#
+# Define a vector of columns to exclude from the candidate set:
+drop_vars <- c("game_id", "season_type", "home_team", "away_team",
+               "home_score", "away_score", "result", "spread_line", "spreadCover",
+               "total", "total_line", "totalCover", "winner", "away_spread_odds", "away_spread_prob",
+               "home_spread_odds", "home_spread_prob", "over_odds", "over_prob",
+               "under_odds", "under_prob", "away_moneyline", "away_moneyline_prob",
+               "home_moneyline", "home_moneyline_prob", "overtime",
+               "stadium", "home_coach", "away_coach")
+
+# Define game-level variables (which we will exclude from XGBoost and later reintroduce in Bayesian modeling)
+game_level_vars <- c(
+  "season", "week", "weekday", "time_of_day", "location", "location2", "div_game", 
+  "home_rest", "away_rest",
+  "roof", "surface", "temp", "wind"
+)
+
+# --- 3. Select Candidate Numeric Predictors ---
+# Get all numeric columns first
+numeric_cols2 <- data_clean %>% select_if(is.numeric)
+
+# Now remove the excluded columns from numeric predictors.
+candidate_numeric2 <- numeric_cols2 %>% select(-any_of(drop_vars))
+
+cat("Candidate predictor columns before redundancy removal:\n",
+    paste(colnames(candidate_numeric2), collapse = ", "), "\n")
+candidate_numeric_cols2 <- colnames(candidate_numeric2)
+candidate_numeric_cols2
+
+# In this candidate set we expect key variables like:
+#   • week (if stored as numeric)
+#   • locationID (a proxy for home advantage)
+#   • div_game, temp, wind (if numeric)
+# These remain because they are not included in exclude_cols.
+
+# --- 4. Clean Candidate Predictors (Handle NA/Inf) ---
+# Before checking for linear combinations, we need a complete numeric dataset.
+candidate_numeric_NA2 <- which(!complete.cases(candidate_numeric2))
+data_clean_NA <- data_clean |> 
+  select(game_id, all_of(candidate_numeric_cols2)) |>
+  slice(candidate_numeric_NA2)
+
+NAcols2 <- apply(data_clean_NA, 2, function(x) sum(is.na(x)))
+NAcols2 <- NAcols2[NAcols2 != 0]
+data_clean_NA <- data_clean_NA |> 
+  select(game_id, names(NAcols2))
+
+candidate_numeric_clean2 <- candidate_numeric2 %>% 
+  filter(if_all(everything(), ~ !is.na(.))) %>% 
+  filter(if_all(everything(), ~ is.finite(.)))
+
+# --- 5. Remove Redundant (Linearly Dependent) Predictors ---
+# Use caret::findLinearCombos to detect and remove any exact or near-exact linear combinations.
+linCombos2 <- findLinearCombos(candidate_numeric_clean2)
+if (!is.null(linCombos2$remove) && length(linCombos2$remove) > 0) {
+  remove_lin2 <- colnames(candidate_numeric_clean2)[linCombos2$remove]
+  cat("Removing linearly dependent columns:\n", paste(remove_lin2, collapse = ", "), "\n")
+  candidate_numeric_clean2 <- candidate_numeric_clean2 %>% select(-all_of(remove_lin2))
+} else {
+  cat("No linear combinations detected.\n")
+}
+remove_lin2
+
+# --- 6. Define the Final Candidate Feature Set ---
+# This is the list of predictor names you intend to use in the model training.
+candidate_features2 <- colnames(candidate_numeric_clean2)
+cat("Final candidate predictor columns:\n", paste(candidate_features2, collapse = ", "), "\n")
+candidate_features2
+
+# Merge XGBoost predictions into wide data by game_id.
+# (Ensure that xgb_predictions exist; if not, you may need to load them or run the xgb pipeline first.)
+
+
 
 # Add Net Features
 brms_data <- brms_data |>
@@ -859,9 +941,22 @@ brms_folds <- list()
 for(i in seq(from = 4, to = length(brms_seasons))) {
   train_seasons <- brms_seasons[(i-3):(i-1)]
   test_season   <- brms_seasons[i]
+  
+  train <- brms_data |> filter(season %in% train_seasons)
+  test <- brms_data |> filter(season == test_season)
+  
+  preProc <- preProcess(
+    train |> select(all_of(candidate_numeric_cols2), net_elo),
+    method = c("center", "scale")
+  )
+  train_pre <- predict(preProc, train)
+  test_pre <- predict(preProc, test)
+  
   brms_folds[[as.character(test_season)]] <- list(
-    train = brms_data |> filter(season %in% train_seasons),
-    test  = brms_data |> filter(season == test_season)
+    train = train,
+    test  = test,
+    train_pre = train_pre,
+    test_pre = test_pre
   )
 }
 
@@ -904,6 +999,55 @@ brms_formula_result <-
   bf(
     result ~
       # xgb_result + 
+      xgb_away_score +
+      xgb_home_score +
+      net_elo +
+      week +
+      home_SRS_cum +
+      away_SRS_cum +
+      home_off_epa_mean_cum +
+      away_off_epa_mean_cum +
+      week:home_SRS_cum +
+      week:away_SRS_cum +
+      week:home_off_epa_mean_cum +
+      week:away_off_epa_mean_cum +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "student")
+
+brms_formula_total <- 
+  bf(
+    total ~ 
+      # xgb_total + 
+      xgb_away_score +
+      xgb_home_score +
+      week +
+      home_SRS_cum +
+      away_SRS_cum +
+      home_off_epa_mean_cum +
+      away_off_epa_mean_cum +
+      week:home_SRS_cum +
+      week:away_SRS_cum +
+      week:home_off_epa_mean_cum +
+      week:away_off_epa_mean_cum +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "student")
+
+brms_formula_home <- 
+  bf(
+    home_score ~
+      # xgb_result + 
       net_elo +
       # net_SRS +
       # net_off_epa +
@@ -914,9 +1058,9 @@ brms_formula_result <-
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
 
-brms_formula_total <- 
+brms_formula_away <- 
   bf(
-    total ~ 
+    away_score ~ 
       # xgb_total + 
       net_elo +
       # net_SRS +
@@ -971,7 +1115,8 @@ brms_model_summary_df <- brms_models |>
 brms_models_result <- lapply(brms_models, "[[", "result")
 brms_models_total <- lapply(brms_models, "[[", "total")
 
-brms_model_result_combined <- combine_models(brms_models_result)
+brms_model_result_combined <- combine_models(brms_models_result$`2023`,
+                                             brms_models_result$`2024`)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -979,7 +1124,7 @@ brms_model_result_combined <- combine_models(brms_models_result)
 # %%%%%%%%%%%%%%%
 
 performance_metrics <- imap(brms_folds, \(fold, season) {
-  test_brms <- fold$test
+  test_brms <- fold$test_pre
   
   # Result model
   pp_result <- posterior_predict(
@@ -1265,8 +1410,8 @@ run_betting_accuracy_for_targets <- function(performance_metrics,
 }
 
 ## Combine Output -----
-betting_summary_model_comp <- list()
-model_fit <- 1
+#betting_summary_model_comp <- list()
+model_fit <- 2
 betting_summary_model_comp[[model_fit]] <- list(
   overall = run_betting_accuracy_for_targets(
     performance_metrics = performance_metrics,
@@ -1328,6 +1473,7 @@ best_result_bet_model <- betting_summary_overall |>
     XGB_Exp_Pay = (XGB_Exp_Wins*0.91 - XGB_Exp_Loss)*100,
   ) |>
   arrange(desc(Thresh_Exp_Pay))
+
 best_result_bet_model
 
 best_total_bet_model <- betting_summary_overall |>
@@ -1362,7 +1508,7 @@ betting_summary_season <- betting_summary_model_comp |>
   map("season") |>
   imap_dfr(~ mutate(.x, Fit = paste0("Model", .y), .before = 1)) |>
   arrange(target, season, Fit)
-
+print(betting_summary_season, n = nrow(betting_summary_season))
 
 # betting_summary_week <- run_betting_accuracy_for_targets(
 #   performance_metrics = performance_metrics,
@@ -1377,7 +1523,7 @@ betting_summary_week <- betting_summary_model_comp |>
   map("week") |>
   imap_dfr(~ mutate(.x, Fit = paste0("Model", .y), .before = 1)) |>
   arrange(target, week, Fit)
-
+print(betting_summary_week, n = nrow(betting_summary_week))
 
 ## Return on Investment -----
 
@@ -1451,7 +1597,7 @@ roi_table <- compute_roi_table(
   posterior_matrix = agg_result$posterior, 
   new_data = brms_data,
   target = "result")
-print(roi_table)
+print(roi_table, n =nrow(roi_table))
 
 # Finally, plot ROI vs. threshold
 ggplot(roi_table, aes(x = threshold, y = roi)) +

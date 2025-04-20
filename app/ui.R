@@ -3,6 +3,7 @@
 ## 8 Aug 2023
 
 # Load Libraries ----
+## Shiny
 library(shiny)
 library(shinydashboard)
 library(bslib)
@@ -14,15 +15,15 @@ library(waiter)
 library(RColorBrewer)
 library(fresh)
 library(markdown)
-library(future)
+#library(future)
 
 ## Data Manipulation
-library(stringr)
+#library(stringr)
 library(rvest)
 
 ## Tables ----
-library(DBI)
-library(RPostgres)
+#library(DBI)
+#library(RPostgres)
 library(data.table)
 library(htmltools)
 library(gt)
@@ -41,23 +42,23 @@ library(scales)
 library(plotly)
 
 ## Modeling ----
-library(pracma)
-library(forecast)
-library(timetk)
-library(elo)
-library(MASS)
-library(bestNormalize)
-library(tictoc)
-library(caret)
-library(splines)
-library(mgcv)
-library(DescTools)
-library(car)
-library(bayesplot)
-library(BayesFactor)
-library(rstanarm)
+#library(pracma)
+#library(forecast)
+#library(timetk)
+#library(elo)
+#library(MASS)
+#library(bestNormalize)
+#library(tictoc)
+#library(caret)
+#library(splines)
+#library(mgcv)
+#library(DescTools)
+#library(car)
+#library(bayesplot)
+#library(BayesFactor)
+#library(rstanarm)
 library(tidybayes)
-library(loo)
+#library(loo)
 library(brms)
 library(performance)
 
@@ -186,9 +187,9 @@ shinyUI(
                 # Dashboard Controlbar ==================
                 controlbar = dashboardControlbar(
                   id = "controlbar",
-                  collapsed = FALSE,
+                  collapsed = TRUE,
                   width = 600,
-                  pinned = TRUE,
+                  pinned = FALSE,
                   fluidRow(
                     tableOutput('show_inputs1')
                   )
@@ -497,7 +498,8 @@ shinyUI(
                                                   teamsDataPickerInput)
                         ),
                         column(width = 9,
-                               modDataPlotOutput("modPlot"))
+                               modDataPlotOutput("modPlot")
+                               )
                       )
                     )
                   ) # end tab Items

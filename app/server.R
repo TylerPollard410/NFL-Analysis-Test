@@ -1,13 +1,5 @@
 # Read in Data ################################################################
 ## Amazon RDS connection ----
-plan("multisession")
-
-# con <- dbConnect(RPostgres::Postgres(),
-#                  dbname = "NFLdata",
-#                  user = "postgre",
-#                  password = "NFLpass1234",
-#                  host = "nfl-postgres-database.cl68ickmince.us-east-1.rds.amazonaws.com")
-
 allSeasons <- 2006:most_recent_season()
 
 ## Team Data ----
@@ -15,7 +7,6 @@ teamsData <- load_teams(current = FALSE)
 
 ## Game Data ----
 source(file = "./data-raw/gameData.R")
-
 source(file = "./data-raw/gameDataLong.R")
 
 ## Play-by-play Data ----
@@ -23,16 +14,18 @@ source(file = "./data-raw/gameDataLong.R")
 
 ## Player Data ----
 ### Offense ----
+#load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/playerOffenseData.rda"))
 #playerOffenseData <- tbl(con, "playerOffenseData")
-#load(file = "./data/playerOffenseData.rda")
-load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/playerOffenseData.rda"))
+load(file = "./data/playerOffenseData.rda")
 
 ## seasonStandings ----
-load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/seasonStandings.rda"))
+#load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/seasonStandings.rda"))
 #seasonStandings <- tbl(con, "seasonStandings")
+load(file = "./data/seasonStandings.rda")
 
 ## modData ----
-load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
+#load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
+load(file = "./data/modData.rda")
 
 modDataLong <- modData |>
   clean_homeaway(invert = c("result", "spread_line"))
