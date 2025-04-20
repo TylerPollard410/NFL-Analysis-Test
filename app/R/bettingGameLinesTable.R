@@ -2,7 +2,7 @@
 
 # UI ----
 bettingGamesLinesTableOutput <- function(id) {
-  uiOutput(NS(id, "bettingGamesLinesTableUI"), inline = TRUE, fill = TRUE)
+  uiOutput(NS(id, "bettingGamesLinesTableUI")) #, inline = TRUE, fill = TRUE)
 }
 
 # Server ----
@@ -79,7 +79,11 @@ bettingGamesLinesTableServer <- function(id,
         ) |>
         tab_style(
           locations = cells_body(columns = c(team_moneyline)),
-          style = cell_text(v_align = "top")
+          style = cell_text(v_align = "middle")
+        ) |>
+        tab_style(
+          style = cell_text(whitespace = "nowrap"),
+          locations = cells_body(columns = team_nick)
         ) |>
         tab_options(table.border.top.style = "hidden") |>
         cols_width(team_nick ~ "100px") |>
@@ -113,7 +117,7 @@ bettingGamesLinesTableServer <- function(id,
         ),
         width = 12,
         # ← here’s the key change:
-        gt_output( session$ns("bettingGamesLinesTable") )
+        gt_output(session$ns("bettingGamesLinesTable"))
       )
     })
   })
