@@ -164,12 +164,11 @@ shinyUI(
                     ### Data Tab ----
                     h4("Data", style = "color: white"),
                     menuItem(text = "Standings", tabName = "standingsTab", icon = icon("list-ol")),
-                    menuItem(text = "Scores", tabName = "scoresTab", icon = icon("football-ball")),
+                    #menuItem(text = "Scores", tabName = "scoresTab", icon = icon("football-ball")),
                     menuItem(text = "Team Statistics", icon = icon("users"), expandedName = "teamStatistics",
-                             menuSubItem(text = "Offense", tabName = "teamOffenseTab"),
-                             menuSubItem(text = "Defense", tabName = "teamDefenseTab"),
-                             menuSubItem(text = "Special Teams", tabName = "teamSpecialTeamsTab"),
-                             menuSubItem(text = "Scoring", tabName = "teamScoringTab")
+                             menuSubItem(text = "Rankings", tabName = "teamRankingsTab"),
+                             menuSubItem(text = "Scoring", tabName = "teamScoringTab"),
+                             menuSubItem(text = "Efficiency", tabName = "teamEfficiencyTab")
                     ), 
                     menuItem(text = "Player Statistics", icon = icon("user"), expandedName = "playerStatistics",
                              menuSubItem(text = "Offense", tabName = "playerOffenseTab"),
@@ -178,6 +177,7 @@ shinyUI(
                              menuSubItem(text = "Scoring", tabName = "playerScoringTab"),
                              menuSubItem(text = "Fantasy", tabName = "playerFantasyTab")
                     ), 
+                    ### Betting Tab ----
                     h4("Betting", style = "color: white"),
                     menuItem(text = "Games", tabName = "bettingGamesTab", icon = icon("dollar-sign")),
                     menuItem(text = "Player Props", tabName = "bettingPlayerPropsTab", icon = icon("user-clock")),
@@ -246,7 +246,7 @@ shinyUI(
                                virtualSelectInput(
                                  inputId = "standingsSeason",
                                  label = "Select season",
-                                 choices = seq(2006, get_current_season()),
+                                 choices = seq(2007, get_current_season()),
                                  selected = get_current_season()
                                )
                         ),
@@ -260,6 +260,7 @@ shinyUI(
                                )
                         ) # end column
                       ), # end fluidRow
+                      br(),
                       ##### Season Table ----
                       fluidRow(
                         column(
@@ -284,28 +285,54 @@ shinyUI(
                       ) # end playoff standings row
                       #) # end fluidPage
                     ), # end Standings tabItem
-                    ## Scores Tab #############################################
                     ## Team Tab ###############################################
-                    ### Team Offense ==========================================
-                    #### Overview ----
-                    #### Passing ----
-                    #### Rushing ----
-                    #### Conversions ----
-                    #### Drive Averages ----
-                    ### Team Defense ==========================================
-                    #### Overview ----
-                    #### Passing ----
-                    #### Rushing ----
-                    #### Conversions ----
-                    #### Drive Averages ----
-                    #### Against Position ----
-                    ### Team Special Teams ====================================
-                    #### Kick/Punt Returns ----
-                    #### Kicking ----
-                    #### Punting ----
+                    ### Team Rankings ==========================================
+                    tabItem(
+                      tabName = "teamRankingsTab",
+                      h2("Team Rankings"),
+                      #### Inputs ----
+                      fluidRow(
+                        column(width = 1,
+                               virtualSelectInput(
+                                 inputId = "teamRankingsSeason",
+                                 label = "Select season",
+                                 choices = seq(2007, get_current_season()),
+                                 selected = get_current_season()
+                               )
+                        ) #end column
+                      ), # end fluidRow
+                      br(),
+                      
+                      tabBox(
+                        id = "teamRankingsTabBox",
+                        type = "pills",
+                        width = 12,
+                        
+                        #### Overview ----
+                        tabPanel(
+                          title = "Overview",
+                          value = "teamRankingsOverview",
+                          teamRankingsOverviewUI("team_rank_overview")
+                        ),
+                        #### EPA ----
+                        tabPanel(
+                          title = "EPA",
+                          value = "teamRankingsEpa"
+                        ),
+                        #### ELO ----
+                        tabPanel(
+                          title = "Elo",
+                          value = "teamRankingsElo"
+                        ),
+                        #### SRS ----
+                        tabPanel(
+                          title = "SRS",
+                          value = "teamRankingsSrs"
+                        )
+                      ) # end Team Rankings Tab box
+                    ), #end Team Rankings Tab
                     ### Team Scoring ==========================================
-                    #### Scoring For ----
-                    #### Scoring Against ----
+                    ### Team Efficiency ====================================
                     ## Player Tab  ############################################
                     ### Player Offense ========================================
                     tabItem(
@@ -426,7 +453,7 @@ shinyUI(
                                    selectInput(
                                      inputId = "bettingSeason",
                                      label = "Season",
-                                     choices = 2006:get_current_season(),
+                                     choices = 2007:get_current_season(),
                                      selected = get_current_season()
                                    )
                             ),

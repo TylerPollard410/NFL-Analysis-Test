@@ -28,6 +28,7 @@ load(file = "./data/seasonStandings.rda")
 load(file = "./data/modData.rda")
 
 modDataLong <- modData |>
+  filter(season >= 2007) |>
   clean_homeaway(invert = c("result", "spread_line"))
 
 # Source files ============================================
@@ -106,28 +107,28 @@ shinyServer(function(input, output, session) {
                                standingsTableData,
                                conference = "NFC")
   
-  ## Scores Tab #############################################
   ## Team Tab ###############################################
-  ### Team Offense ==========================================
+  ### Rankings ==============================================
+  
+  #### Data -----
+  teamRankingsData <- reactive({
+    req(input$teamRankingsSeason)
+    data <- modDataLong |>
+      filter(seasson == input$teamRankingsSeason)
+  })
+  
   #### Overview ----
-  #### Passing ----
-  #### Rushing ----
-  #### Conversions ----
-  #### Drive Averages ----
-  ### Team Defense ==========================================
-  #### Overview ----
-  #### Passing ----
-  #### Rushing ----
-  #### Conversions ----
-  #### Drive Averages ----
-  #### Against Position ----
-  ### Team Special Teams ====================================
-  #### Kick/Punt Returns ----
-  #### Kicking ----
-  #### Punting ----
-  ### Team Scoring ==========================================
-  #### Scoring For ----
-  #### Scoring Against ----
+  teamRankingsOverviewServer("team_rank_overview",
+                            rankingsSeason = reactive(input$teamRankingsSeason),
+                            data = teamRankingsData,
+                            team_data = teamsData)
+  
+  #### EPA -----
+  
+  #### ELO -----
+  
+  #### SRS -----
+  
   ## Player Tab  ############################################
   ### Player Offense ========================================
   playerOffenseSeason <- reactive({
@@ -142,7 +143,7 @@ shinyServer(function(input, output, session) {
   playerOffenseStat <- reactive({
     input$playerOffenseStat
   })
-  #### Scrimmage ----
+  
   #### Passing ----
   playerOffensePassingTableServer("playerOffensePassingTable", 
                                   playerOffenseData,
@@ -151,80 +152,7 @@ shinyServer(function(input, output, session) {
                                   playerOffenseTeam,
                                   playerOffenseStat,
                                   teamsData)
-  #### Rushing ----
-  #### Receiving ----
-  #### Conversions ----
-  ### Player Defense ========================================
-  #### Overview ----
-  ### Player Special Teams ==================================
-  #### Kick/Punt Returns ----
-  #### Kicking ----
-  #### Punting ----
-  ### Player Scoring ========================================
-  #### Overview ----
-  ### Player Fantasy ========================================
-  #### Ranks ----
-  # Betting Tab  ############################################
-  ## Games ==================================================
-  ### Lines ----
-  #### Inputs ----
-  ##### Season ----
-  # # Betting Tab  ############################################
-  # ## Games ==================================================
-  # 
-  # ### Lines ----
-  # # Betting Season and Week reactive values
-  # bettingSeasonInput <- reactive({ input$bettingSeason })
-  # bettingWeekInput <- reactive({ input$bettingWeek })
-  # 
-  # # Update Week choices when Season changes
-  # observe({
-  #   #req(bettingSeasonInput())
-  #   
-  #   current_season <- get_current_season()
-  #   current_week <- get_current_week()
-  #   
-  #   if (bettingSeasonInput() == current_season) {
-  #     updateSelectInput(session, "bettingWeek",
-  #                       choices = 1:current_week,
-  #                       selected = current_week)
-  #   } else {
-  #     # Allow full season for past years
-  #     max_week <- max(gameData$week[gameData$season == bettingSeasonInput()], na.rm = TRUE)
-  #     updateSelectInput(session, "bettingWeek",
-  #                       choices = 1:max_week,
-  #                       selected = max_week)
-  #   }
-  # }) |> bindEvent(bettingSeasonInput())
-  # 
-  # # Filter game data based on selected season & week
-  # filteredFutureGames <- reactive({
-  #   req(input$bettingSeason, input$bettingWeek)
-  #   gameData |>
-  #     filter(season == bettingSeasonInput(), week == bettingWeekInput(), !is.na(spread_line))
-  #   #futureGameIDs <- futureGames$game_id
-  #   # list(
-  #   #   ids = futureGameIDs,
-  #   #   data = futureGames
-  #   # )
-  # })
-  # 
-  # filteredFutureGamesIDs <- reactive({
-  #   filteredFutureGames()$game_id
-  # })
-  # 
-  # # Launch betting lines module
-  # observe({
-  #   filteredFutureGamesIDs <- filteredFutureGamesIDs()
-  #   filteredFutureGames <- filteredFutureGames()
-  #   bettingGamesLinesServer("gameLines",
-  #                           futureGameIDs = filteredFutureGamesIDs, #games$ids,
-  #                           futureGameData = filteredFutureGames, #games$data,
-  #                           teamsData = teamsData,
-  #                           gameDataLong = gameDataLong)
-  # }) |> bindEvent(filteredFutureGames())
-  
-  
+
   # Betting Tab  ############################################
   ## Games ==================================================
   
@@ -337,8 +265,6 @@ shinyServer(function(input, output, session) {
                     teamsData,
                     modData,
                     modPlotInputs)
-  
-  # Prediction Tab  #########################################
   
 }) # end server
 

@@ -15,5 +15,6 @@ deployApp(appDir = "~/Desktop/NFLAnalysisTest/app",
           server = "shinyapps.io",
           account = "tylerpollard410", 
           appFiles  = depFiles,
-          forceUpdate = TRUE)
+          forceUpdate = TRUE
+          )
 
