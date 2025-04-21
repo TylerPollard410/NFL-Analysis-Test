@@ -102,6 +102,7 @@ cat("Generating EPA Data", "\n")
 
 ## Penalty Sturcture 2 ----
 ## STEP 1: Compute game-level offensive EPA metrics from pbpData ----
+### Offense Data ----
 epaOffData <- pbpData |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
@@ -143,15 +144,72 @@ epaOffData <- pbpData |>
   rename(team = posteam) |>
   ungroup()
 
+### Defense Data ----
+epaDefData <- pbpData |>
+  filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
+  group_by(game_id, season, week, defteam, home_team, away_team) |>
+  mutate(scaled_vegas_wp = 1 - 4*(0.5 - vegas_wp)^2) |>
+  summarise(
+    # Total EPA
+    def_plays        = sum(play == 1 | play_type == "field_goal", na.rm = TRUE),
+    def_epa_sum      = sum(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    def_epa_mean     = mean(epa[play == 1 | play_type == "field_goal"], na.rm = TRUE),
+    # Passing EPA
+    def_pass_plays   = sum(play == 1 & pass == 1 & penalty == 0, na.rm = TRUE),
+    def_pass_epa_sum = sum(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
+    def_pass_epa_mean= mean(epa[play == 1 & pass == 1 & penalty == 0], na.rm = TRUE),
+    # Rushing EPA
+    def_rush_plays   = sum(play == 1 & rush == 1 & penalty == 0, na.rm = TRUE),
+    def_rush_epa_sum = sum(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
+    def_rush_epa_mean= mean(epa[play == 1 & rush == 1 & penalty == 0], na.rm = TRUE),
+    # Pre Snap Penalty EPA
+    def_penalty_plays   = sum(play == 1 & penalty == 1, na.rm = TRUE),
+    def_penalty_epa_sum = sum(epa[play == 1 & penalty == 1], na.rm = TRUE),
+    def_penalty_epa_mean= mean(epa[play == 1 & penalty == 1], na.rm = TRUE),
+    # Kicker EPA
+    def_kick_plays   = sum(play_type %in% c("field_goal"), na.rm = TRUE),
+    def_kick_epa_sum = sum(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+    def_kick_epa_mean= mean(epa[play_type %in% c("field_goal")], na.rm = TRUE),
+    # Special Teams EPA
+    def_special_plays   = sum(special == 1 & play_type != "field_goal", na.rm = TRUE),
+    def_special_epa_sum = sum(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+    def_special_epa_mean= mean(epa[special == 1 & play_type != "field_goal"], na.rm = TRUE),
+    # Play distribution
+    def_pass_plays_perc = def_pass_plays/(def_pass_plays + def_rush_plays),
+    def_rush_plays_perc = def_rush_plays/(def_pass_plays + def_rush_plays)
+  ) |>
+  mutate(across(contains("def"), ~ifelse(is.nan(.x), 0, .x))) |>
+  ungroup() |>
+  # Create opponent variable by reversing the posteam order within each game
+  group_by(game_id) |>
+  mutate(opponent = rev(defteam), .after = defteam) |>
+  rename(team = defteam) |>
+  ungroup()
+
 ## STEP 2: Merge defensive EPA metrics ----
 # Here we assume that a team's defensive EPA can be represented by the opponent’s offensive metrics.
+# epaData <- epaOffData |>
+#   left_join(
+#     epaOffData |>
+#       select(game_id, opponent, contains("off")) |>
+#       rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
+#     by = join_by(game_id, team == opponent)
+#   )
+
+# epaData2 <- epaDefData |>
+#   left_join(
+#     epaDefData |>
+#       select(game_id, opponent, contains("def")) |>
+#       rename_with(~str_replace(.x, "def", "off"), .cols = contains("def")),
+#     by = join_by(game_id, team == opponent)
+#   )
+
 epaData <- epaOffData |>
   left_join(
-    epaOffData |>
-      select(game_id, opponent, contains("off")) |>
-      rename_with(~str_replace(.x, "off", "def"), .cols = contains("off")),
-    by = join_by(game_id, team == opponent)
+    epaDefData,
+    by = join_by(game_id, season, week, team, opponent, home_team, away_team)
   )
+
 #colnames(epaData)
 
 ## STEP 3: Merge EPA data with game-level ordering (from gameDataLong) ----
@@ -160,15 +218,16 @@ epaFeatures <- gameDataLong |>
   left_join(
     epaData |> 
       select(game_id, team, opponent, 
+             contains("plays"),
              contains("epa_mean"),
-             contains("plays")),
+             contains("epa_sum")),
     by = join_by(game_id, team, opponent)
   )
 
 
 ### Define EPA metric columns for aggregation
 epa_cols <- epaFeatures |>
-  select(contains("epa_mean"), contains("plays")) |>
+  select(contains("plays"), contains("epa_mean"), contains("epa_sum")) |>
   colnames()
 
 ## STEP 4: Season-Specific Aggregates (Cumulative Mean) ----
@@ -312,11 +371,18 @@ cat("Generating SRS Data", "\n")
 # (Assuming seasonWeekStandings already contains cumulative, week-by-week computed SRS values)
 srsData <- seasonWeekStandings |>
   select(season, week, team, 
+         games_played, win, loss, tie,
          PFG = team_PPG,   # Points For per game
          PAG = opp_PPG,    # Points Against per game
-         MOV, SOS, SRS, OSRS, DSRS)
+         MOV, SOS, SRS, OSRS, DSRS
+  ) |>
+  mutate(
+    win_pct = win/(win + loss),
+    .after = tie
+  ) |>
+  select(-c(games_played, win, loss, tie))
 
-srs_cols <- c("PFG", "PAG", "MOV", "SOS", "SRS", "OSRS", 'DSRS')
+srs_cols <- c("win_pct", "PFG", "PAG", "MOV", "SOS", "SRS", "OSRS", "DSRS")
 
 ## STEP 2: Merge SRS Features with Game-Level Data ----
 # Use gameDataLong to enforce consistent ordering (one row per game).
@@ -383,8 +449,12 @@ srsMulti <- srsFeatures |>
 srsFinal <- gameDataLong |>
   select(game_id, season, week, team, opponent) |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
-  left_join(srsSeason, by = join_by(game_id, season, week, team, opponent)) |>
-  left_join(srsMulti,  by = join_by(game_id, season, week, team, opponent))
+  left_join(srsSeason, 
+            by = join_by(game_id, season, week, team, opponent)
+  ) |>
+  left_join(srsMulti,  
+            by = join_by(game_id, season, week, team, opponent)
+  )
 
 # Select all feature columns (everything except the id columns).
 srs_feature_cols <- srsFinal |>
@@ -457,8 +527,9 @@ eloData <- eloDataHistory |>
 # Use gameDataLong to enforce consistent ordering (one row per game).
 eloFeatures <- eloData |>
   select(game_id, team, opponent,
-         team_elo = team_elo_pre,
-         opponent_elo = opponent_elo_pre)
+         elo = team_elo_pre
+         #opponent_elo = opponent_elo_pre
+  )
 
 ## STEP 3: Create Season-Specific (Cum) Features by Lagging ####
 # Since the raw values are already cumulative (and normalized per week),
@@ -592,6 +663,14 @@ scoresData$rushing_tds[scoresGameFilter2011_13_DET] <- 1
 scoresData$pat_att[scoresGameFilter2011_13_DET] <- 2
 scoresData$pat_made[scoresGameFilter2011_13_DET] <- 2
 
+#scoresData |> filter(season == 2011, week == 13, team == "DET") |> View()
+scoresGameFilter2011_13_NO <- 
+  scoresData$season == 2011 & scoresData$week == 13 & scoresData$team == "NO"
+scoresData$rushing_tds[scoresGameFilter2011_13_NO] <- 1
+scoresData$passing_tds[scoresGameFilter2011_13_NO] <- 3
+scoresData$pat_att[scoresGameFilter2011_13_NO] <- 4
+scoresData$pat_made[scoresGameFilter2011_13_NO] <- 4
+
 #scoresData |> filter(season == 2019, week == 15, team == "ARI") |> View()
 scoresGameFilter2019_15_ARI <- 
   scoresData$season == 2019 & scoresData$week == 15 & scoresData$team == "ARI"
@@ -608,6 +687,10 @@ scoresData$pat_made[scoresGameFilter2019_15_CLE] <- 3
 
 ## STEP 2: Aggregate scores ----
 scoresDataAgg <- scoresData |>
+  mutate(
+    across(-all_of(c("season", "week", "team")),
+           ~ifelse(is.na(.x), 0, .x))
+  ) |>
   mutate(
     td_off = passing_tds + rushing_tds,
     td_def = def_tds + fumble_recovery_tds,
@@ -689,7 +772,7 @@ scoresFeatures <- gameDataLong |>
     .by = c(game_id)
   ) |>
   mutate(across(c(everything(), -all_of(id_cols)),
-         ~ifelse(is.na(.x), 0, .x))
+                ~ifelse(is.na(.x), 0, .x))
   )
 #mutate(rowID = row_number())
 
@@ -912,7 +995,7 @@ cat("Generating Series Data", "\n")
 
 ## STEP 1: Calculate Weekly Series Stats ----
 nflSeriesWeek_loc <- paste0("~/Desktop/NFLAnalysisTest/scripts/UpdateData/PriorData/",
-                           "nflSeriesWeek.rda")
+                            "nflSeriesWeek.rda")
 
 if(file.exists(nflSeriesWeek_loc)){
   load(file = nflSeriesWeek_loc)
@@ -1185,8 +1268,14 @@ modDataLong <- gameDataLong |>
     #home_qb_name, away_qb_name,
     referee,
     stadium_id,
-    team_GP, team_W, team_L, team_T, team_PF, team_PFG, team_PA, team_PAG
+    team_PF, team_PFG, team_PA, team_PAG
   )) |>
+  rename(
+    games_played = team_GP,
+    wins = team_W,
+    losses = team_L,
+    ties = team_T
+  ) |>
   mutate(
     locationID = ifelse(location == "home", 1, 0)
   ) |>
@@ -1268,7 +1357,7 @@ modDataLong_features <- modDataLong |>
   colnames()
 
 modDataLong_team <- modDataLong |>
-  relocate(contains("elo"), .before = "FEATURE_COLS") |>
+  #relocate(contains("elo"), .before = "FEATURE_COLS") |>
   rename_with(
     .fn = ~paste0("team_", .x),
     .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
@@ -1279,6 +1368,8 @@ modDataLong_opponent <- modDataLong |>
     .fn = ~paste0("opponent_", .x),
     .cols = (which(names(modDataLong) == "FEATURE_COLS") + 1):ncol(modDataLong)
   )
+
+modDataLong <- modDataLong |> select(-FEATURE_COLS)
 
 ## Wide Data ----
 cat("Generating modData", "\n")
@@ -1297,16 +1388,22 @@ modData <- gameData |>
     stadium_id
   )) |>
   left_join(
-    modDataLong |> 
-      select(game_id, team, all_of(modDataLong_features), -contains("opponent")) |>
-      rename(elo = team_elo) |>
+    modDataLong |>
+      select(game_id, team,
+             games_played, wins, losses, ties,
+             all_of(modDataLong_features),
+             -contains("opponent")) |>
+      #rename(elo = team_elo) |>
       rename_with(~paste0("home_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, home_team == team)
   ) |>
   left_join(
-    modDataLong |> 
-      select(game_id, team, all_of(modDataLong_features), -contains("opponent")) |>
-      rename(elo = team_elo) |>
+    modDataLong |>
+      select(game_id, team,
+             games_played, wins, losses, ties,
+             all_of(modDataLong_features),
+             -contains("opponent")) |>
+      #rename(elo = team_elo) |>
       rename_with(~paste0("away_", .x), .cols = -c(game_id, team)),
     by = join_by(game_id, away_team == team)
   ) |>
@@ -1316,7 +1413,8 @@ modData <- gameData |>
   )
 
 ## Remove unwanted columns and Save ----
-modDataLong <- modDataLong |> select(-FEATURE_COLS)
+# modDataLong2 <- modData |>
+#   clean_homeaway(invert = c("result", "spread_line"))
 
 #save(modDataLong, file = "~/Desktop/NFLAnalysisTest/modDataLong.rda")
 #save(modData, file = "~/Desktop/NFL Analysis Data/modData.rda")

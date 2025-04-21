@@ -52,8 +52,7 @@ modDataLong <- modDataLong |>
   filter(season >= 2007)
 
 # Load the wide-format data (for result/total models)
-modData <- modData |>
-  filter(season >= 2007)
+source(file = "./app/data-raw/modData.R")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # XGBOOST MODEL ----

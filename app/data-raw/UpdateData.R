@@ -162,7 +162,7 @@ cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
 system.time(
   source("./app/data-raw/modData.R")
 )
-save(modDataLong, file = "./app/data/modDataLong.rda")
+#save(modDataLong, file = "./app/data/modDataLong.rda")
 save(modData, file = "./app/data/modData.rda")
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Finished modData and modDataLong", "\n",
