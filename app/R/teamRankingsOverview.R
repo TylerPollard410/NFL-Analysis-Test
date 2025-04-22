@@ -297,53 +297,53 @@ teamRankingsOverviewServer <- function(id,
 }
 # 
 # 
-overviewData <- modDataLong |>
-  filter(season == 2024) |>
-  # mutate(
-  #   across(c(team_wins, team_losses, team_ties),
-  #          ~lead(.x, n = 1, default = 0)
-  #   ),
-  #   .by = team, .keep = "all"
-  # ) |>
-  slice_tail(n = 1, by = team) |>
-  arrange(game_id) |>
-  select(
-    team,
-    # team_games_played,
-    # team_wins,
-    # team_losses,
-    # team_ties,
-    # team_win_pct_cum,
-    team_elo,
-    team_off_epa_mean_cum,
-    team_def_epa_mean_cum,
-    team_off_epa_sum_cum,
-    team_def_epa_sum_cum,
-    team_PFG_cum,
-    team_PAG_cum,
-    team_MOV_cum,
-    team_SOS_cum,
-    team_SRS_cum,
-    team_OSRS_cum,
-    team_DSRS_cum
-  ) |>
-  left_join(
-    seasonWeekStandings |> 
-      slice_tail(n = 1, by = team) |> 
-      select(team, games_played, win, loss, tie, win_loss_percent),
-    by = 
-  ) |>
-  left_join(
-    teamsData |> select(team_abbr, team_logo_espn),
-    by = join_by(team == team_abbr)
-  ) |>
-  select(team_logo_espn, everything()) |>
-  rename_with(~str_remove(.x, pattern = "team_"), .cols = -c(team_logo_espn, team)) |>
-  rename_with(~str_remove(.x, pattern = "_cum"), .cols = everything()) |>
-  mutate(
-    win_pct = wins/(wins + losses),
-    .after = ties
-  )
+# overviewData <- modDataLong |>
+#   filter(season == 2024) |>
+#   # mutate(
+#   #   across(c(team_wins, team_losses, team_ties),
+#   #          ~lead(.x, n = 1, default = 0)
+#   #   ),
+#   #   .by = team, .keep = "all"
+#   # ) |>
+#   slice_tail(n = 1, by = team) |>
+#   arrange(game_id) |>
+#   select(
+#     team,
+#     # team_games_played,
+#     # team_wins,
+#     # team_losses,
+#     # team_ties,
+#     # team_win_pct_cum,
+#     team_elo,
+#     team_off_epa_mean_cum,
+#     team_def_epa_mean_cum,
+#     team_off_epa_sum_cum,
+#     team_def_epa_sum_cum,
+#     team_PFG_cum,
+#     team_PAG_cum,
+#     team_MOV_cum,
+#     team_SOS_cum,
+#     team_SRS_cum,
+#     team_OSRS_cum,
+#     team_DSRS_cum
+#   ) |>
+#   left_join(
+#     seasonWeekStandings |> 
+#       slice_tail(n = 1, by = team) |> 
+#       select(team, games_played, win, loss, tie, win_loss_percent),
+#     by = 
+#   ) |>
+#   left_join(
+#     teamsData |> select(team_abbr, team_logo_espn),
+#     by = join_by(team == team_abbr)
+#   ) |>
+#   select(team_logo_espn, everything()) |>
+#   rename_with(~str_remove(.x, pattern = "team_"), .cols = -c(team_logo_espn, team)) |>
+#   rename_with(~str_remove(.x, pattern = "_cum"), .cols = everything()) |>
+#   mutate(
+#     win_pct = wins/(wins + losses),
+#     .after = ties
+#   )
 
 
 

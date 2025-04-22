@@ -73,8 +73,7 @@ shinyServer(function(input, output, session) {
   standingsTableData <- reactive({
     Season <- standingsSeason()
     seasonStandings |>
-      filter(season == Season) |>
-      collect()
+      filter(season == Season)
   })
   
   ### AFC Table ----
@@ -116,7 +115,7 @@ shinyServer(function(input, output, session) {
     data <- modDataLong |>
       filter(seasson == input$teamRankingsSeason)
   })
-  
+
   #### Overview ----
   teamRankingsOverviewServer("team_rank_overview",
                             rankingsSeason = reactive(input$teamRankingsSeason),

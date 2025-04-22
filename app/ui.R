@@ -272,6 +272,7 @@ shinyUI(
                           standingsTableOutput("standingsTableNFC")
                         ) # end NFC column
                       ), # end divsion standings row
+                      br(),
                       ##### Playoffs Table ----
                       fluidRow(
                         column(

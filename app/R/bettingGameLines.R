@@ -29,7 +29,7 @@ bettingGamesLinesServer <- function(id,
           onGameClick  = onGameClick
         )
       })
-    })
+    }) |> bindEvent(futureGameIDs(), ignoreInit = FALSE, ignoreNULL = TRUE)
     
     # Render the parent UI container for each game card
     output$bettingGamesLinesUIout <- renderUI({
