@@ -2,16 +2,12 @@
 
 # UI ----
 standingsTableOutput <- function(id){
-  tagList(
+  #tagList(
     withSpinner(
       uiOutput(NS(id, "standingsTableUI")),
       type = 8
-      )
-    # uiOutput(NS(id, "standingsTableTitle")),
-    # withSpinner(
-    #   reactableOutput(NS(id, "standingsTable")), type = 8
-    # )
-  )
+    )
+  #)
 }
 
 
@@ -24,61 +20,14 @@ standingsTableServer <- function(id,
                                  conference){
   moduleServer(id, function(input, output, session){
     
-    # output$standingsTableUI <- renderUI({
-    #   conf_logo <- teamsData |>
-    #     filter(team_conf == conference) |>
-    #     pull(team_conference_logo) |>
-    #     unique()
-    # 
-    #   box(
-    #     title = div(style = "display: flex; align-items: center;",
-    #                 img(src = conf_logo, style = "height: 25px;"),
-    #                 strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
-    #                 strong("Standings", style = "margin-left: 4px; font-size: 25px")
-    #     ),
-    #     width = 12,
-    #     status = "primary",
-    #     maximizable = TRUE,
-    #     #withSpinner(
-    #     uiOutput(NS(id, "tablePlaceholder"))#, type = 8
-    #     #)
-    #   )
-    # })
-    # 
-    # output$tablePlaceholder <- renderUI({
-    #   withSpinner(
-    #     reactableOutput(NS(id, "standingsTable")), type = 8
-    #   )
-    # })
-    
-    # output$standingsTableTitle <- renderUI({
-    #   conf_logo <- teamsData |>
-    #     filter(team_conf == conference) |>
-    #     pull(team_conference_logo) |>
-    #     unique()
-    #   
-    #   title <- div(style = "display: flex; align-items: center;",
-    #                img(src = conf_logo, style = "height: 25px;"),
-    #                strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px"),
-    #                strong("Standings", style = "margin-left: 4px; font-size: 25px")
-    #   )
-    #   title
-    # })
-    
-    output$standingsTable <- renderReactable({
-      conf_logo <- teamsData |>
-        filter(team_conf == conference) |>
-        pull(team_conference_logo) |>
-        unique()
-      Stat <- standingsStat()
-      Season <- standingsSeason()
-      
-      standingsTableDataReact <- standingsTableData() |>
+    standingsTableDataReact <- reactive({
+      standingsTableData() |>
         filter(team_conf == conference) |>
         select(
           "team_division",
           "team_logo_espn",
-          "team_name",
+          #"team_name",
+          "team",
           "div_rank",
           "GP",
           "W",
@@ -100,16 +49,54 @@ standingsTableServer <- function(id,
         arrange(team_division, div_rank) |>
         ungroup() |>
         select(-div_rank)
+    })
+    
+    output$standingsTable <- renderReactable({
+      conf_logo <- teamsData |>
+        filter(team_conf == conference) |>
+        pull(team_conference_logo) |>
+        unique()
+      Stat <- standingsStat()
+      Season <- standingsSeason()
+      
+      # standingsTableDataReact <- standingsTableData() |>
+      #   filter(team_conf == conference) |>
+      #   select(
+      #     "team_division",
+      #     "team_logo_espn",
+      #     #"team_name",
+      #     "team",
+      #     "div_rank",
+      #     "GP",
+      #     "W",
+      #     "L",
+      #     "T",
+      #     "W-L%",
+      #     "PF",
+      #     "team_PPG",
+      #     "PA",
+      #     "opp_PPG",
+      #     "PD",
+      #     "MOV",
+      #     "SOS",
+      #     "SRS",
+      #     "OSRS",
+      #     "DSRS"
+      #   ) |>
+      #   group_by(team_division) |>
+      #   arrange(team_division, div_rank) |>
+      #   ungroup() |>
+      #   select(-div_rank)
       
       ## Reactable ----
       ### Total ----
       if(Stat == "Total"){
         standingsTableReact <- reactable(
-          data = standingsTableDataReact |> select(-c(team_PPG, opp_PPG)),
-          theme = espn(
+          data = standingsTableDataReact() |> select(-c(team_PPG, opp_PPG)),
+          theme = fivethirtyeight(
             centered = TRUE, 
-            header_font_size = 14,
-            font_size = 14
+            header_font_size = "0.9em",
+            font_size = "1.0em"
           ),
           highlight = TRUE,
           compact = TRUE,
@@ -125,35 +112,55 @@ standingsTableServer <- function(id,
                                        border_color = "black",
                                        border_width = "1.5px",
                                        border_style = "solid"),
-          defaultColDef = colDef(vAlign = "center",
-                                 minWidth = 50
-                                 #headerStyle = list(fontSize = "14px")
+          defaultColGroup = colGroup(
+            headerStyle = list(
+              border = "none"
+            )
+          ),
+          columnGroups = list(
+            colGroup(name = "",
+                     columns = c("team_division"),
+                     headerClass = "no-division-underline"),
+            colGroup(name = "Record",
+                     columns = c("GP", "W", "L", "T", "W-L%")),
+            colGroup(name = "Points",
+                     columns = c("PF", "PA", "PD")),
+            colGroup(name = "Performance",
+                     columns = c("MOV", "SOS", "SRS", "OSRS", "DSRS"))
+          ),
+          defaultColDef = colDef(
+            vAlign = "center",
+            minWidth = 50,
+            headerStyle = list(
+              borderTop = "none",
+              paddingTop = "3px"
+            )
           ),
           columns = list(
             ### Team Division ----
             team_division = colDef(
               name = "",
               minWidth = 80,
-              style = group_merge_sort("team_division"),
+              style = group_merge_sort("team_division")
               #style = cell_style(font_color = "red")
             ),
             ### Team Logo ----
             team_logo_espn = colDef(
               name = "",
-              minWidth = 30,
+              maxWidth = 35,
               sticky = "left",
-              cell = embed_img(height = "25px")
+              cell = embed_img(width = "30px", height = "30px")
             ),
             ### Team Name ----
-            team_name = colDef(
+            team = colDef(
               name = "Team",
-              minWidth = 175,
+              maxWidth = 60,
               style = list(borderRight = "1px solid black")
             ),
             ### Games Played ----
             GP = colDef(
               name = "GP",
-              minWidth = 30,
+              minWidth = 40,
               align = "center",
               style = list(borderRight = "1px solid #d3d3d3")
             ),
@@ -180,7 +187,7 @@ standingsTableServer <- function(id,
               name = "W-L%",
               format = colFormat(percent = TRUE, digits = 1),
               align = "center",
-              minWidth = 50,
+              minWidth = 60,
               style = list(borderRight = "1px solid #d3d3d3")
             ),
             ### PF ----
@@ -219,13 +226,13 @@ standingsTableServer <- function(id,
           )
         )
       }else{
-        ## Game ----
+        ### Game ----
         standingsTableReact <- reactable(
-          data = standingsTableDataReact |> select(-c(PF, PA)),
-          theme = espn(
+          data = standingsTableDataReact() |> select(-c(PF, PA)),
+          theme = fivethirtyeight(
             centered = TRUE, 
-            header_font_size = 14,
-            font_size = 14
+            header_font_size = "0.9em",
+            font_size = "1.0em"
           ),
           highlight = TRUE,
           compact = TRUE,
@@ -237,17 +244,19 @@ standingsTableServer <- function(id,
           showSortable = FALSE,
           fullWidth = TRUE,
           defaultSorted = "team_division",
-          rowStyle = group_border_sort(columns = "team_division", 
-                                       border_color = "black", 
+          rowStyle = group_border_sort(columns = "team_division",
+                                       border_color = "black",
                                        border_width = "1.5px",
                                        border_style = "solid"),
           defaultColGroup = colGroup(
-            align = "center",
             headerStyle = list(
               border = "none"
             )
           ),
           columnGroups = list(
+            colGroup(name = "",
+                     columns = c("team_division"),
+                     headerClass = "no-division-underline"),
             colGroup(name = "Record",
                      columns = c("GP", "W", "L", "T", "W-L%")),
             colGroup(name = "Points",
@@ -255,35 +264,39 @@ standingsTableServer <- function(id,
             colGroup(name = "Performance",
                      columns = c("MOV", "SOS", "SRS", "OSRS", "DSRS"))
           ),
-          defaultColDef = colDef(vAlign = "center",
-                                 minWidth = 50
-                                 #headerStyle = list(fontSize = "14px")
+          defaultColDef = colDef(
+            vAlign = "center",
+            minWidth = 50,
+            headerStyle = list(
+              borderTop = "none",
+              paddingTop = "3px"
+            )
           ),
           columns = list(
             ### Team Division ----
             team_division = colDef(
               name = "",
-              minWidth = 80, 
-              style = group_merge_sort("team_division"), 
+              minWidth = 80,
+              style = group_merge_sort("team_division")
               #style = cell_style(font_color = "red")
             ),
             ### Team Logo ----
             team_logo_espn = colDef(
               name = "",
-              minWidth = 30,
+              maxWidth = 35,
               sticky = "left",
-              cell = embed_img(height = "25px")
+              cell = embed_img(width = "30px", height = "30px")
             ),
             ### Team Name ----
-            team_name = colDef(
+            team = colDef(
               name = "Team",
-              minWidth = 175,
+              maxWidth = 60,
               style = list(borderRight = "1px solid black")
             ),
             ### Games Played ----
             GP = colDef(
               name = "GP",
-              minWidth = 30,
+              minWidth = 40,
               align = "center",
               style = list(borderRight = "1px solid #d3d3d3")
             ),
@@ -310,7 +323,7 @@ standingsTableServer <- function(id,
               name = "W-L%",
               format = colFormat(percent = TRUE, digits = 1),
               align = "center",
-              minWidth = 50,
+              minWidth = 60,
               style = list(borderRight = "1px solid #d3d3d3")
             ),
             ### PF ----
@@ -357,6 +370,16 @@ standingsTableServer <- function(id,
         )
       }
       
+      # standingsTableReact2 <- htmlwidgets::prependContent(
+      #   standingsTableReact,
+      #   htmltools::tags$style(HTML("
+      #   /* kill the :after only on our blank division header */
+      #   .no-division-underline.rt-th-group:after {
+      #     display: none !important;
+      #   }"))
+      # )
+      # standingsTableReact2
+      
       return(standingsTableReact)
     })
     
@@ -367,16 +390,26 @@ standingsTableServer <- function(id,
         pull(team_conference_logo) |> 
         unique()
       
-      box(
-        title = div(
-          style = "display: flex; align-items: center;",
-          img(src = conf_logo, style = "height: 25px;"),
-          strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px;"),
-          strong("Standings", style = "margin-left: 4px; font-size: 25px;")
-        ),
-        width = 12,
-        status = "primary",
-        reactableOutput(NS(id, "standingsTable"))
+      tagList(
+        tags$style(HTML("
+        /* kill the :after only on our blank division header */
+        .no-division-underline.rt-th-group:after {
+          display: none !important;
+        }")),
+        box(
+          title = div(
+            style = "display: flex; align-items: center;",
+            img(src = conf_logo, style = "height: 25px;"),
+            strong(standingsSeason(), style = "margin-left: 6px; font-size: 25px;"),
+            strong("Standings", style = "margin-left: 4px; font-size: 25px;")
+          ),
+          width = 12,
+          status = "primary",
+          withSpinner(
+            reactableOutput(NS(id, "standingsTable")),
+            type = 8
+          )
+        ) 
       )
     })
   }) # end module Server

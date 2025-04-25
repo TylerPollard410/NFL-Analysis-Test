@@ -113,7 +113,7 @@ shinyServer(function(input, output, session) {
   teamRankingsData <- reactive({
     req(input$teamRankingsSeason)
     data <- modDataLong |>
-      filter(seasson == input$teamRankingsSeason)
+      filter(season == input$teamRankingsSeason)
   })
 
   #### Overview ----
