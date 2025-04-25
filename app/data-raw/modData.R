@@ -377,7 +377,7 @@ srsData <- seasonWeekStandings |>
          MOV, SOS, SRS, OSRS, DSRS
   ) |>
   mutate(
-    win_pct = win/(win + loss),
+    win_pct = (win + 0.5*tie)/(games_played),
     .after = tie
   ) |>
   select(-c(games_played, win, loss, tie))
@@ -396,53 +396,55 @@ srsFeatures <- gameDataLong |>
 srsSeason <- srsFeatures |>
   #group_by(season, team) |>
   #arrange(week) |>
+  # mutate(
+  #   across(all_of(srs_cols), #contains(epa_cols),
+  #          ~cummean(.x),
+  #          .names = "{.col}_cum"),
+  #   .by = c(season, team),
+  #   .keep = "unused"
+  # ) |>
   mutate(
-    across(all_of(srs_cols), #contains(epa_cols),
-           ~cummean(.x),
+    across(all_of(srs_cols), 
+           ~lag(.x, n = 1, default = NA),
            .names = "{.col}_cum"),
-    .by = c(season, team),
+    .by = c(team),
     .keep = "unused"
-  ) |>
-  mutate(
-    across(contains("_cum"), 
-           ~lag(.x, n = 1, default = NA)),
-    .by = c(team)
   ) 
 # The lagged values here serve as your “cum” feature since the raw values are cumulative.
 
 ## STEP 4: Compute Multi-Season Rolling Averages ####
 # These features are computed across seasons (grouped by team)
 # They will help smooth out the volatility (especially early in the season)
-srsMulti <- srsFeatures |>
-  #group_by(team) |>
-  #arrange(season, week) |>
-  mutate(
-    across(all_of(srs_cols),
-           ~slidify_vec(
-             .x = .x,
-             .period  = 5,
-             .f       = mean,
-             .partial = TRUE,
-             .align   = "right"
-           ),
-           .names = "{.col}_roll"),
-    .by = c(team),
-    .keep = "all"
-  ) |> #arrange(season, team, week)
-  mutate(
-    across(all_of(srs_cols),
-           ~movavg(.x, n = 5, type = "e"),
-           .names = "{.col}_ewma"),
-    .by = c(team),
-    .keep = "all"
-  ) |> 
-  select(-all_of(srs_cols)) |>
-  mutate(
-    across(c(contains("_roll"), contains("_ewma")),
-           ~lag(.x, n = 1, default = NA)),
-    .by = c(team),
-    .keep = "unused"
-  ) #|> arrange(season, team, week)
+# srsMulti <- srsFeatures |>
+#   #group_by(team) |>
+#   #arrange(season, week) |>
+#   mutate(
+#     across(all_of(srs_cols),
+#            ~slidify_vec(
+#              .x = .x,
+#              .period  = 5,
+#              .f       = mean,
+#              .partial = TRUE,
+#              .align   = "right"
+#            ),
+#            .names = "{.col}_roll"),
+#     .by = c(team),
+#     .keep = "all"
+#   ) |> #arrange(season, team, week)
+#   mutate(
+#     across(all_of(srs_cols),
+#            ~movavg(.x, n = 5, type = "e"),
+#            .names = "{.col}_ewma"),
+#     .by = c(team),
+#     .keep = "all"
+#   ) |> 
+#   select(-all_of(srs_cols)) |>
+#   mutate(
+#     across(c(contains("_roll"), contains("_ewma")),
+#            ~lag(.x, n = 1, default = NA)),
+#     .by = c(team),
+#     .keep = "unused"
+#   ) #|> arrange(season, team, week)
 
 ## STEP 5: Combine All SRS Features ----
 # Join the lagged ("cum") features, the rolling averages, and the EWMA features together.
@@ -451,10 +453,10 @@ srsFinal <- gameDataLong |>
   #left_join(epaFeatures, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(srsSeason, 
             by = join_by(game_id, season, week, team, opponent)
-  ) |>
-  left_join(srsMulti,  
-            by = join_by(game_id, season, week, team, opponent)
-  )
+  ) #|>
+  # left_join(srsMulti,  
+  #           by = join_by(game_id, season, week, team, opponent)
+  # )
 
 # Select all feature columns (everything except the id columns).
 srs_feature_cols <- srsFinal |>

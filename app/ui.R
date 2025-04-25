@@ -198,6 +198,12 @@ shinyUI(
                 body = dashboardBody(
                   
                   useShinyjs(),
+                  ## Custon CSS ----
+                  tags$head(
+                    tags$style(HTML("
+                      #teamRankingsTabBox_box .card-body { padding: 0px; }
+                    "))
+                  ),
                   tabItems(
                     # Home Tab  ###############################################
                     tabItem(
@@ -242,7 +248,8 @@ shinyUI(
                       fluidRow(
                         ##### Inputs ----
                         ###### Season ----
-                        column(width = 1,
+                        #column(width = 1,
+                        div(style = "margin-right: 1rem",
                                virtualSelectInput(
                                  inputId = "standingsSeason",
                                  label = "Select season",
@@ -251,7 +258,8 @@ shinyUI(
                                )
                         ),
                         ###### Table Stat ----
-                        column(width = 2,
+                        #column(width = 2,
+                        div(style = "margin-right: 1rem",
                                radioGroupButtons(
                                  inputId = "standingsStat",
                                  label = "Table Statistic",
@@ -263,12 +271,15 @@ shinyUI(
                       br(),
                       ##### Season Table ----
                       fluidRow(
+                        style = "margin: 0px",
                         column(
                           width = 6,
+                          style = "padding: 0px",
                           standingsTableOutput("standingsTableAFC")
                         ), # end AFC column
                         column(
                           width = 6,
+                          style = "padding: 0px",
                           standingsTableOutput("standingsTableNFC")
                         ) # end NFC column
                       ), # end divsion standings row
@@ -293,22 +304,27 @@ shinyUI(
                       h2("Team Rankings"),
                       #### Inputs ----
                       fluidRow(
-                        column(width = 1,
+                        #column(width = 1,
                                virtualSelectInput(
                                  inputId = "teamRankingsSeason",
+                                 #width = "100%",
                                  label = "Select season",
                                  choices = seq(2007, get_current_season()),
                                  selected = get_current_season()
                                )
-                        ) #end column
+                        #) #end column
                       ), # end fluidRow
                       br(),
-                      
+                      # tags$style(
+                      #   ".card-body {padding: 0px;}"
+                      # ),
                       tabBox(
                         id = "teamRankingsTabBox",
                         type = "pills",
                         width = 12,
-                        
+                        # tags$style(
+                        #   "padding: 0px;"
+                        # ),
                         #### Overview ----
                         tabPanel(
                           title = "Overview",

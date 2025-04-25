@@ -48,8 +48,10 @@ load(file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
 load(file = "~/Desktop/NFL Analysis Data/modData.rda")
 
 # Load the long-format data (scores model)
-modDataLong <- modDataLong |>
+modData <- modData |>
   filter(season >= 2007)
+modDataLong <- modData |>
+  clean_homeaway(invert = c("result", "spread_line"))
 
 # Load the wide-format data (for result/total models)
 source(file = "./app/data-raw/modData.R")
