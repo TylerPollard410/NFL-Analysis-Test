@@ -14,6 +14,7 @@ teamRankingsOverviewUI <- function(id){
 # Server ----
 teamRankingsOverviewServer <- function(id,
                                       rankingsSeason,
+                                      season_week_data,
                                       data,
                                       team_data){
   moduleServer(id, function(input, output, session){
@@ -52,13 +53,13 @@ teamRankingsOverviewServer <- function(id,
         .after = team_def_epa_sum_cum
       ) |>
       left_join(
-        seasonWeekStandings |>
+        season_week_data |>
           slice_tail(n = 1, by = team) |>
           select(team, games_played, win, loss, tie, win_loss_percent),
         by = join_by(team)
       ) |>
       left_join(
-        teamsData |> select(team_abbr, team_logo_espn),
+        team_data |> select(team_abbr, team_logo_espn),
         by = join_by(team == team_abbr)
       ) |>
       select(team_logo_espn, team, 

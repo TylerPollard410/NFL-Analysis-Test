@@ -22,6 +22,7 @@ load(file = "./data/playerOffenseData.rda")
 #load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/seasonStandings.rda"))
 #seasonStandings <- tbl(con, "seasonStandings")
 load(file = "./data/seasonStandings.rda")
+load(file = "./data/seasonWeekStandings.rda")
 
 ## modData ----
 #load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
@@ -120,6 +121,7 @@ shinyServer(function(input, output, session) {
   teamRankingsOverviewServer("team_rank_overview",
                             rankingsSeason = reactive(input$teamRankingsSeason),
                             data = teamRankingsData,
+                            season_week_data = seasonWeekStandings,
                             team_data = teamsData)
   
   #### EPA -----
