@@ -318,13 +318,14 @@ shinyUI(
                       # tags$style(
                       #   ".card-body {padding: 0px;}"
                       # ),
+                      fluidRow(
+                        # tags$style(
+                        #   ".col-sm-12 {padding: 0px;}"
+                        # ),
                       tabBox(
                         id = "teamRankingsTabBox",
                         type = "pills",
                         width = 12,
-                        # tags$style(
-                        #   "padding: 0px;"
-                        # ),
                         #### Overview ----
                         tabPanel(
                           title = "Overview",
@@ -347,6 +348,7 @@ shinyUI(
                           value = "teamRankingsSrs"
                         )
                       ) # end Team Rankings Tab box
+                      )
                     ), #end Team Rankings Tab
                     ### Team Scoring ==========================================
                     ### Team Efficiency ====================================

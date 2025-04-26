@@ -26,9 +26,8 @@ set.seed(52)
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modDataLong.rda"))
 
-
-load(file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
 load(file = "~/Desktop/NFL Analysis Data/modData.rda")
+load(file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
 
 # Load the long-format data (scores model)
 modData <- modData |>
