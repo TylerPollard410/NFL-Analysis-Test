@@ -3,10 +3,10 @@
 # UI ----
 standingsTableOutput <- function(id){
   #tagList(
-    withSpinner(
-      uiOutput(NS(id, "standingsTableUI")),
-      type = 8
-    )
+  withSpinner(
+    uiOutput(NS(id, "standingsTableUI")),
+    type = 8
+  )
   #)
 }
 
@@ -107,7 +107,7 @@ standingsTableServer <- function(id,
           sortable = FALSE,
           showSortable = FALSE,
           fullWidth = TRUE,
-          defaultSorted = "team_division",
+          #defaultSorted = "team_division",
           rowStyle = group_border_sort(columns = "team_division",
                                        border_color = "black",
                                        border_width = "1.5px",
@@ -140,7 +140,7 @@ standingsTableServer <- function(id,
             ### Team Division ----
             team_division = colDef(
               name = "",
-              minWidth = 80,
+              minWidth = 90,
               style = group_merge_sort("team_division")
               #style = cell_style(font_color = "red")
             ),
@@ -276,7 +276,7 @@ standingsTableServer <- function(id,
             ### Team Division ----
             team_division = colDef(
               name = "",
-              minWidth = 80,
+              minWidth = 90,
               style = group_merge_sort("team_division")
               #style = cell_style(font_color = "red")
             ),
@@ -393,9 +393,9 @@ standingsTableServer <- function(id,
       tagList(
         tags$style(HTML("
         /* kill the :after only on our blank division header */
-        .no-division-underline.rt-th-group:after {
-          display: none !important;
-        }")),
+        .no-division-underline.rt-th-group:after {display: none !important;}
+        .card-body { padding: 0px }
+        ")),
         box(
           title = div(
             style = "display: flex; align-items: center;",

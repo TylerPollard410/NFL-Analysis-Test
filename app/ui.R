@@ -271,7 +271,7 @@ shinyUI(
                       br(),
                       ##### Season Table ----
                       fluidRow(
-                        style = "margin: 0px",
+                        style = "margin-left: -7.5px; margin-right: -7.5px",
                         column(
                           width = 6,
                           style = "padding: 0px",
