@@ -26,18 +26,12 @@ set.seed(52)
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modDataLong.rda"))
 
-load(file = "~/Desktop/NFL Analysis Data/modData.rda")
-load(file = "~/Desktop/NFL Analysis Data/modDataLong.rda")
 
 # Load the long-format data (scores model)
 modData <- modData |>
   filter(season >= 2007)
 modDataLong <- modData |>
   clean_homeaway(invert = c("result", "spread_line"))
-
-# Load the wide-format data (for result/total models)
-source(file = "./app/data-raw/modData.R")
-
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -256,7 +250,7 @@ for(i in seq(from = 4, to = length(brms_seasons))) {
   test <- brms_data |> filter(season == test_season)
   
   preProc <- preProcess(
-    train |> select(all_of(net_features), all_of(candidate_numeric_cols2)),
+    train |> select(all_of(colnames(feats_clean))),
     method = c("center", "scale")
   )
   train_pre <- predict(preProc, train)
@@ -288,7 +282,7 @@ fit_brms_model <- function(train_data,
     cores = parallel::detectCores(),
     normalize = TRUE,
     drop_unused_levels = FALSE,
-    control = list(adapt_delta = 0.95),
+    control = list(adapt_delta = 0.95, max_treedepth = 10),
     backend = "cmdstanr",
     seed = 52,
     ...
@@ -299,9 +293,6 @@ fit_brms_model <- function(train_data,
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 5. Fit brms Models across CV Folds ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-brms_models <- list()
-brms_summaries <- list()
 
 # Define model formulas for the outcomes.
 # Build formula.
@@ -369,16 +360,63 @@ brms_formula_away <-
       (1|away_team)
   ) + brmsfamily(family = "gaussian")
 
+brms_formula_scores <- 
+  bf(
+    mvbind(home_score, away_score) ~
+      home_elo + away_elo +
+      home_SRS_cum + away_SRS_cum +
+      home_off_epa_sum_cum + home_def_epa_sum_cum +
+      away_off_epa_sum_cum + away_def_epa_sum_cum +
+      home_off_epa_sum_roll + home_def_epa_sum_roll +
+      away_off_epa_sum_roll + away_def_epa_sum_roll +
+      home_turnover_won_cum + home_turnover_lost_cum +
+      away_turnover_won_cum + away_turnover_lost_cum +
+      home_off_red_zone_app_perc_cum + home_def_red_zone_app_perc_cum +
+      home_off_red_zone_eff_cum + home_def_red_zone_eff_cum +
+      away_off_red_zone_app_perc_cum + away_def_red_zone_app_perc_cum +
+      away_off_red_zone_eff_cum + away_def_red_zone_eff_cum #+
+      # (1|home_team) +
+      # (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull", link = "logit")
+
+prior_default_scores <- default_prior(brms_formula_scores, data = brms_data)
+brmsterms_scores <- brmsterms(brms_formula_scores)
+brms_vars_scores <- str_extract_all(deparse1(brmsterms_scores$allvars), 
+                        "\\b[[:alpha:]][[:alnum:]_]*\\b")[[1]]
+brms_vars_scores <- unique(brms_vars_scores)
+brms_vars_scores <- intersect(colnames(brms_data), brms_vars_scores)
+# net_elo = home_elo - away_elo,
+# net_SRS = home_SRS_cum - away_SRS_cum,
+# # net_off_epa = home_off_epa_mean_cum - away_def_epa_mean_cum,
+# # net_def_epa = away_off_epa_mean_cum - home_def_epa_mean_cum,
+# home_net_off_epa_cum = home_off_epa_sum_cum + away_def_epa_sum_cum,
+# away_net_off_epa_cum = away_off_epa_sum_cum + home_def_epa_sum_cum,
+# net_epa_cum = home_net_off_epa_cum - away_net_off_epa_cum,
+# home_net_off_epa_roll = home_off_epa_sum_roll + away_def_epa_sum_roll,
+# away_net_off_epa_roll = away_off_epa_sum_roll + home_def_epa_sum_roll,
+# net_epa_roll = home_net_off_epa_roll - away_net_off_epa_roll,
+# net_turnover_diff = home_turnover_diff_cum - away_turnover_diff_cum,
+# net_redzone = home_off_red_zone_app_perc_roll - away_def_red_zone_app_perc_roll
+
+brms_models <- list()
+brms_summaries <- list()
+
 for(season in names(brms_folds)) {
   cat("Fitting brms models for test season:", season, "\n")
-  train_brms <- brms_folds[[season]]$train
-  model_result <- fit_brms_model(train_brms, brms_formula_result)
-  model_total  <- fit_brms_model(train_brms, brms_formula_total)
+  train_brms <- brms_folds[[season]]$train_pre
+  #model_result <- fit_brms_model(train_brms, brms_formula_result)
+  #model_total  <- fit_brms_model(train_brms, brms_formula_total)
+  model_scores <- fit_brms_model(train_brms, brms_formula_scores, init = 0)
   
-  brms_models[[season]] <- list(result = model_result, total = model_total)
+  brms_models[[season]] <- list(
+    #result = model_result, 
+    #total = model_total,
+    scores = model_scores
+    )
   brms_summaries[[season]] <- list(
-    result = summary(model_result),
-    total  = summary(model_total)
+    #result = summary(model_result),
+    #total  = summary(model_total),
+    scores = summary(model_scores)
   )
 }
 
@@ -405,48 +443,110 @@ brms_model_summary_df <- brms_models |>
             )
         )
     })
-  }) |> filter(outcome == "result")
+  }) #|> filter(outcome == "result")
+
+brms_model_summary_df <- brms_model_summary_df |> 
+  mutate(across(is.numeric, ~round(.x, digits = 6)))
+
+brms_model_summary_df_sig <- brms_model_summary_df |>
+  filter(!(conf.low < 0 & conf.high > 0))
+
+brms_model_summary_df_sig_best <- brms_model_summary_df_sig |>
+  group_by(response, term) |>
+  summarise(
+    seasons_used = n_distinct(season),
+    mean_est = mean(estimate),
+    mean_low = mean(conf.low),
+    mean_high = mean(conf.high)
+    #.groups = "drop"
+  ) |>
+  arrange(desc(seasons_used), .by_group = TRUE)
+print(brms_model_summary_df_sig_best, n = nrow(brms_model_summary_df_sig_best))
 
 #print(brms_model_summary_df, n = nrow(brms_model_summary_df))
 
 brms_models_result <- lapply(brms_models, "[[", "result")
 brms_models_total <- lapply(brms_models, "[[", "total")
-
-brms_model_result_combined <- combine_models(brms_models_result$`2023`,
-                                             brms_models_result$`2024`)
+brms_models_scores <- lapply(brms_models, "[[", "scores")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 6. Post Processing & Model Evaluation ----
 # %%%%%%%%%%%%%%%
 
+pp <- posterior_epred(
+  brms_models[["2024"]]$scores,
+  newdata = brms_folds[["2024"]]$test_pre,
+  re_formula = NULL,
+  allow_new_levels = TRUE
+)
+
+pp_home_score <- pp[,,"homescore"]
+pp_away_score <- pp[,,"awayscore"]
+pp_result <- pp_home_score - pp_away_score
+pp_total <- pp_home_score + pp_away_score
+
 performance_metrics <- imap(brms_folds, \(fold, season) {
   test_brms <- fold$test_pre
   
-  # Result model
-  pp_result <- posterior_predict(
-    brms_models[[season]]$result,
+  pp <- posterior_predict(
+    brms_models[[season]]$scores,
     newdata = test_brms,
     re_formula = NULL,
     allow_new_levels = TRUE
   )
+  
+  pp_home_score <- pp[,,"homescore"]
+  pp_away_score <- pp[,,"awayscore"]
+  pp_result <- pp_home_score - pp_away_score
+  pp_total <- pp_home_score + pp_away_score
+  
+  # Home model
+  ci_home_score <- apply(pp_home_score, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
+  coverage_home_score <- mean(test_brms$home_score >= ci_home_score[1, ] & test_brms$home_score <= ci_home_score[2, ], na.rm = TRUE)
+  rmse_home_score <- sqrt(mean((colMeans(pp_home_score) - test_brms$home_score)^2, na.rm = TRUE))
+  
+  # Away model
+  ci_away_score <- apply(pp_away_score, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
+  coverage_away_score <- mean(test_brms$away_score >= ci_away_score[1, ] & test_brms$away_score <= ci_away_score[2, ], na.rm = TRUE)
+  rmse_away_score <- sqrt(mean((colMeans(pp_away_score) - test_brms$away_score)^2, na.rm = TRUE))
+  
+  # Result model
+  # pp_result <- posterior_predict(
+  #   brms_models[[season]]$result,
+  #   newdata = test_brms,
+  #   re_formula = NULL,
+  #   allow_new_levels = TRUE
+  # )
   ci_result <- apply(pp_result, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
   coverage_result <- mean(test_brms$result >= ci_result[1, ] & test_brms$result <= ci_result[2, ], na.rm = TRUE)
   rmse_result <- sqrt(mean((colMeans(pp_result) - test_brms$result)^2, na.rm = TRUE))
   
   # Total model
-  pp_total <- posterior_predict(
-    brms_models[[season]]$total,
-    newdata = test_brms,
-    re_formula = NULL,
-    allow_new_levels = TRUE
-  )
+  # pp_total <- posterior_predict(
+  #   brms_models[[season]]$total,
+  #   newdata = test_brms,
+  #   re_formula = NULL,
+  #   allow_new_levels = TRUE
+  # )
   ci_total <- apply(pp_total, 2, quantile, probs = c(0.025, 0.975), na.rm = TRUE)
   coverage_total <- mean(test_brms$total >= ci_total[1, ] & test_brms$total <= ci_total[2, ], na.rm = TRUE)
   rmse_total <- sqrt(mean((colMeans(pp_total) - test_brms$total)^2, na.rm = TRUE))
   
   # Return result for this season
   list(
+    home_score = list(
+      coverage = coverage_home_score,
+      RMSE = rmse_home_score,
+      pp_home_score = pp_home_score,
+      game_ids = test_brms$game_id
+    ),
+    away_score = list(
+      coverage = coverage_away_score,
+      RMSE = rmse_away_score,
+      pp_away_score = pp_away_score,
+      game_ids = test_brms$game_id
+    ),
     result = list(
       coverage = coverage_result,
       RMSE = rmse_result,
@@ -468,7 +568,7 @@ performance_metrics <- imap(brms_folds, \(fold, season) {
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Generate PPC Plots for brms models.
-ppc_plots <- imap(brms_models, \(model, season) {
+ppc_plots_model <- imap(brms_models, \(model, season) {
   result_ppc <- pp_check(model$result, ndraws = 100) +
     ggtitle(season)
   
@@ -481,14 +581,87 @@ ppc_plots <- imap(brms_models, \(model, season) {
   )
 })
 
-wrap_plots(lapply(ppc_plots, "[[", "result"), 
+wrap_plots(lapply(ppc_plots_model, "[[", "result"), 
            guides = "collect") +
   plot_annotation(
     title = paste0("PPC Plots of result for Seasons ", 
                    brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
   )
 
-wrap_plots(lapply(ppc_plots, "[[", "total"), 
+wrap_plots(lapply(ppc_plots_model, "[[", "total"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of total for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
+
+
+ppc_plots_draws <- imap(performance_metrics, \(model, season) {
+  results_post <- model$result$pp_result
+  results_obs <- brms_folds[[season]]$test_pre$result
+  
+  total_post <- model$total$pp_total
+  totals_obs <- brms_folds[[season]]$test_pre$total
+  
+  set.seed(52)
+  sampleID <- sample(1:nrow(results_post), size = 100, replace = FALSE)
+  
+  result_ppc <- ppc_dens_overlay(yrep = results_post[sampleID, ], y = results_obs) +
+    ggtitle(season)
+  
+  total_ppc <- ppc_dens_overlay(yrep = total_post[sampleID, ], y = totals_obs) +
+    ggtitle(season)
+  
+  list(
+    result = result_ppc,
+    total = total_ppc
+  )
+})
+
+wrap_plots(lapply(ppc_plots_draws, "[[", "result"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of result for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
+
+wrap_plots(lapply(ppc_plots_draws, "[[", "total"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of total for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
+
+ppc_plots_draws_bars <- imap(performance_metrics, \(model, season) {
+  results_post <- model$result$pp_result
+  results_obs <- brms_folds[[season]]$test_pre$result
+  
+  total_post <- model$total$pp_total
+  totals_obs <- brms_folds[[season]]$test_pre$total
+  
+  set.seed(52)
+  sampleID <- sample(1:nrow(results_post), size = 100, replace = FALSE)
+  
+  result_ppc <- ppc_bars(yrep = results_post[sampleID, ], y = results_obs) +
+    ggtitle(season)
+  
+  total_ppc <- ppc_bars(yrep = total_post[sampleID, ], y = totals_obs) +
+    ggtitle(season)
+  
+  list(
+    result = result_ppc,
+    total = total_ppc
+  )
+})
+
+wrap_plots(lapply(ppc_plots_draws_bars, "[[", "result"), 
+           guides = "collect") +
+  plot_annotation(
+    title = paste0("PPC Plots of result for Seasons ", 
+                   brms_seasons[1], " - ", brms_seasons[length(brms_seasons)])
+  )
+
+wrap_plots(lapply(ppc_plots_draws_bars, "[[", "total"), 
            guides = "collect") +
   plot_annotation(
     title = paste0("PPC Plots of total for Seasons ", 
@@ -708,7 +881,7 @@ run_betting_accuracy_for_targets <- function(performance_metrics,
 
 ## Combine Output -----
 #betting_summary_model_comp <- list()
-model_fit <- 2
+model_fit <- 5
 betting_summary_model_comp[[model_fit]] <- list(
   overall = run_betting_accuracy_for_targets(
     performance_metrics = performance_metrics,
@@ -733,9 +906,9 @@ betting_summary_model_comp[[model_fit]] <- list(
     prob_threshold = 0.6,
     out_format = "long", #"wide"
     group_vars = "week"
-  ), # |> mutate(Fit = 1, .before = 1)
-  brms_formula_result = brms_formula_result,
-  brms_formula_total = brms_formula_total
+  ) # |> mutate(Fit = 1, .before = 1)
+  #brms_formula_result = brms_formula_result,
+  #brms_formula_total = brms_formula_total
 )
 
 
@@ -890,14 +1063,30 @@ compute_roi_table <- function(posterior_matrix, new_data,
   return(roi_table)
 }
 
-roi_table <- compute_roi_table(
+roi_table_result <- compute_roi_table(
   posterior_matrix = agg_result$posterior, 
   new_data = brms_data,
   target = "result")
-print(roi_table, n =nrow(roi_table))
+print(roi_table_result, n =nrow(roi_table_result))
 
 # Finally, plot ROI vs. threshold
-ggplot(roi_table, aes(x = threshold, y = roi)) +
+ggplot(roi_table_result, aes(x = threshold, y = roi)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "ROI by Posterior Betting Confidence Threshold",
+    x = "Posterior Threshold",
+    y = "ROI"
+  )
+
+roi_table_total <- compute_roi_table(
+  posterior_matrix = agg_total$posterior, 
+  new_data = brms_data,
+  target = "total")
+print(roi_table_total, n =nrow(roi_table_total))
+
+# Finally, plot ROI vs. threshold
+ggplot(roi_table_total, aes(x = threshold, y = roi)) +
   geom_line() +
   geom_point() +
   labs(
