@@ -931,11 +931,11 @@ winner_betting_return <- winner_betting_preds |>
     pred_bet_correct = winner == .pred_class,
     exp_pay = case_when(
       pred_bet_team == "Home" ~ ifelse(home_moneyline > 0, 
-                                     home_moneyline, 
-                                     100/abs(home_moneyline)*100),
+                                       home_moneyline, 
+                                       100/abs(home_moneyline)*100),
       pred_bet_team == "Away" ~ ifelse(away_moneyline > 0, 
-                                     away_moneyline, 
-                                     100/abs(away_moneyline)*100),
+                                       away_moneyline, 
+                                       100/abs(away_moneyline)*100),
       TRUE ~ NA_real_
     ),
     actual_pay = ifelse(pred_bet_correct, exp_pay, -100)
@@ -1137,13 +1137,13 @@ print(return_team_side, n = nrow(return_team_side))
 return_all_comb <- left_join(all_return_summary, return_all,
                              by = join_by(model))
 return_season_comb <- left_join(by_season, return_season,
-                             by = join_by(model, season))
+                                by = join_by(model, season))
 return_week_comb <- left_join(by_week, return_week,
-                             by = join_by(model, week))
+                              by = join_by(model, week))
 return_season_week_comb <- left_join(by_season_week, return_season_week,
-                             by = join_by(model, season, week))
+                                     by = join_by(model, season, week))
 return_team_side_comb <- left_join(by_team_side, return_team_side,
-                             by = join_by(model, bet_side == pred_bet_team))
+                                   by = join_by(model, bet_side == pred_bet_team))
 
 print(return_all_comb, n = nrow(return_all_comb))
 print(return_season_comb, n = nrow(return_season_comb))
@@ -1151,5 +1151,152 @@ print(return_week_comb, n = nrow(return_week_comb))
 print(return_season_week_comb, n = nrow(return_season_week_comb))
 print(return_team_side_comb, n = nrow(return_team_side_comb))
 
+
+# 7.6 Betting Strategy Evaluation Function ----
+# This function evaluates specified betting strategies and returns summaries.
+evaluate_betting <- function(preds_df,
+                             stake_size = 100,
+                             methods = c("favorite", "ev", "kelly"),
+                             group_vars = NULL) {
+  # preds_df: must contain columns winner (factor "Away","Home"), .pred_Away, .pred_Home,
+  # home_moneyline, away_moneyline, plus any grouping columns
+  require(dplyr)
+  df <- preds_df %>%
+    mutate(
+      # market-implied probabilities
+      imp_Home = if_else(home_moneyline > 0,
+                         100/(home_moneyline + 100),
+                         -home_moneyline / (-home_moneyline + 100)),
+      imp_Away = if_else(away_moneyline > 0,
+                         100/(away_moneyline + 100),
+                         -away_moneyline / (-away_moneyline + 100)),
+      # decimal odds
+      dec_Home = if_else(home_moneyline > 0,
+                         home_moneyline/100 + 1,
+                         100/abs(home_moneyline) + 1),
+      dec_Away = if_else(away_moneyline > 0,
+                         away_moneyline/100 + 1,
+                         100/abs(away_moneyline) + 1),
+      # Kelly fraction
+      kelly_Home = ((dec_Home - 1) * .pred_Home - (1 - .pred_Home)) / (dec_Home - 1),
+      kelly_Away = ((dec_Away - 1) * .pred_Away - (1 - .pred_Away)) / (dec_Away - 1),
+      # model favorite
+      favorite = if_else(.pred_Home > .pred_Away, "Home", "Away")
+    )
+  
+  # Helper function to calculate returns and correctness
+  get_results <- function(df_sub) {
+    df_sub %>%
+      mutate(
+        correct = (bet_side == winner),
+        actual_return = case_when(
+          bet_side == "Home" & winner == "Home" ~ stake * (dec_Home - 1),
+          bet_side == "Away" & winner == "Away" ~ stake * (dec_Away - 1),
+          bet_side %in% c("Home","Away")         ~ -stake,
+          TRUE                                       ~ 0
+        )
+      )
+  }
+  
+  results_list <- list()
+  
+  # Method: always bet on favorite
+  if ("favorite" %in% methods) {
+    df1 <- df %>%
+      mutate(
+        bet_side = favorite,
+        stake    = stake_size
+      ) %>%
+      get_results()
+    results_list[["favorite"]] <- df1
+  }
+  
+  # Method: bet fixed stake_size on positive EV
+  if ("ev" %in% methods) {
+    df2 <- df %>%
+      mutate(
+        EV_Home = .pred_Home * (dec_Home - 1) - (1 - .pred_Home),
+        EV_Away = .pred_Away * (dec_Away - 1) - (1 - .pred_Away),
+        bet_side = case_when(
+          EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+          EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+          TRUE                            ~ NA_character_
+        ),
+        stake = if_else(!is.na(bet_side), stake_size, 0)
+      ) %>%
+      get_results()
+    results_list[["ev"]] <- df2
+  }
+  
+  # Method: Kelly-sized bet on positive EV
+  if ("kelly" %in% methods) {
+    df3 <- df %>%
+      mutate(
+        EV_Home = .pred_Home * (dec_Home - 1) - (1 - .pred_Home),
+        EV_Away = .pred_Away * (dec_Away - 1) - (1 - .pred_Away),
+        bet_side = case_when(
+          EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+          EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+          TRUE                            ~ NA_character_
+        ),
+        stake = case_when(
+          bet_side == "Home" ~ stake_size * kelly_Home,
+          bet_side == "Away" ~ stake_size * kelly_Away,
+          TRUE               ~ 0
+        )
+      ) %>%
+      get_results()
+    results_list[["kelly"]] <- df3
+  }
+  
+  # Combine and summarize results
+  combined <- bind_rows(results_list, .id = "method")
+  
+  if (!is.null(group_vars) && length(group_vars) > 0) {
+    summary <- combined %>%
+      filter(!is.na(bet_side)) %>%
+      group_by(across(all_of(group_vars)), method) %>%
+      summarise(
+        n_bets       = n(),
+        pct_correct  = mean(correct) * 100,
+        total_return = sum(actual_return),
+        .groups      = "drop"
+      )
+  } else {
+    summary <- combined %>%
+      filter(!is.na(bet_side)) %>%
+      group_by(method) %>%
+      summarise(
+        n_bets       = n(),
+        pct_correct  = mean(correct) * 100,
+        total_return = sum(actual_return),
+        .groups      = "drop"
+      )
+  }
+  
+  return(summary)
+}
+
+
+bet_return_all <- evaluate_betting(
+  winner_betting_preds, 
+  stake_size = 100,
+  methods = c("favorite","ev","kelly"),
+  group_vars = c("model"))
+print(bet_return_all, n = nrow(bet_return_all))
+
+bet_return_season <- evaluate_betting(
+  winner_betting_preds, 
+  stake_size = 100,
+  methods = c("favorite","ev","kelly"),
+  group_vars = c("model", "season"))
+print(bet_return_season, n = nrow(bet_return_season))
+
+bet_return_week <- evaluate_betting(
+  winner_betting_preds, 
+  stake_size = 100,
+  methods = c("favorite","ev","kelly"),
+  group_vars = c("model", "week"))
+print(bet_return_week, n = nrow(bet_return_week))
 
 
