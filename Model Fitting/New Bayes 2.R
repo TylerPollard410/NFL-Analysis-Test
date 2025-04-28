@@ -886,7 +886,7 @@ winner_test_metrics_season_week <- winner_preds |>
   )
 print(winner_test_metrics_season_week, n = nrow(winner_test_metrics_season_week))
 
-# 7.4 Plot ROC curves on test set ----
+## 9.4 ROC Curve ----
 # Use prediction tibbles: bayes_winner_preds and xgb_winner_preds
 roc_bayes <- roc_curve(bayes_winner_preds, truth = winner, .pred_Home) |> 
   mutate(model = "Bayesian Hierarchical")
@@ -896,6 +896,10 @@ roc_xgb   <- roc_curve(xgb_winner_preds,   truth = winner, .pred_Home) |>
 winner_roc_curve <- winner_preds |>
   group_by(model) |>
   roc_curve(truth = winner, .pred_Home, event_level = "second")
+
+winner_roc_auc <- winner_preds |>
+  group_by(model) |>
+  roc_auc(truth = winner, .pred_Home, event_level = "second")
 
 roc_plot <- winner_roc_curve |> 
   ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
@@ -909,14 +913,243 @@ roc_plot <- winner_roc_curve |>
   )
 print(roc_plot)
 
-# Once you've added your full script, let me know,
-# and I'll inject the performance-metrics and plotting code below.
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 10. BETTING PERFORMANCE ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+winner_betting_preds <- winner_preds |>
+  left_join(
+    test_data |> select(game_id, contains("moneyline")),
+    by = join_by(game_id)
+  ) |>
+  relocate(contains("moneyline"), .after = .pred_Home)
+
+winner_betting_return <- winner_betting_preds |>
+  mutate(
+    pred_bet_team = .pred_class,
+    pred_bet_correct = winner == .pred_class,
+    exp_pay = case_when(
+      pred_bet_team == "Home" ~ ifelse(home_moneyline > 0, 
+                                     home_moneyline, 
+                                     100/abs(home_moneyline)*100),
+      pred_bet_team == "Away" ~ ifelse(away_moneyline > 0, 
+                                     away_moneyline, 
+                                     100/abs(away_moneyline)*100),
+      TRUE ~ NA_real_
+    ),
+    actual_pay = ifelse(pred_bet_correct, exp_pay, -100)
+  ) |>
+  mutate(
+    odds_home_value = ifelse(.pred_class == "Home",
+                             .pred_Home - home_moneyline_prob,
+                             home_moneyline_prob - .pred_Home),
+    odds_away_value = ifelse(.pred_class == "Away",
+                             .pred_Away - away_moneyline_prob,
+                             away_moneyline_prob - .pred_Away),
+  )
 
 
+bets <- winner_betting_preds |>      # or xgb_winner_preds
+  mutate(
+    # 1) Implied win‐prob from the moneyline
+    imp_Home = if_else(home_moneyline > 0,
+                       100 / (home_moneyline + 100),
+                       -home_moneyline / (-home_moneyline + 100)),
+    imp_Away = if_else(away_moneyline > 0,
+                       100 / (away_moneyline + 100),
+                       -away_moneyline / (-away_moneyline + 100)),
+    # 2) Decimal odds (payout per $1 stake)
+    dec_Home = if_else(home_moneyline > 0,
+                       home_moneyline/100 + 1,
+                       100/abs(home_moneyline) + 1),
+    dec_Away = if_else(away_moneyline > 0,
+                       away_moneyline/100 + 1,
+                       100/abs(away_moneyline) + 1),
+    # 3) Edge and EV
+    edge_Home = .pred_Home - imp_Home,
+    edge_Away = .pred_Away - imp_Away,
+    EV_Home   = .pred_Home * (dec_Home - 1) - (1 - .pred_Home),
+    EV_Away   = .pred_Away * (dec_Away - 1) - (1 - .pred_Away),
+    # 4) Kelly fraction: f* = (b p - q) / b,  where b = dec - 1, q = 1-p
+    kelly_Home = ((dec_Home - 1) * .pred_Home - (1 - .pred_Home)) / (dec_Home - 1),
+    kelly_Away = ((dec_Away - 1) * .pred_Away - (1 - .pred_Away)) / (dec_Away - 1),
+    # 5) Pick the best “positive‐EV” bet (or no bet)
+    best_ev = pmax(EV_Home, EV_Away),
+    bet_side = case_when(
+      EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+      EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+      TRUE                            ~ "No Bet"
+    ),
+    bet_size = case_when(
+      bet_side == "Home" ~ kelly_Home,
+      bet_side == "Away" ~ kelly_Away,
+      TRUE               ~ 0
+    )
+  )
+
+# 7.5 Betting Strategy: Calculate Actual Returns and Summaries ----
+# Using Bayesian model predictions and moneyline odds, compute implied probabilities,
+# decide bets where expected value is positive, and calculate actual returns.
+bets2 <- winner_betting_preds |> 
+  mutate(
+    # Market-implied probabilities
+    imp_Home = if_else(home_moneyline > 0,
+                       100/(home_moneyline + 100),
+                       -home_moneyline/(-home_moneyline + 100)),
+    imp_Away = if_else(away_moneyline > 0,
+                       100/(away_moneyline + 100),
+                       -away_moneyline/(-away_moneyline + 100)),
+    # Decimal odds
+    dec_Home = if_else(home_moneyline > 0,
+                       home_moneyline/100 + 1,
+                       100/abs(home_moneyline) + 1),
+    dec_Away = if_else(away_moneyline > 0,
+                       away_moneyline/100 + 1,
+                       100/abs(away_moneyline) + 1),
+    # Expected value for $1 bet
+    EV_Home = .pred_Home * (dec_Home - 1) - (1 - .pred_Home),
+    EV_Away = .pred_Away * (dec_Away - 1) - (1 - .pred_Away),
+    # Choose side if positive EV
+    bet_side = case_when(
+      EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+      EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+      TRUE                            ~ "No Bet"
+    ),
+    stake = 1,
+    # Actual return
+    actual_return = case_when(
+      bet_side == "Home" & winner == "Home" ~ stake * (dec_Home - 1),
+      bet_side == "Away" & winner == "Away" ~ stake * (dec_Away - 1),
+      bet_side %in% c("Home", "Away") & bet_side != winner ~ -stake,
+      TRUE ~ 0
+    )
+  )
+
+# Summaries
+return_all <- winner_betting_return |>
+  group_by(model) |>
+  summarise(
+    return = sum(actual_pay),
+    bets = n(),
+    .groups = "drop"
+  )
+
+all_return_summary <- bets2 |> 
+  filter(bet_side != "No Bet") |>
+  group_by(model) |>
+  summarise(
+    total_return = sum(actual_return),
+    n_bets       = n(),
+    avg_return   = mean(actual_return),
+    ROI          = total_return / n_bets
+  )
+
+return_season <- winner_betting_return |>
+  group_by(model, season) |>
+  summarise(
+    return = sum(actual_pay),
+    bets = n(),
+    .groups = "drop"
+  )
+
+by_season <- bets2 |> 
+  filter(bet_side != "No Bet") |>
+  group_by(model, season) |>
+  summarise(
+    total_return = sum(actual_return),
+    n_bets       = n(),
+    ROI          = total_return / n_bets,
+    .groups = "drop"
+  )
+
+return_week <- winner_betting_return |>
+  group_by(model, week) |>
+  summarise(
+    return = sum(actual_pay),
+    bets = n(),
+    .groups = "drop"
+  )
+
+by_week <- bets2 |> 
+  filter(bet_side != "No Bet") |>
+  group_by(model, week) |>
+  summarise(
+    total_return = sum(actual_return),
+    n_bets       = n(),
+    ROI          = total_return / n_bets,
+    .groups = "drop"
+  )
+
+return_season_week <- winner_betting_return |>
+  group_by(model, season, week) |>
+  summarise(
+    return = sum(actual_pay),
+    bets = n(),
+    .groups = "drop"
+  )
+
+by_season_week <- bets2 |> 
+  filter(bet_side != "No Bet") |>
+  group_by(model, season, week) |>
+  summarise(
+    total_return = sum(actual_return),
+    n_bets       = n(),
+    ROI          = total_return / n_bets,
+    .groups = "drop"
+  )
+
+return_team_side <- winner_betting_return |>
+  group_by(model, pred_bet_team) |>
+  summarise(
+    return = sum(actual_pay),
+    bets = n(),
+    .groups = "drop"
+  )
+
+by_team_side <- bets2 |> 
+  filter(bet_side != "No Bet") |>
+  group_by(model, bet_side) |>
+  summarise(
+    total_return = sum(actual_return),
+    n_bets       = n(),
+    ROI          = total_return / n_bets,
+    .groups = "drop"
+  )
+
+# Display summaries
+print(all_return_summary, n = nrow(all_return_summary))
+print(return_all, n = nrow(return_all))
+
+print(by_season, n = nrow(by_season))
+print(return_season, n = nrow(return_season))
+
+print(by_week, n = nrow(by_week))
+print(return_week, n = nrow(return_week))
+
+print(by_season_week, n = nrow(by_season_week))
+print(return_season_week, n = nrow(return_season_week))
+
+print(by_team_side, n = nrow(by_team_side))
+print(return_team_side, n = nrow(return_team_side))
 
 
+return_all_comb <- left_join(all_return_summary, return_all,
+                             by = join_by(model))
+return_season_comb <- left_join(by_season, return_season,
+                             by = join_by(model, season))
+return_week_comb <- left_join(by_week, return_week,
+                             by = join_by(model, week))
+return_season_week_comb <- left_join(by_season_week, return_season_week,
+                             by = join_by(model, season, week))
+return_team_side_comb <- left_join(by_team_side, return_team_side,
+                             by = join_by(model, bet_side == pred_bet_team))
 
-
+print(return_all_comb, n = nrow(return_all_comb))
+print(return_season_comb, n = nrow(return_season_comb))
+print(return_week_comb, n = nrow(return_week_comb))
+print(return_season_week_comb, n = nrow(return_season_week_comb))
+print(return_team_side_comb, n = nrow(return_team_side_comb))
 
 
 
