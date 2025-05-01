@@ -775,8 +775,15 @@ scoresFeatures <- gameDataLong |>
   ) |>
   mutate(across(c(everything(), -all_of(id_cols)),
                 ~ifelse(is.na(.x), 0, .x))
+  ) |>
+  mutate(
+    points8 = two_pt_made,
+    points7 = pat_made,
+    points6 = (td_total - two_pt_made - pat_made),
+    points3 = fg_made,
+    points2 = safeties_def + two_pt_def,
+    points_total = points8*8 + points7*7 + points6*6 + points3*3 + points2*2
   )
-#mutate(rowID = row_number())
 
 # check
 scores_check <- scoresFeatures |>
@@ -786,7 +793,10 @@ scores_check <- scoresFeatures |>
     team_score2 = 6*td_total + 3*fg_made + pat_made + 2*two_pt_made + 2*safeties_def + 2*two_pt_def,
     .after = team_score
   ) |>
-  filter(team_score != team_score2)
+  filter(team_score != team_score2 | team_score != points_total)
+
+finalScoresData <- scoresFeatures
+save(finalScoresData, file = "./app/data/finalScoresData.rda")
 
 
 ## STEP 4: Season-Specific Aggregates (Cumulative Mean) ----

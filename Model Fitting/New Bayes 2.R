@@ -27,9 +27,28 @@ set.seed(52)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 #load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modDataLong.rda"))
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/datafinalScoresData.rda"))
 
 # Filter seasons and clean long-format
-modData <- modData |> filter(season >= 2007) |>
+modDataBase <- modData |>
+  left_join(
+    finalScoresData |> 
+      select(game_id, team, matches("^points\\d+$")) |>
+      rename_with(~paste0("home_", .x), .cols = -c(game_id)),
+    by = join_by(game_id, home_team)
+  ) |>
+  left_join(
+    finalScoresData |> 
+      select(game_id, team, matches("^points\\d+$")) |>
+      rename_with(~paste0("away_", .x), .cols = -c(game_id)),
+    by = join_by(game_id, away_team)
+  ) |>
+  # move all home_points* right after home_score
+  relocate(matches("^home_points\\d+$"), .after = home_score) |>
+  # then move all away_points* right after away_score
+  relocate(matches("^away_points\\d+$"), .after = away_score)
+
+modData <- modDataBase |> filter(season >= 2007) |>
   mutate(
     winner = case_when(
       home_team == winner ~ TRUE,
@@ -37,8 +56,10 @@ modData <- modData |> filter(season >= 2007) |>
       TRUE ~ NA
     ),
     winner = factor(winner, levels = c(FALSE, TRUE), labels = c("Away", "Home"))
-  ) |> 
-  filter(!is.na(winner))
+  ) 
+# modData <- modData |> 
+#   filter(!is.na(winner))
+
 modDataLong <- modData |> clean_homeaway(invert = c("result", "spread_line"))
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -49,7 +70,9 @@ modDataLong <- modData |> clean_homeaway(invert = c("result", "spread_line"))
 drop_vars <- c(
   "game_id","game_type","season_type","gameday","gametime",
   "home_team","away_team",
-  "home_score","away_score","result","spread_line","spreadCover",
+  "home_score", "home_points8", "home_points7", "home_points6", "home_points3", "home_points2",
+  "away_score", "away_points8", "away_points7", "away_points6", "away_points3", "away_points2",
+  "result","spread_line","spreadCover",
   "total","total_line","totalCover",
   "winner",
   "away_spread_odds","away_spread_prob",
