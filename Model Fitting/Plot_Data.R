@@ -15,6 +15,12 @@ load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/ma
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/finalScoresData.rda"))
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/eloData.rda"))
 
+source("./app/data-raw/gameData.R")
+source("./app/data-raw/eloData.R")
+load(file = "~/Test Data/BRMS/kfaData_constant_hfa.rda")
+load(file = "~/Test Data/BRMS/kfaData_constant_hfa_wPost.rda")
+load(file = "~/Test Data/BRMS/kfaData_seasonHFA.rda")
+
 eloData_update_list <- calc_elo_ratings(
   modData,
   initial_elo = 1500,
@@ -45,6 +51,23 @@ modDataBase <- modData |>
   relocate(matches("^away_points\\d+$"), .after = away_score) |>
   left_join(
     eloData
+  ) |>
+  # left_join(
+  #   kfaData |> rename("home_rating" = "rating_home",
+  #                         "away_rating" = "rating_away",
+  #                         "hfa_est" = "hfa_est")
+  # ) |>
+  # left_join(
+  #   kfaDataPost |> rename("home_rating" = "rating_home",
+  #                         "away_rating" = "rating_away",
+  #                         "hfa_est" = "hfa_est")
+  # ) |>
+  left_join(
+    kfaData_seasonHFA |> rename("home_rating" = "rating_home",
+                                "away_rating" = "rating_away",
+                                "home_rating" = "rating_home",
+                                "away_rating" = "rating_away",
+                                "hfa_est" = "hfa_est")
   )
 
 modData <- modDataBase |> filter(season >= 2007) |>
@@ -60,7 +83,8 @@ modData <- modDataBase |> filter(season >= 2007) |>
 # modData <- modData |> 
 #   filter(!is.na(winner))
 
-modDataLong <- modData |> clean_homeaway(invert = c("result", "spread_line"))
+modDataLong <- modData |>
+  clean_homeaway(invert = c("result", "spread_line", "hfa_est"))
 
 # 2.1 Define columns to drop
 drop_vars <- c(
@@ -104,6 +128,7 @@ make_net_features <- function(df) {
     net_elo           = c("home_elo", "away_elo"),
     net_elo_pre       = c("home_elo_pre", "away_elo_pre"),
     net_elo_post      = c("home_elo_post", "away_elo_post"),
+    net_rating        = c("home_rating", "away_rating"),
     net_SRS_cum       = c("home_SRS_cum", "away_SRS_cum"),
     home_net_OSRS_cum = c("home_OSRS_cum", "away_DSRS_cum"),
     away_net_OSRS_cum = c("away_OSRS_cum", "home_DSRS_cum")
@@ -198,6 +223,7 @@ feats_net_ordered_all <- feats_net |>
     "net_elo", "home_elo", "away_elo",
     "net_elo_pre", "home_elo_pre", "away_elo_pre",
     "net_elo_post", "home_elo_post", "away_elo_post",
+    "net_rating", "home_rating", "away_rating",
     "net_SRS_cum", "home_SRS_cum", "away_SRS_cum",
     "home_net_OSRS_cum", "home_OSRS_cum", "away_DSRS_cum",
     "away_net_OSRS_cum", "away_OSRS_cum", "home_DSRS_cum",
@@ -229,9 +255,20 @@ brms_data_complete <- brms_data %>%
 
 incomplete_gameIDs <- setdiff(brms_data$game_id, brms_data_complete$game_id)
 
-modData <- brms_data |> filter(!(game_id %in% incomplete_gameIDs))
 
-modDataLong <- modData |>
+
+modData_plot <- brms_data |> filter(!(game_id %in% incomplete_gameIDs))
+
+distinct_weeks <- modData_plot |>
+  distinct(season, week) |> 
+  arrange(season, week) |> 
+  mutate(week_seq = row_number())
+
+modData_plot <- modData_plot |>
+  left_join(distinct_weeks) |>
+  relocate(week_seq, .after = week)
+
+modDataLong_plot <- modData |>
   clean_homeaway(invert = c("result", "spread_line"))
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -389,93 +426,114 @@ points_season_week_sum_plot <- points_season_week_sum |>
 xVar <- "net_elo"
 yVar <- "result"
 
-modData |>
+modData_plot |>
   ggplot(aes(x = spread_line, y = result)) +
   geom_point() +
-  sm_statCorr() +
+  sm_statCorr(r2 = TRUE, separate_by = ", \n", text_size = rel(2)) +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
+  ggplot(aes(x = spread_line, y = result - spread_line)) +
+  geom_point() +
+  sm_statCorr(r2 = TRUE, separate_by = ", \n", text_size = rel(2)) +
+  facet_wrap(~ week)
+
+modData_plot |>
+  ggplot(aes(x = result - spread_line)) +
+  geom_histogram(binwidth = 1)
+
+modData_plot |>
+  ggplot(aes(x = result - spread_line)) +
+  geom_histogram(binwidth = 1) +
+  facet_wrap(~ season)
+
+modData_plot |>
+  ggplot(aes(x = net_rating, y = result)) +
+  geom_point() +
+  sm_statCorr(r2 = TRUE, separate_by = ", \n", text_size = rel(2.5)) +
+  facet_wrap(~ week)
+
+modData_plot |>
   ggplot(aes(x = net_elo, y = result)) +
   geom_point() +
-  sm_statCorr() +
+  sm_statCorr(r2 = TRUE, separate_by = ", \n", text_size = rel(2.5)) +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo_pre, y = result)) +
   geom_point() +
-  sm_statCorr() +
+  sm_statCorr(r2 = TRUE, separate_by = ", \n", text_size = rel(2.5)) +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo_pre, y = net_elo)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = result)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = net_elo)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = net_elo_pre)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
 ## 4.2 Total ----
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo_pre, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = home_OSRS_cum + away_OSRS_cum, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = home_PFG_cum + away_PFG_cum, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = home_net_off_epa_sum_cum, y = total)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
 ## 4.3 Home Score ----
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo, y = home_score)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = home_score)) +
   geom_point() +
   sm_statCorr() +
@@ -483,16 +541,26 @@ modData |>
 
 
 ## 4.3 Away Score ----
-modData |>
+modData_plot |>
   ggplot(aes(x = net_elo, y = away_score)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
-modData |>
+modData_plot |>
   ggplot(aes(x = net_SRS_cum, y = away_score)) +
   geom_point() +
   sm_statCorr() +
   facet_wrap(~ week)
 
 
+# 5. Autocorrelation ----
+library(timetk)
+library(modeltime)
+
+modData_plot |>
+  filter(home_team == "BAL") |>
+  plot_acf_diagnostics(
+    week_seq, 
+    home_score,
+  )
