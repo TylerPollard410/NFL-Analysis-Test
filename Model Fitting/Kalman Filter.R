@@ -10,7 +10,7 @@ library(dplyr)
 # Vary HFA by season ----
 # 1) Load and prepare the data
 nflBase <- modData
-nfl <- nflBase %>%
+nfl <- nflBase %>% filter(!(season == 2024 & week > 8)) |>
   # filter(season_type == "REG") %>%
   arrange(season, week) %>%
   mutate(
@@ -78,14 +78,33 @@ update_fn <- function(pars, model) {
 }
 
 inits <- log(c(0.1, 1))
-fit   <- fitSSM(ss_mod, inits = inits, updatefn = update_fn, method = "BFGS")
+fit3   <- fitSSM(ss_mod, inits = inits, updatefn = update_fn, method = "BFGS")
 
 # 6) Kalman smoothing
-ks <- KFS(fit$model, smoothing = c("state", "mean"))
-
+ks <- KFS(
+  fit$model, 
+  filtering = c("state", "mean")
+  )
 ks_alpha_hat <- ks$alphahat  # N_games × m_states
 ks_a <- ks$a
 ks_att <- ks$att
+
+# 6) Kalman filtering
+ks2 <- KFS(
+  fit2$model, 
+  filtering = c("state", "mean")
+)
+ks2_alpha_hat <- ks2$alphahat  # N_games × m_states
+ks2_a <- ks2$a
+ks2_att <- ks2$att
+
+ks3 <- KFS(
+  fit3$model, 
+  filtering = c("state", "mean")
+)
+ks3_alpha_hat <- ks3$alphahat  # N_games × m_states
+ks3_a <- ks3$a
+ks3_att <- ks3$att
 
 # 7) Pull out the season‐specific HFA for each game
 nfl <- nfl %>%

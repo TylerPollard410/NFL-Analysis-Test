@@ -64,11 +64,19 @@ modDataBase <- modData |>
   # then move all away_points* right after away_score
   relocate(matches("^away_points\\d+$"), .after = away_score) |>
   left_join(
-    eloData
+    eloData,
+    by = join_by(game_id, season, week, gameday, away_team, away_score, home_team, home_score)
   ) |>
   left_join(
-    kfaData
+    kfaData$train,
+    by = join_by(game_id, season, week, home_team, away_team, location)
   )
+  # left_join(
+  #   kfaData$test |> rename(home_rating_post = home_rating_pre,
+  #                          away_rating_post = away_rating_pre,
+  #                          hfa_post = hfa_pre),
+  #   by = join_by(game_id, season, week, home_team, away_team, location)
+  # )
 
 modData <- modDataBase |> filter(season >= 2007) |>
   mutate(
@@ -130,7 +138,8 @@ make_net_features <- function(df) {
     net_elo           = c("home_elo", "away_elo"),
     net_elo_pre       = c("home_elo_pre", "away_elo_pre"),
     net_elo_post      = c("home_elo_post", "away_elo_post"),
-    net_rating        = c("home_rating", "away_rating"),
+    net_rating        = c("home_rating_pre", "away_rating_pre"),
+    #net_rating_post   = c("home_rating_post", "away_rating_post"),
     net_SRS_cum       = c("home_SRS_cum", "away_SRS_cum"),
     home_net_OSRS_cum = c("home_OSRS_cum", "away_DSRS_cum"),
     away_net_OSRS_cum = c("away_OSRS_cum", "home_DSRS_cum")
@@ -225,7 +234,8 @@ feats_net_ordered_all <- feats_net |>
     "net_elo", "home_elo", "away_elo",
     "net_elo_pre", "home_elo_pre", "away_elo_pre",
     "net_elo_post", "home_elo_post", "away_elo_post",
-    "net_rating", "home_rating", "away_rating", "hfa_est",
+    "net_rating", "home_rating_pre", "away_rating_pre", "hfa_pre",
+    #"net_rating_post", "home_rating_post", "away_rating_post", "hfa_post",
     "net_SRS_cum", "home_SRS_cum", "away_SRS_cum",
     "home_net_OSRS_cum", "home_OSRS_cum", "away_DSRS_cum",
     "away_net_OSRS_cum", "away_OSRS_cum", "home_DSRS_cum",
@@ -235,20 +245,19 @@ feats_net_ordered_all <- feats_net |>
     contains("PAG"),
     all_of(ordered_cols_flat),
     everything()
+  ) |>
+  mutate(
+    net_rating_hfa = net_rating + hfa_pre,
+    .after = net_rating
   )
 colnames(feats_net_ordered_all)
 # feats_net_ordered_all now has IDs and static/nets at the front, followed by grouped metrics
 
 # 2.9 Merge with game data 
-# brms_data <- modData |>
-#   select(1:44)  
-# brms_data <- brms_data |>
-#   bind_cols(feats_net_ordered_all |> select(-any_of(names(brms_data))))
-
-brms_data <- modData |>
+brms_data_base <- modData |>
   select(all_of(base_cols))
-brms_data <- brms_data |>
-  bind_cols(feats_net_ordered_all |> select(-any_of(names(brms_data))))
+brms_data <- brms_data_base |>
+  bind_cols(feats_net_ordered_all |> select(-any_of(names(brms_data_base))))
 
 brms_data_complete <- brms_data %>% 
   select(-any_of(drop_vars), game_id) |>
@@ -272,93 +281,6 @@ brms_data <- brms_data |>
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 3. INITIAL MODEL FORMULAS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# brms_data <- brms_data |>
-#   mutate(
-#     home_score = factor(home_score, #levels = c(0, 2:70), 
-#                         ordered = TRUE),
-#     away_score = factor(away_score, #levels = c(0, 2:70), 
-#                         ordered = TRUE)
-#   )
-# nlevels(brms_data$home_score)
-# nlevels(brms_data$away_score)
-brms_formula_homescore <- 
-  bf(
-    home_score ~
-      net_elo +
-      net_elo_pre +
-      #home_elo + away_elo +
-      #net_SRS_cum +
-      home_OSRS_cum +
-      away_DSRS_cum +
-      home_off_epa_sum_cum + 
-      #home_def_epa_sum_cum +
-      #away_off_epa_sum_cum + 
-      away_def_epa_sum_cum +
-      home_off_epa_sum_roll + 
-      #home_def_epa_sum_roll +
-      #away_off_epa_sum_roll + 
-      away_def_epa_sum_roll +
-      home_turnover_won_cum + 
-      home_turnover_lost_cum +
-      away_turnover_won_cum + 
-      away_turnover_lost_cum +
-      home_off_red_zone_app_perc_cum + 
-      #home_def_red_zone_app_perc_cum +
-      home_off_red_zone_eff_cum + 
-      #home_def_red_zone_eff_cum +
-      #away_off_red_zone_app_perc_cum + 
-      away_def_red_zone_app_perc_cum +
-      #away_off_red_zone_eff_cum + 
-      away_def_red_zone_eff_cum +
-      # gp(season, by = home_team) +
-      # gp(season, by = away_team) 
-      (1|gr(season, by = home_team, id = "H")) +
-      (1|gr(season, by = away_team, id = "A"))
-  ) + 
-  brmsfamily(family = "student", link = "identity") 
-#brmsfamily(family = "cumulative", link = "logit") +
-brms_formula_awayscore <-
-  bf(
-    away_score ~
-      net_elo +
-      net_elo_pre +
-      #home_elo + away_elo +
-      #net_SRS_cum +
-      home_DSRS_cum + 
-      away_OSRS_cum +
-      #home_off_epa_sum_cum + 
-      home_def_epa_sum_cum +
-      away_off_epa_sum_cum + 
-      #away_def_epa_sum_cum +
-      #home_off_epa_sum_roll + 
-      home_def_epa_sum_roll +
-      away_off_epa_sum_roll + 
-      #away_def_epa_sum_roll +
-      home_turnover_won_cum + 
-      home_turnover_lost_cum +
-      away_turnover_won_cum + 
-      away_turnover_lost_cum +
-      home_off_red_zone_app_perc_cum + 
-      home_def_red_zone_app_perc_cum +
-      home_off_red_zone_eff_cum + 
-      home_def_red_zone_eff_cum +
-      away_off_red_zone_app_perc_cum + 
-      away_def_red_zone_app_perc_cum +
-      away_off_red_zone_eff_cum + 
-      away_def_red_zone_eff_cum +
-      # gp(season, by = home_team) +
-      # gp(season, by = away_team) 
-      (1|gr(season, by = home_team, id = "H")) +
-      (1|gr(season, by = away_team, id = "A"))
-  ) + 
-  brmsfamily(family = "student", link = "identity") 
-
-brms_formula_scores <-
-  brms_formula_homescore +
-  brms_formula_awayscore +
-  set_rescor(TRUE)
-
-
 brms_formula_result <-
   bf(
     result ~
@@ -367,7 +289,8 @@ brms_formula_result <-
       #net_elo_pre +
       #home_elo + away_elo +
       net_rating +
-      #hfa_est +
+      #net_rating_hfa +
+      #hfa_pre +
       #net_SRS_cum +
       #home_DSRS_cum + 
       #away_OSRS_cum +
@@ -389,7 +312,7 @@ brms_formula_result <-
       # home_turnover_lost_cum +
       # away_turnover_won_cum + 
       # away_turnover_lost_cum +
-      home_net_off_red_zone_app_perc_cum +
+      home_net_off_red_zone_app_perc_cum
       #away_net_off_red_zone_app_perc_cum 
       #home_net_off_red_zone_eff_cum +
       #away_net_off_red_zone_eff_cum
@@ -406,7 +329,7 @@ brms_formula_result <-
       #(1|gr(season, by = home_team, id = "H")) +
       #(1|gr(season, by = away_team, id = "A"))
       #s(week_seq) +
-      (1|season)
+      #(1|season)
   ) + 
   brmsfamily(family = "student", link = "identity") 
 #brmsfamily(family = "cumulative", link = "logit") 
@@ -437,21 +360,21 @@ preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"),
   
   removed <- list()
   
-  # 5.1 Near-zero variance filtering
+  # 4.1.1 Near-zero variance filtering
   if ("nzv" %in% steps) {
     nzv_idx <- nearZeroVar(df, names = TRUE)
     removed$nzv <- nzv_idx
     if (length(nzv_idx) > 0) df <- df |> select(-all_of(nzv_idx))
   }
   
-  # 5.2 Linear combinations filtering
+  # 4.1.2 Linear combinations filtering
   if ("lincomb" %in% steps) {
     lin <- findLinearCombos(df)
     removed$lincomb <- if (!is.null(lin$remove)) names(df)[lin$remove] else character(0)
     if (!is.null(lin$remove)) df <- df |> select(-all_of(lin$remove))
   }
   
-  # 5.3 High-correlation filtering
+  # 4.1.3 High-correlation filtering
   if ("corr" %in% steps) {
     corr_mat <- cor(df, use = cor_use, method = cor_method)
     high_corr_idx <- findCorrelation(corr_mat, cutoff = corr_cutoff, names = TRUE,verbose = TRUE)
@@ -472,8 +395,6 @@ preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"),
 
 ## 4.2 Preprocess ----
 # Identify predictors for the winner model
-brms_vars_scores <- extract_predictors(brms_data, brms_formula_scores)
-brms_vars_scores
 
 brms_vars_result <- extract_predictors(brms_data, brms_formula_result)
 brms_vars_result
@@ -492,63 +413,50 @@ brms_data_prepped_dropped <- brms_data_prepped$removed |>
 
 brms_data_model <- brms_data |>
   select(all_of(base_cols), 
-         all_of(brms_vars_scores), 
+         all_of(brms_vars_result), 
          -all_of(brms_data_prepped_dropped)) 
-# brms_data <- brms_data |>
-#   mutate(
-#     result = factor(result, ordered = TRUE)
-#   )
 colnames(brms_data_model)
 
-# mutate(
-#   home_score = factor(home_score, levels = c(0, 2:70)),
-#   .after = home_score
-# ) |>
-# mutate(
-#   away_score = factor(away_score, levels = c(0, 2:70)),
-#   .after = away_score
-# )
 
-preProc_scores <- preProcess(
+preProc_result <- preProcess(
   brms_data_model |> 
     filter(season < 2024) |>
     select(-all_of(base_cols)),
   method = c("center", "scale")
 )
-train_data <- predict(preProc_scores, 
+train_data <- predict(preProc_result, 
                       brms_data |> filter(season < 2024))
-test_data <- predict(preProc_scores, 
+test_data <- predict(preProc_result, 
                      brms_data |> filter(season == 2024))
 
-default_prior(brms_formula_scores, data = train_data)
 default_prior(brms_formula_result, data = train_data)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 5. FIT MODEL ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-iters <- 20000
-burn <- 10000
+iters <- 4000
+burn <- 2000
 chains <- 4
 sims <- (iters-burn)*chains
 
-priors_result <- c(
-  prior(horseshoe(1), class = "b")
-  #prior(normal(0, 10), class = "b"),
-  #prior(normal(0, 5), class = "b", dpar = "mu1"),
-  #prior(normal(0, 5), class = "b", dpar = "mu2"),
-  #prior(student_t(3, 0, 10), class = "sigma"),
-  #prior(student_t(3, 0, 10), class = "sigma1"),
-  #prior(student_t(3, 0, 10), class = "sigma2"),
-  #prior(inv_gamma(0.1, 0.1), class = "shape"),
-  #prior(student_t(3, 0, 5), class = "sd")
-  #prior(student_t(3, 0, 5), class = "sd", dpar = "mu1"),
-  #prior(student_t(3, 0, 5), class = "sd", dpar = "mu2")
-)
+# priors_result <- c(
+#   prior(horseshoe(1), class = "b")
+#   #prior(normal(0, 10), class = "b"),
+#   #prior(normal(0, 5), class = "b", dpar = "mu1"),
+#   #prior(normal(0, 5), class = "b", dpar = "mu2"),
+#   #prior(student_t(3, 0, 10), class = "sigma"),
+#   #prior(student_t(3, 0, 10), class = "sigma1"),
+#   #prior(student_t(3, 0, 10), class = "sigma2"),
+#   #prior(inv_gamma(0.1, 0.1), class = "shape"),
+#   #prior(student_t(3, 0, 5), class = "sd")
+#   #prior(student_t(3, 0, 5), class = "sd", dpar = "mu1"),
+#   #prior(student_t(3, 0, 5), class = "sd", dpar = "mu2")
+# )
 
 ## 5.1 Fit ----
 system.time(
-  fit_scores <- brm(
-    #brms_formula_scores,
+  fit_result <- brm(
     brms_formula_result,
     data = train_data,
     #prior = priors_result,
@@ -567,402 +475,66 @@ system.time(
 )
 
 
-
 #fit_list <- list()
 #fit <- 1
 #fit_name <- paste0("fit", fit)
 
 fit <- fit + 1
 fit_name <- paste0("fit", fit)
-fit_list[[fit]] <- fit_scores
+fit_list[[fit]] <- fit_result
 #save(fit_list, file = "~/Desktop/NFL Analysis Data/fit_list_ordinal.rda")
-save(fit_list, file = "~/Desktop/NFL Analysis Data/fit_list_scores.rda")
+save(fit_list, file = "~/Desktop/NFL Analysis Data/fit_list_result.rda")
 
 #print(fit_list[[6]], digits = 4)
-print(fit_scores, digits = 4)
-fixef(fit_scores)
-ranef(fit_scores)
+print(fit_result, digits = 4)
+fixef(fit_result)
+ranef(fit_result)
 
-bayes_R2()
+print(fit_list[[1]], digits = 4)
+print(roi_table_result_historic1, n = nrow(roi_table_result_historic1))
+print(fit_list[[2]], digits = 4)
+print(roi_table_result_historic2, n = nrow(roi_table_result_historic2))
+print(fit_list[[3]], digits = 4)
+print(roi_table_result_historic3, n = nrow(roi_table_result_historic3))
 
-loo_scores_list <- list()
-loo_scores_list[[fit]] <- loo(fit_scores, model_names = paste0("fit", fit))
-
-train_data2 <- train_data |>
-  mutate(
-    # home_score = droplevels(home_score),
-    # away_score = droplevels(away_score),
-    result = droplevels(result)
-  )
-test_data2 <- test_data |>
-  mutate(
-    # home_score = droplevels(home_score),
-    # away_score = droplevels(away_score),
-    result = droplevels(result)
-  )
-
-## 5.2. DISCRETIZE ----
-### 5.2.1 Method 1 -----
-# 1) Empirical distribution of score differences in the TRAIN set
-emp_dist_homescore <- train_data %>% 
-  count(home_score) %>% 
-  mutate(p_emp = n / sum(n)) %>% 
-  arrange(home_score)
-
-emp_dist_awayscore <- train_data %>% 
-  count(away_score) %>% 
-  mutate(p_emp = n / sum(n)) %>% 
-  arrange(away_score)
-
-emp_dist_result <- train_data %>% 
-  count(result) %>% 
-  mutate(p_emp = n / sum(n)) %>% 
-  arrange(result)
-
-emp_dist_total <- train_data %>% 
-  count(total) %>% 
-  mutate(p_emp = n / sum(n)) %>% 
-  arrange(total)
-
-k_vals  <- emp_dist$result       # vector of possible integer results
-p_emp   <- emp_dist$p_emp      # their empirical probabilities
-
-# 2) Extract posterior draws of:
-#    – μ_home, μ_away  (location)  
-#    – σ_home, σ_away  (scale)  
-#    – ρ                (residual correlation)  
-#    – df               (Student‐t d.f.)
-post_linpred <- posterior_linpred(
-  fit_scores, 
-  newdata = test_data, 
-  dpar = "mu", 
-  re_formula = NULL, 
-  summary = FALSE
-)
-# dims: draws × n_games × 2 (home, away)
-
-
-post_pars <- as_draws_matrix(
-  fit_scores,
-  # variable = c(
-  #   "sigma_homescore",
-  #   "sigma_awayscore",
-  #   "rescor__homescore__awayscore",
-  #   "nu"
-  # ),
-  variable = c(
-    "sigma_homescore",
-    "sigma_awayscore",
-    "nu_homescore",
-    "nu_awayscore"
-  )
+loo_compare(
+  loo(fit_list[[1]]),
+  loo(fit_list[[2]]),
+  loo(fit_list[[3]])
 )
 
-# dims: draws × 4
-
-# 2c) Coerce to a plain numeric matrix so indexing returns scalars
-post_pars <- as.matrix(post_pars)
-
-# 2d) Sanity check that the number of draws matches
-n_draws <- nrow(post_pars)
-stopifnot(n_draws == dim(post_linpred)[1])
-
-# 3) Define a helper to map one draw to integer results
-map_draw_to_result <- function(mu_vec, sigma_h, sigma_a, rho, df, k_vals, p_emp) {
-  # coerce scalars to plain numeric
-  sigma_h <- as.vector(sigma_h)
-  sigma_a <- as.vector(sigma_a)
-  rho     <- as.vector(rho)
-  df      <- as.vector(df)
-  
-  # implied Student-t sd for the difference
-  s_diff  <- sqrt(sigma_h^2 + sigma_a^2 - 2 * rho * sigma_h * sigma_a)
-  s_diff  <- as.vector(s_diff)
-  
-  # for each game, weight the t-density at each integer and sample
-  map_int(mu_vec, function(mu_i) {
-    mu_i   <- as.vector(mu_i)
-    dens_k <- dt((k_vals - mu_i) / s_diff, df = df) / s_diff
-    w      <- dens_k * p_emp
-    p_k    <- w / sum(w)
-    sample(k_vals, size = 1, prob = p_k)
-  })
-}
-
-# 4) Loop over all draws to build a tibble of discrete results
-n_games <- dim(post_linpred)[2]
-
-discrete_res <- map(seq_len(n_draws), function(i) {
-  # progress message
-  cat(sprintf("\rProcessing draw %3d / %3d", i, n_draws))
-  flush.console()
-  
-  # continuous means for draw i
-  mu_home <- post_linpred[i, , 1]
-  mu_away <- post_linpred[i, , 2]
-  mu_diff <- mu_home - mu_away
-  
-  # sample integer result for each game
-  map_draw_to_result(
-    mu_vec  = mu_diff,
-    sigma_h = post_pars[i, "sigma_homescore"],
-    sigma_a = post_pars[i, "sigma_awayscore"],
-    rho     = post_pars[i, "rescor__homescore__awayscore"],
-    df      = post_pars[i, "nu"],
-    k_vals  = k_vals,
-    p_emp   = p_emp
-  )
-  
-  # cat(sprintf("\rProcessing draw %3d / %3d", i, n_draws))
-  # flush.console()
-})
-
-cat("\nAll draws processed.\n")
-
-discrete_mat <- t(simplify2array(discrete_res))
-
-# b) turn into a plain matrix and name the columns V1:Vn_draws
-discrete_mat <- t(simplify2array(discrete_res))
-
-# Now `discrete_res` is a [n_games × n_draws] matrix with
-#   - one row per game (same order as test_data)
-#   - one column per posterior draw, named V1 … V{n_draws}
-
-# If you *really* want it as [n_draws × n_games] (draws as rows,
-# games as columns), just transpose:
-# discrete_res_t <- t(discrete_res)
-
-
-# 5) Quick check: posterior pmf for game 1
-prop.table(table(discrete_mat[, 1]))
-sum(prop.table(table(discrete_mat[, 1])))
-
-
-### 5.2.2 Method 2 -----
-emp_dist <- train_data %>%
-  count(result) %>%
-  mutate(p_emp = n / sum(n)) %>%
-  arrange(result)
-
-k_vals <- emp_dist$result
-p_emp  <- emp_dist$p_emp
-
-# 5.2.2 Extract posterior draws of μ, σ, ν
-post_linpred <- posterior_linpred(
-  fit_scores,
-  newdata    = test_data,
-  dpar       = "mu",
-  re_formula = NULL,
-  summary    = FALSE
-)
-# dims: [n_draws, n_games, 2]
-
-post_pars <- as_draws_matrix(
-  fit_scores,
-  variable = c(
-    "sigma_homescore",
-    "sigma_awayscore",
-    "nu_homescore",
-    "nu_awayscore"
-  )
-) %>% as.matrix()
-
-n_draws <- nrow(post_pars)
-stopifnot(n_draws == dim(post_linpred)[1])
-n_games <- dim(post_linpred)[2]
-
-# 5.2.3 Helper to sample discrete result per draw using approximate combined d.f. and rho=0
-map_draw_to_result <- function(mu_vec, sigma_h, sigma_a, nu_h, nu_a, k_vals, p_emp) {
-  sigma_h <- as.vector(sigma_h)
-  sigma_a <- as.vector(sigma_a)
-  # no residual correlation
-  s_diff <- sqrt(sigma_h^2 + sigma_a^2)
-  # approximate degrees of freedom for difference via Welch-Satterthwaite
-  # ensure nu_h > 2 and nu_a > 2 to avoid division by zero
-  df_h <- as.vector(nu_h)
-  df_a <- as.vector(nu_a)
-  var_h <- sigma_h^2
-  var_a <- sigma_a^2
-  num    <- (var_h + var_a)^2
-  denom  <- (var_h^2 / (df_h - 2)) + (var_a^2 / (df_a - 2))
-  df_comb <- num / denom
-  df_comb <- as.vector(df_comb)
-  
-  map_int(mu_vec, function(mu_i) {
-    mu_i   <- as.vector(mu_i)
-    dens_k <- dt((k_vals - mu_i) / s_diff, df = df_comb) / s_diff
-    w      <- dens_k * p_emp
-    p_k    <- w / sum(w)
-    sample(k_vals, size = 1, prob = p_k)
-  })
-}
-
-# 5.2.4 Loop over draws and build discrete matrix and build discrete matrix
-discrete_res <- map(seq_len(n_draws), function(i) {
-  # progress message
-  cat(sprintf("\rProcessing draw %3d / %3d", i, n_draws))
-  flush.console()
-  
-  mu_diff <- post_linpred[i, , 1] - post_linpred[i, , 2]
-  map_draw_to_result(
-    # mu_diff,
-    # post_pars[i, "sigma_homescore"],
-    # post_pars[i, "sigma_awayscore"],
-    # post_pars[i, "nu_homescore"],
-    # post_pars[i, "nu_awayscore"],
-    # k_vals,
-    # p_emp
-    mu_vec  = mu_diff,
-    sigma_h = post_pars[i, "sigma_homescore"],
-    sigma_a = post_pars[i, "sigma_awayscore"],
-    nu_h     = post_pars[i, "nu_homescore"],
-    nu_a      = post_pars[i, "nu_awayscore"],
-    k_vals  = k_vals,
-    p_emp   = p_emp
-  )
-})
-cat("\nAll draws processed.\n")
-
-discrete_mat <- t(simplify2array(discrete_res))
-prop.table(table(discrete_mat[, 1]))
-sum(prop.table(table(discrete_mat[, 1])))
-
-## 5.3 Posteriors -----
-# posterior_train_score <- posterior_predict(
-#   fit_scores,
-#   #newdata = train_data,
-#   re_formula = NULL,
-#   allow_new_levels = TRUE
-# )
-# posterior_train_homescore <- posterior_train_score[,,"homescore"]
-# posterior_train_awayscore <- posterior_train_score[,,"awayscore"]
-# posterior_train_result <- posterior_train_homescore - posterior_train_awayscore
-# posterior_train_total <- posterior_train_homescore + posterior_train_awayscore
-# posterior_train_winner <- posterior_train_homescore > posterior_train_awayscore
-
-fit_scores <- fit_list[[11]]
-posterior_score <- posterior_predict(
-  fit_scores,
+## 5.2 Posterior ----
+posterior_result <- posterior_predict(
+  fit_result,
   newdata = test_data,
-  ndraws = 10000,
+  ndraws = sims,
   re_formula = NULL,
   allow_new_levels = TRUE
 )
-posterior_homescore <- posterior_score[,,"homescore"]
-posterior_awayscore <- posterior_score[,,"awayscore"]
-posterior_result <- posterior_score
-posterior_result <- posterior_homescore - posterior_awayscore
-posterior_total <- posterior_homescore + posterior_awayscore
-posterior_winner <- posterior_homescore > posterior_awayscore
 
 ## 5.3 PPC ----
-pp_check(fit_scores, resp = "homescore", 
-         newdata = train_data, 
-         allow_new_levels = TRUE, 
-         type = "dens_overlay",
-         ndraws = 100) + 
-  scale_x_continuous(limits = c(-100, 100))
-pp_check(fit_scores, resp = "awayscore", 
+pp_check(fit_result, resp = "result", 
          newdata = train_data, 
          allow_new_levels = TRUE,  
          type = "dens_overlay",
          ndraws = 100)
-pp_check(fit_scores, resp = "homescore", 
-         newdata = test_data, 
-         allow_new_levels = TRUE,  
-         type = "dens_overlay",
-         ndraws = 100)
-pp_check(fit_scores, resp = "awayscore", 
-         newdata = test_data, 
-         allow_new_levels = TRUE,  
-         type = "dens_overlay",
-         ndraws = 100)
-
-pp_check(fit_scores, resp = "result", 
-         newdata = train_data, 
-         allow_new_levels = TRUE,  
-         type = "dens_overlay",
-         ndraws = 100)
-
-# pp_check(fit_scores, resp = "homescore", 
-#          newdata = train_data, 
-#          allow_new_levels = TRUE, 
-#          type = "bars",
-#          ndraws = 100)
-# pp_check(fit_scores, resp = "awayscore", 
-#          newdata = train_data, 
-#          allow_new_levels = TRUE,  
-#          type = "bars",
-#          ndraws = 100)
-# pp_check(fit_scores, resp = "homescore", 
-#          newdata = test_data, 
-#          allow_new_levels = TRUE,  
-#          type = "bars",
-#          ndraws = 100)
-# pp_check(fit_scores, resp = "awayscore", 
-#          newdata = test_data, 
-#          allow_new_levels = TRUE,  
-#          type = "bars",
-#          ndraws = 100)
 
 
 ## 5.3 PPD ----
-
 sampleID <- sample(1:sims, 200, replace = FALSE)
-ppc_bars(
-  y = as.numeric(as.character(test_data$home_score)),
-  yrep = round(posterior_homescore[sampleID,])
-)
-ppc_bars(
-  y = as.numeric(as.character(test_data$away_score)),
-  yrep = round(posterior_awayscore[sampleID,])
-)
 ppc_bars(
   y = as.numeric(as.character(test_data$result)),
   yrep = round(posterior_result[sampleID,])
 )
-ppc_bars(
-  y = as.numeric(as.character(test_data$result)),
-  yrep = round(posterior_homescore[sampleID,]) - round(posterior_awayscore[sampleID,])
-)
-ppc_bars(
-  y = as.numeric(as.character(test_data$total)),
-  yrep = round(posterior_total[sampleID,])
-)
-ppc_bars(
-  y = as.numeric(as.character(test_data$total)),
-  yrep = round(posterior_homescore[sampleID,]) + round(posterior_awayscore[sampleID,])
-)
-
-ppc_dens_overlay(
-  y = as.numeric(as.character(test_data$home_score)),
-  yrep = posterior_homescore[sampleID,]
-) +
-  ppc_dens_overlay(
-    y = as.numeric(as.character(test_data$away_score)),
-    yrep = posterior_awayscore[sampleID,]
-  ) +
-  ppc_dens_overlay(
-    y = as.numeric(as.character(test_data$result)),
-    yrep = posterior_result[sampleID,]
-  ) +
-  ppc_dens_overlay(
-    y = as.numeric(as.character(test_data$total)),
-    yrep = posterior_total[sampleID,]
-  ) 
-
 ppc_dens_overlay(
   y = as.numeric(as.character(test_data$result)),
   yrep = posterior_result[sampleID,]
 )
-ppc_bars(
-  y = as.numeric(as.character(test_data$result)),
-  yrep = discrete_mat[sampleID,]
-)
+
 
 ## 5.4 Conditional Effects ----
-Fitsmooth <- conditional_smooths(fit_scores, 
-                                 resp = "homescore", 
+Fitsmooth <- conditional_smooths(fit_result, 
+                                 resp = "result", 
                                  method = "posterior_predict"
 )
 plot(Fitsmooth,
@@ -970,7 +542,7 @@ plot(Fitsmooth,
      ask = FALSE)
 
 conditional_eff <- conditional_effects(
-  fit_scores,
+  fit_result,
   # effects = c(
   #   "home_OSRS_net",
   #   "home_off_epa_roll",
@@ -989,53 +561,21 @@ plot(conditional_eff,
      ask = FALSE)
 
 
-# 6. Performance ----
-### MAE ----
-# Performance Metrics ----
-## Test ----
+# 6.Performance Metrics ----
 ### MAE
-MAE_pred_homescore <- mean(abs(colMeans(posterior_homescore) - 
-                                 as.numeric(as.character(test_data$home_score))))
-MAE_pred_awayscore <- mean(abs(colMeans(posterior_awayscore) - 
-                                 as.numeric(as.character(test_data$away_score))))
 MAE_pred_result <- mean(abs(colMeans(posterior_result) - test_data$result))
-MAE_pred_result <- mean(abs(colMeans(discrete_mat) - test_data$result))
-MAE_pred_total <- mean(abs(colMeans(posterior_total) - test_data$total))
-
-MAE_pred_homescore
-MAE_pred_awayscore
 MAE_pred_result
-MAE_pred_total
 
 ### MAD
-MAD_pred_homescore <- mean(abs(apply(posterior_homescore, 2, function(x){quantile(x, 0.5)}) - 
-                                 as.numeric(as.character(test_data2$home_score))))
-MAD_pred_awayscore <- mean(abs(apply(posterior_awayscore, 2, function(x){quantile(x, 0.5)}) - 
-                                 as.numeric(as.character(test_data2$away_score))))
 MAD_pred_result <- mean(abs(apply(posterior_result, 2, function(x){quantile(x, 0.5)}) - test_data$result))
-MAD_pred_total <- mean(abs(apply(posterior_total, 2, function(x){quantile(x, 0.5)}) - test_data$total))
-
-MAD_pred_homescore
-MAD_pred_awayscore
 MAD_pred_result
-MAD_pred_total
 
 ### RMSE
-RMSE_pred_homescore <- Metrics::rmse(colMeans(posterior_homescore),
-                                     as.numeric(as.character(test_data$home_score)))
-RMSE_pred_awayscore <- Metrics::rmse(colMeans(posterior_awayscore),
-                                     as.numeric(as.character(test_data$away_score)))
 RMSE_pred_result <- Metrics::rmse(colMeans(posterior_result), test_data$result)
-Metrics::rmse(colMeans(discrete_mat), test_data$result)
-RMSE_pred_total <- Metrics::rmse(colMeans(posterior_total), test_data$total)
-
-RMSE_pred_homescore
-RMSE_pred_awayscore
 RMSE_pred_result
-RMSE_pred_total
 
 
-# Betting ----
+## Betting ----
 compute_betting_accuracy <- function(posterior_matrix,
                                      game_data,
                                      target = c("result", "total"),
@@ -1161,7 +701,7 @@ compute_betting_accuracy <- function(posterior_matrix,
   return(list(df = df,summary = summary))
 }
 
-# Return on Investment ----
+## Return on Investment ----
 compute_roi_table <- function(posterior_matrix, new_data,
                               target = c("result", "total"),
                               group_vars = NULL,
@@ -1345,7 +885,7 @@ compute_roi_table <- function(posterior_matrix, new_data,
 }
 
 
-# Compute Bet Results ----
+## Compute Bet Results ----
 betting_vars <- c(
   "game_id", "season", "week",
   "game_type","season_type",
@@ -1365,7 +905,7 @@ betting_vars <- c(
 betting_df <- test_data |>
   select(all_of(betting_vars))
 
-# Result ----
+## Result ----
 betting_accuracy_result <- compute_betting_accuracy(
   posterior_result,
   #discrete_mat,
@@ -1445,68 +985,378 @@ ggplot(roi_table_result_historic, aes(x = threshold, y = profit)) +
   ) +
   theme_bw()
 
-# Total ----
-betting_accuracy_total <- compute_betting_accuracy(
-  posterior_total,
-  betting_df,
-  target = c("total"),
-  vegas_line_col = NULL,
-  vegas_prob_col1 = NULL,
-  vegas_prob_col2 = NULL,
-  actual_col = NULL,
-  xgb_pred_col = NULL,
-  prob_threshold = 0.6,
-  group_vars = NULL
-)
-betting_accuracy_total$summary
 
-roi_table_total_historic <- compute_roi_table(
-  posterior_matrix = posterior_total, 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 1. BACKTEST  ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# Prepare data
+backtest_data <- brms_data |>
+  select(game_id, season, week, home_team, away_team,
+         result,
+         net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
+
+# Define backtest weeks (2010 to current)
+weeks_df <- backtest_data |> 
+  distinct(season, week) |> 
+  arrange(season, week) |> 
+  filter(season >= 2010)
+
+# Initialize training set (pre-2010)
+train_set <- backtest_data |> filter(season < 2010)
+test_set <- backtest_data |> filter(season >= 2010)
+
+brms_formula_result <-
+  bf(
+    result ~
+      #0 + Intercept +
+      net_elo +
+      net_rating +
+      hfa_pre +
+      home_net_off_red_zone_app_perc_cum
+  ) + 
+  brmsfamily(family = "student", link = "identity") 
+
+iters <- 4000
+burn <- 2000
+chains <- 4
+sims <- (iters-burn)*chains
+
+# Container for results
+backtest_results <- list()
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 2. Iterative backtesting loop ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+n_weeks <- nrow(weeks_df)
+system.time(
+for (i in seq_len(n_weeks)) {
+  yr <- weeks_df$season[i]
+  wk <- weeks_df$week[i]
+  key <- sprintf("S%d_W%d", yr, wk)
+  message(sprintf("[Backtest %d/%d] Processing %s...", i, n_weeks, key))
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2a. Split and Preprocess ----
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  test_feats <- test_set |> 
+    filter(season == yr, week == wk) # |> 
+    # select(game_id, season, week, home_team, away_team,
+    #        net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
+  test_full <- test_feats # |> 
+    #left_join(modDataBase |> select(game_id, result), by = "game_id")
+  
+  message("  - Preprocessing data...")
+  preProc <- preProcess(
+    train_set |> select(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+    method = c("center", "scale")
+  )
+  train_pp <- predict(preProc, train_set)
+  test_pp <- predict(preProc, test_full)
+  # train_pp <- train_set |> 
+  #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+  #                 ~ predict(preProc, .x))) |> 
+  #   select(game_id, season, week, home_team, away_team,
+  #          result, net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
+  # test_pp <- test_feats |> 
+  #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+  #                 ~ predict(preProc, .x)))
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2b. Fit BRMS model ----
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  message("  - Fitting BRMS model...")
+  # fit_model <- brm(
+  #   result ~ net_elo + net_rating + hfa_pre + home_net_off_red_zone_app_perc_cum,
+  #   data    = train_pp,
+  #   family  = gaussian(),
+  #   chains  = 4,
+  #   iter    = 2000,
+  #   cores   = parallel::detectCores(),
+  #   seed    = 123
+  # )
+  
+  fit_model <- brm(
+    brms_formula_result,
+    data = train_pp,
+    #prior = priors_result,
+    drop_unused_levels = FALSE,
+    save_pars = save_pars(all = TRUE), 
+    chains = chains,
+    iter = iters,
+    warmup = burn,
+    cores = parallel::detectCores(),
+    init = 0,
+    normalize = TRUE,
+    control = list(adapt_delta = 0.95),
+    backend = "cmdstanr",
+    seed = 52, 
+    refresh = 0
+  )
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2c. Posterior prediction ----
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  message("  - Generating posterior predictions...")
+  posterior_mat <- posterior_predict(
+    fit_model,
+    newdata = test_pp,
+    re_formula = NULL,
+    allow_new_levels = TRUE
+  )
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2d. Extract effects ----
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  effects_mat <- fixef(fit_model)
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2e. Store iteration results ----
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  backtest_results[[key]] <- list(
+    train     = train_pp,
+    test      = test_pp,
+    posterior = posterior_mat,
+    effects   = effects_mat
+  )
+  
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # 2f. Update training set ----
+  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  train_set <- bind_rows(
+    train_set,
+    test_full
+  )
+}
+)
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 3. Result: backtest_results list structure ----
+#    $"S{YEAR}_W{WEEK}" -> list(train, test, posterior, effects)
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# Optionally save
+save(backtest_results, file = "~/Desktop/NFL Analysis Data/backtest_results.rda")
+
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 4. Combine predictions and compute metrics ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+library(purrr)
+library(tidyr)
+library(ggplot2)
+
+betting_vars <- c(
+  "game_id", "season", "week",
+  "game_type","season_type",
+  "home_team","away_team",
+  "home_score", 
+  "away_score", 
+  "result","spread_line","spreadCover",
+  "total","total_line","totalCover",
+  "winner",
+  "away_spread_odds","away_spread_prob",
+  "home_spread_odds","home_spread_prob",
+  "over_odds","over_prob","under_odds","under_prob",
+  "away_moneyline","away_moneyline_prob",
+  "home_moneyline","home_moneyline_prob"
+)
+
+betting_df <- brms_data |>
+  filter(season >= 2010) |>
+  select(all_of(betting_vars))
+
+posterior_all_backtest <- do.call(cbind, map(backtest_results, "posterior"))
+
+group_col <- NULL
+roi_table_backtest_all <- compute_roi_table(
+  posterior_matrix = posterior_all_backtest, 
+  #posterior_matrix = discrete_mat, 
   new_data = betting_df,
-  target = "total",
-  threshold_grid = seq(0.50, 0.75, by = 0.001),
+  target = "result",
+  group_vars = group_col,
+  threshold_grid = seq(0.50, 0.75, by = 0.01),
   default_odds = -110,
   use_historic_odds = TRUE,
   stake = 100)
-#print(roi_table_total_historic, n =nrow(roi_table_total_historic))
+print(roi_table_backtest_all, n =nrow(roi_table_backtest_all))
 
-roi_table_total_default <- compute_roi_table(
-  posterior_matrix = posterior_total, 
-  new_data = betting_df,
-  target = "total",
-  threshold_grid = seq(0.50, 0.75, by = 0.01),
-  default_odds = -110,
-  use_historic_odds = FALSE,
-  stake = 100)
-#print(roi_table_total_default, n =nrow(roi_table_total_default))
-
-roi_table_total <-
-  bind_cols(
-    roi_table_total_default,
-    roi_table_total_historic |> select(accuracy_hist = accuracy,
-                                       roi_hist = roi, 
-                                       profit_hist = profit)
-  )
-print(roi_table_total, n = nrow(roi_table_total))
+ggplot(roi_table_backtest_all, aes(x = threshold, y = accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Accuracy by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "Accuracy"
+  ) +
+  theme_bw()
 
 # Finally, plot ROI vs. threshold
-ggplot(roi_table_total_historic, aes(x = threshold, y = roi)) +
+ggplot(roi_table_backtest_all, aes(x = threshold, y = roi)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "ROI by Posterior Betting Confidence Threshold - total",
+    title = "ROI by Posterior Betting Confidence Threshold - Result",
     x = "Posterior Threshold",
     y = "ROI"
-  )
+  ) +
+  theme_bw()
 
-ggplot(roi_table_total_historic, aes(x = threshold, y = profit)) +
+ggplot(roi_table_backtest_all, aes(x = threshold, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "Profit by Posterior Betting Confidence Threshold - total",
+    title = "Profit by Posterior Betting Confidence Threshold - Result",
     x = "Posterior Threshold",
     y = "Profit"
+  ) +
+  theme_bw()
+
+group_col <- "season"
+roi_table_backtest_season <- compute_roi_table(
+  posterior_matrix = posterior_all_backtest, 
+  #posterior_matrix = discrete_mat, 
+  new_data = betting_df,
+  target = "result",
+  group_vars = group_col,
+  threshold_grid = 0.58, #seq(0.50, 0.75, by = 0.01),
+  default_odds = -110,
+  use_historic_odds = TRUE,
+  stake = 100)
+print(roi_table_backtest_season, n =nrow(roi_table_backtest_season))
+
+ggplot(roi_table_backtest_season, aes(x = season, y = accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Accuracy by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "Accuracy"
+  ) +
+  theme_bw()
+
+# Finally, plot ROI vs. threshold
+ggplot(roi_table_backtest_season, aes(x = season, y = roi)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "ROI by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "ROI"
+  ) +
+  theme_bw()
+
+ggplot(roi_table_backtest_season, aes(x = season, y = profit)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Profit by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "Profit"
+  ) +
+  theme_bw()
+
+group_col <- "week"
+roi_table_backtest_week <- compute_roi_table(
+  posterior_matrix = posterior_all_backtest, 
+  #posterior_matrix = discrete_mat, 
+  new_data = betting_df,
+  target = "result",
+  group_vars = group_col,
+  threshold_grid = 0.58, #seq(0.50, 0.75, by = 0.01),
+  default_odds = -110,
+  use_historic_odds = TRUE,
+  stake = 100)
+print(roi_table_backtest_week, n =nrow(roi_table_backtest_week))
+
+ggplot(roi_table_backtest_week, aes(x = week, y = accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Accuracy by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "Accuracy"
+  ) +
+  theme_bw()
+
+# Finally, plot ROI vs. threshold
+ggplot(roi_table_backtest_week, aes(x = week, y = roi)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "ROI by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "ROI"
+  ) +
+  theme_bw()
+
+ggplot(roi_table_backtest_week, aes(x = week, y = profit)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Profit by Posterior Betting Confidence Threshold - Result",
+    x = "Posterior Threshold",
+    y = "Profit"
+  ) +
+  theme_bw()
+
+# 4a. Bind all posterior predictions into one tibble
+all_preds <- imap_dfr(backtest_results, function(res, key) {
+  test_df <- res$test
+  post_mat <- res$posterior    # draws x games
+  # calculate summaries per game
+  pred_mean <- colMeans(post_mat)
+  pred_lwr  <- apply(post_mat, 2, quantile, probs = 0.025)
+  pred_upr  <- apply(post_mat, 2, quantile, probs = 0.975)
+  tibble(
+    slate      = key,
+    game_id    = test_df$game_id,
+    actual     = test_df$result,
+    pred_mean  = pred_mean,
+    pred_lwr   = pred_lwr,
+    pred_upr   = pred_upr
   )
+})
+
+# 4b. Calculate overall error metrics
+error_metrics <- all_preds %>%
+  summarise(
+    MAE      = mean(abs(pred_mean - actual)),
+    MAD      = median(abs(pred_mean - actual)),
+    RMSE     = sqrt(mean((pred_mean - actual)^2)),
+    Bias     = mean(pred_mean - actual),
+    Coverage = mean(actual >= pred_lwr & actual <= pred_upr)
+  )
+print(error_metrics)
+
+# 4c. Compute ROI table across thresholds
+roi_all <- compute_roi_table(
+  posterior_matrix = do.call(cbind, map(backtest_results, "posterior")),
+  new_data         = bind_rows(map(backtest_results, "test")),
+  threshold_grid   = seq(0.50, 0.75, by = 0.01)
+)
+print(roi_all)
+
+# 4d. Plot ROI and Profit vs Threshold
+roi_long <- roi_all %>%
+  select(threshold, roi, edge_roi, profit, edge_profit) %>%
+  pivot_longer(cols = c(roi, edge_roi, profit, edge_profit),
+               names_to = "metric", values_to = "value")
+
+ggplot(roi_long, aes(x = threshold, y = value, color = metric)) +
+  geom_line() + geom_point() +
+  facet_wrap(~ metric, scales = "free_y") +
+  labs(title = "Betting Performance vs Confidence Threshold",
+       x = "Posterior Probability Threshold",
+       y = "Value") +
+  theme_minimal()
+
+# End of backtest and evaluation
+
+
+
+
 
 
 
