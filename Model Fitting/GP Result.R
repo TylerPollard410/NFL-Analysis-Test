@@ -71,12 +71,12 @@ modDataBase <- modData |>
     kfaData$train,
     by = join_by(game_id, season, week, home_team, away_team, location)
   )
-  # left_join(
-  #   kfaData$test |> rename(home_rating_post = home_rating_pre,
-  #                          away_rating_post = away_rating_pre,
-  #                          hfa_post = hfa_pre),
-  #   by = join_by(game_id, season, week, home_team, away_team, location)
-  # )
+# left_join(
+#   kfaData$test |> rename(home_rating_post = home_rating_pre,
+#                          away_rating_post = away_rating_pre,
+#                          hfa_post = hfa_pre),
+#   by = join_by(game_id, season, week, home_team, away_team, location)
+# )
 
 modData <- modDataBase |> filter(season >= 2007) |>
   mutate(
@@ -313,23 +313,23 @@ brms_formula_result <-
       # away_turnover_won_cum + 
       # away_turnover_lost_cum +
       home_net_off_red_zone_app_perc_cum
-      #away_net_off_red_zone_app_perc_cum 
-      #home_net_off_red_zone_eff_cum +
-      #away_net_off_red_zone_eff_cum
-      # home_off_red_zone_app_perc_cum + 
-      # home_def_red_zone_app_perc_cum +
-      # home_off_red_zone_eff_cum + 
-      # home_def_red_zone_eff_cum +
-      # away_off_red_zone_app_perc_cum + 
-      # away_def_red_zone_app_perc_cum +
-      # away_off_red_zone_eff_cum + 
-      # away_def_red_zone_eff_cum 
-      # gp(season, by = home_team) +
-      # gp(season, by = away_team) 
-      #(1|gr(season, by = home_team, id = "H")) +
-      #(1|gr(season, by = away_team, id = "A"))
-      #s(week_seq) +
-      #(1|season)
+    #away_net_off_red_zone_app_perc_cum 
+    #home_net_off_red_zone_eff_cum +
+    #away_net_off_red_zone_eff_cum
+    # home_off_red_zone_app_perc_cum + 
+    # home_def_red_zone_app_perc_cum +
+    # home_off_red_zone_eff_cum + 
+    # home_def_red_zone_eff_cum +
+    # away_off_red_zone_app_perc_cum + 
+    # away_def_red_zone_app_perc_cum +
+    # away_off_red_zone_eff_cum + 
+    # away_def_red_zone_eff_cum 
+    # gp(season, by = home_team) +
+    # gp(season, by = away_team) 
+    #(1|gr(season, by = home_team, id = "H")) +
+    #(1|gr(season, by = away_team, id = "A"))
+    #s(week_seq) +
+    #(1|season)
   ) + 
   brmsfamily(family = "student", link = "identity") 
 #brmsfamily(family = "cumulative", link = "logit") 
@@ -813,6 +813,7 @@ compute_roi_table <- function(posterior_matrix, new_data,
       temp %>%
         group_by(across(all_of(group_vars))) %>%
         summarise(
+          threshold = thresh,
           bets_placed = sum(!is.na(bet_choice)),
           bets_won     = sum(bet_hit == 1L, na.rm = TRUE),
           bets_lost    = sum(bet_hit == 0L, na.rm = TRUE),
@@ -830,8 +831,8 @@ compute_roi_table <- function(posterior_matrix, new_data,
           roi    = round(roi,    4),
           profit = round(profit, 2),
           edge_roi    = round(edge_roi,    4),
-          edge_profit = round(edge_profit, 2),
-          threshold = thresh
+          edge_profit = round(edge_profit, 2)
+          # threshold = thresh
         ) %>%
         select(all_of(group_vars), 
                threshold, bets_placed, bets_won, bets_lost, bets_pushed, 
@@ -907,7 +908,7 @@ betting_df <- test_data |>
 
 ## Result ----
 betting_accuracy_result <- compute_betting_accuracy(
-  posterior_result,
+  posterior_all_backtest,
   #discrete_mat,
   betting_df,
   target = c("result"),
@@ -1004,8 +1005,8 @@ weeks_df <- backtest_data |>
   filter(season >= 2010)
 
 # Initialize training set (pre-2010)
-train_set <- backtest_data |> filter(season < 2010)
-test_set <- backtest_data |> filter(season >= 2010)
+#train_set <- backtest_data |> filter(season < 2010)
+#test_set <- backtest_data |> filter(season >= 2010)
 
 brms_formula_result <-
   bf(
@@ -1014,7 +1015,8 @@ brms_formula_result <-
       net_elo +
       net_rating +
       hfa_pre +
-      home_net_off_red_zone_app_perc_cum
+      home_net_off_red_zone_app_perc_cum +
+      (1|home_team) #+ (1|away_team)
   ) + 
   brmsfamily(family = "student", link = "identity") 
 
@@ -1031,104 +1033,114 @@ backtest_results <- list()
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 n_weeks <- nrow(weeks_df)
 system.time(
-for (i in seq_len(n_weeks)) {
-  yr <- weeks_df$season[i]
-  wk <- weeks_df$week[i]
-  key <- sprintf("S%d_W%d", yr, wk)
-  message(sprintf("[Backtest %d/%d] Processing %s...", i, n_weeks, key))
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2a. Split and Preprocess ----
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  test_feats <- test_set |> 
-    filter(season == yr, week == wk) # |> 
+  for (i in seq_len(n_weeks)) {
+    yr <- weeks_df$season[i]
+    wk <- weeks_df$week[i]
+    key <- sprintf("S%d_W%d", yr, wk)
+    message(sprintf("[Backtest %d/%d] Processing %s...", i, n_weeks, key))
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2a. Split and Preprocess ----
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # Use prior 3 seasons plus current season up to week-1
+    train_feats <- backtest_data |> 
+      filter(
+        (season >= yr - 3 & season < yr) |
+          (season == yr & week < wk)
+      )
+    
+    test_feats <- backtest_data |> 
+      filter(season == yr, week == wk) 
+    
+    # test_feats <- test_set |> 
+    #   filter(season == yr, week == wk) # |> 
     # select(game_id, season, week, home_team, away_team,
     #        net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
-  test_full <- test_feats # |> 
+    # test_full <- test_feats # |> 
     #left_join(modDataBase |> select(game_id, result), by = "game_id")
-  
-  message("  - Preprocessing data...")
-  preProc <- preProcess(
-    train_set |> select(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
-    method = c("center", "scale")
-  )
-  train_pp <- predict(preProc, train_set)
-  test_pp <- predict(preProc, test_full)
-  # train_pp <- train_set |> 
-  #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
-  #                 ~ predict(preProc, .x))) |> 
-  #   select(game_id, season, week, home_team, away_team,
-  #          result, net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
-  # test_pp <- test_feats |> 
-  #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
-  #                 ~ predict(preProc, .x)))
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2b. Fit BRMS model ----
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  message("  - Fitting BRMS model...")
-  # fit_model <- brm(
-  #   result ~ net_elo + net_rating + hfa_pre + home_net_off_red_zone_app_perc_cum,
-  #   data    = train_pp,
-  #   family  = gaussian(),
-  #   chains  = 4,
-  #   iter    = 2000,
-  #   cores   = parallel::detectCores(),
-  #   seed    = 123
-  # )
-  
-  fit_model <- brm(
-    brms_formula_result,
-    data = train_pp,
-    #prior = priors_result,
-    drop_unused_levels = FALSE,
-    save_pars = save_pars(all = TRUE), 
-    chains = chains,
-    iter = iters,
-    warmup = burn,
-    cores = parallel::detectCores(),
-    init = 0,
-    normalize = TRUE,
-    control = list(adapt_delta = 0.95),
-    backend = "cmdstanr",
-    seed = 52, 
-    refresh = 0
-  )
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2c. Posterior prediction ----
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  message("  - Generating posterior predictions...")
-  posterior_mat <- posterior_predict(
-    fit_model,
-    newdata = test_pp,
-    re_formula = NULL,
-    allow_new_levels = TRUE
-  )
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2d. Extract effects ----
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  effects_mat <- fixef(fit_model)
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2e. Store iteration results ----
-  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  backtest_results[[key]] <- list(
-    train     = train_pp,
-    test      = test_pp,
-    posterior = posterior_mat,
-    effects   = effects_mat
-  )
-  
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # 2f. Update training set ----
-  # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  train_set <- bind_rows(
-    train_set,
-    test_full
-  )
-}
+    
+    message("  - Preprocessing data...")
+    preProc <- preProcess(
+      train_feats |> select(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+      method = c("center", "scale")
+    )
+    train_pp <- predict(preProc, train_feats)
+    test_pp <- predict(preProc, test_feats)
+    # train_pp <- train_set |> 
+    #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+    #                 ~ predict(preProc, .x))) |> 
+    #   select(game_id, season, week, home_team, away_team,
+    #          result, net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum)
+    # test_pp <- test_feats |> 
+    #   mutate(across(c(net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum),
+    #                 ~ predict(preProc, .x)))
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2b. Fit BRMS model ----
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    message("  - Fitting BRMS model...")
+    # fit_model <- brm(
+    #   result ~ net_elo + net_rating + hfa_pre + home_net_off_red_zone_app_perc_cum,
+    #   data    = train_pp,
+    #   family  = gaussian(),
+    #   chains  = 4,
+    #   iter    = 2000,
+    #   cores   = parallel::detectCores(),
+    #   seed    = 123
+    # )
+    
+    fit_model <- brm(
+      brms_formula_result,
+      data = train_pp,
+      #prior = priors_result,
+      drop_unused_levels = FALSE,
+      save_pars = save_pars(all = TRUE), 
+      chains = chains,
+      iter = iters,
+      warmup = burn,
+      cores = parallel::detectCores(),
+      init = 0,
+      normalize = TRUE,
+      control = list(adapt_delta = 0.95),
+      backend = "cmdstanr",
+      seed = 52, 
+      refresh = 0
+    )
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2c. Posterior prediction ----
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # message("  - Saving iteration...")
+    # posterior_mat <- posterior_predict(
+    #   fit_model,
+    #   newdata = test_pp,
+    #   re_formula = NULL,
+    #   allow_new_levels = TRUE
+    # )
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2d. Extract effects ----
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    #effects_mat <- fixef(fit_model)
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2e. Store iteration results ----
+    #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    message("  - Saving iteration...")
+    backtest_results[[key]] <- list(
+      train = train_pp,
+      test  = test_pp,
+      model = fit_model
+    )
+    
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # 2f. Update training set ----
+    # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    # train_set <- bind_rows(
+    #   train_set,
+    #   test_full
+    # )
+  }
 )
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 3. Result: backtest_results list structure ----
@@ -1136,7 +1148,7 @@ for (i in seq_len(n_weeks)) {
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Optionally save
-save(backtest_results, file = "~/Desktop/NFL Analysis Data/backtest_results.rda")
+save(backtest_results, file = "~/Desktop/NFL Analysis Data/backtest_results3.rda")
 
 
 
@@ -1169,11 +1181,16 @@ betting_df <- brms_data |>
 
 posterior_all_backtest <- do.call(cbind, map(backtest_results, "posterior"))
 
+posterior_all_backtest <- all_posts
+season2024_idx <- which(betting_df$season == 2024)
+
+## 4.1 ROI ----
+### 4.1.1 All ----
 group_col <- NULL
 roi_table_backtest_all <- compute_roi_table(
-  posterior_matrix = posterior_all_backtest, 
+  posterior_matrix = posterior_all_backtest, #[,season2024_idx], 
   #posterior_matrix = discrete_mat, 
-  new_data = betting_df,
+  new_data = betting_df, #[season2024_idx,],
   target = "result",
   group_vars = group_col,
   threshold_grid = seq(0.50, 0.75, by = 0.01),
@@ -1186,33 +1203,49 @@ ggplot(roi_table_backtest_all, aes(x = threshold, y = accuracy)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "Accuracy by Posterior Betting Confidence Threshold - Result",
+    title = "Accuracy by Posterior Betting Confidence Threshold",
+    #subtitle = "All 2010-2024",# "2024 Only",
+    subtitle = "2024 Only",
     x = "Posterior Threshold",
     y = "Accuracy"
   ) +
-  theme_bw()
-
-# Finally, plot ROI vs. threshold
-ggplot(roi_table_backtest_all, aes(x = threshold, y = roi)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "ROI by Posterior Betting Confidence Threshold - Result",
-    x = "Posterior Threshold",
-    y = "ROI"
-  ) +
-  theme_bw()
-
+  theme_bw() +
 ggplot(roi_table_backtest_all, aes(x = threshold, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "Profit by Posterior Betting Confidence Threshold - Result",
+    title = "Profit by Posterior Betting Confidence Threshold",
+    #subtitle = "All 2010-2024",# "2024 Only",
+    subtitle = "2024 Only",
     x = "Posterior Threshold",
     y = "Profit"
   ) +
   theme_bw()
 
+ggplot(roi_table_backtest_all, aes(x = threshold, y = edge_accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Accuracy by Posterior Betting Confidence Threshold",
+    #subtitle = "All 2010-2024",# "2024 Only",
+    subtitle = "2024 Only",
+    x = "Posterior Threshold",
+    y = "Accuracy"
+  ) +
+  theme_bw() +
+  ggplot(roi_table_backtest_all, aes(x = threshold, y = edge_profit)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Profit by Posterior Betting Confidence Threshold",
+    #subtitle = "All 2010-2024",# "2024 Only",
+    subtitle = "2024 Only",
+    x = "Posterior Threshold",
+    y = "Profit"
+  ) +
+  theme_bw()
+
+### 4.1.2 Season ----
 group_col <- "season"
 roi_table_backtest_season <- compute_roi_table(
   posterior_matrix = posterior_all_backtest, 
@@ -1220,7 +1253,7 @@ roi_table_backtest_season <- compute_roi_table(
   new_data = betting_df,
   target = "result",
   group_vars = group_col,
-  threshold_grid = 0.58, #seq(0.50, 0.75, by = 0.01),
+  threshold_grid = 0.60, #seq(0.50, 0.75, by = 0.01),
   default_odds = -110,
   use_historic_odds = TRUE,
   stake = 100)
@@ -1230,33 +1263,34 @@ ggplot(roi_table_backtest_season, aes(x = season, y = accuracy)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "Accuracy by Posterior Betting Confidence Threshold - Result",
+    title = "Accuracy by Posterior Betting Confidence Threshold",
     x = "Posterior Threshold",
     y = "Accuracy"
   ) +
-  theme_bw()
+  theme_bw() +
 
 # Finally, plot ROI vs. threshold
-ggplot(roi_table_backtest_season, aes(x = season, y = roi)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "ROI by Posterior Betting Confidence Threshold - Result",
-    x = "Posterior Threshold",
-    y = "ROI"
-  ) +
-  theme_bw()
+# ggplot(roi_table_backtest_season, aes(x = season, y = roi)) +
+#   geom_line() +
+#   geom_point() +
+#   labs(
+#     title = "ROI by Posterior Betting Confidence Threshold - Result",
+#     x = "Posterior Threshold",
+#     y = "ROI"
+#   ) +
+#   theme_bw()
 
 ggplot(roi_table_backtest_season, aes(x = season, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
-    title = "Profit by Posterior Betting Confidence Threshold - Result",
+    title = "Profit by Posterior Betting Confidence Threshold",
     x = "Posterior Threshold",
     y = "Profit"
   ) +
   theme_bw()
 
+### 4.1.3 Week ----
 group_col <- "week"
 roi_table_backtest_week <- compute_roi_table(
   posterior_matrix = posterior_all_backtest, 
@@ -1264,7 +1298,7 @@ roi_table_backtest_week <- compute_roi_table(
   new_data = betting_df,
   target = "result",
   group_vars = group_col,
-  threshold_grid = 0.58, #seq(0.50, 0.75, by = 0.01),
+  threshold_grid = 0.60, #seq(0.50, 0.75, by = 0.01),
   default_odds = -110,
   use_historic_odds = TRUE,
   stake = 100)
@@ -1278,18 +1312,18 @@ ggplot(roi_table_backtest_week, aes(x = week, y = accuracy)) +
     x = "Posterior Threshold",
     y = "Accuracy"
   ) +
-  theme_bw()
+  theme_bw() +
 
-# Finally, plot ROI vs. threshold
-ggplot(roi_table_backtest_week, aes(x = week, y = roi)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "ROI by Posterior Betting Confidence Threshold - Result",
-    x = "Posterior Threshold",
-    y = "ROI"
-  ) +
-  theme_bw()
+# # Finally, plot ROI vs. threshold
+# ggplot(roi_table_backtest_week, aes(x = week, y = roi)) +
+#   geom_line() +
+#   geom_point() +
+#   labs(
+#     title = "ROI by Posterior Betting Confidence Threshold - Result",
+#     x = "Posterior Threshold",
+#     y = "ROI"
+#   ) +
+#   theme_bw()
 
 ggplot(roi_table_backtest_week, aes(x = week, y = profit)) +
   geom_line() +
@@ -1304,7 +1338,7 @@ ggplot(roi_table_backtest_week, aes(x = week, y = profit)) +
 # 4a. Bind all posterior predictions into one tibble
 all_preds <- imap_dfr(backtest_results, function(res, key) {
   test_df <- res$test
-  post_mat <- res$posterior    # draws x games
+  post_mat <- post_list[[key]] #res$posterior    # draws x games
   # calculate summaries per game
   pred_mean <- colMeans(post_mat)
   pred_lwr  <- apply(post_mat, 2, quantile, probs = 0.025)
@@ -1339,24 +1373,377 @@ roi_all <- compute_roi_table(
 print(roi_all)
 
 # 4d. Plot ROI and Profit vs Threshold
-roi_long <- roi_all %>%
+roi_long <- roi_table_backtest_all %>%
   select(threshold, roi, edge_roi, profit, edge_profit) %>%
   pivot_longer(cols = c(roi, edge_roi, profit, edge_profit),
                names_to = "metric", values_to = "value")
 
 ggplot(roi_long, aes(x = threshold, y = value, color = metric)) +
   geom_line() + geom_point() +
-  facet_wrap(~ metric, scales = "free_y") +
+  facet_wrap(~ metric, scales = "free_y", dir = "v") +
   labs(title = "Betting Performance vs Confidence Threshold",
        x = "Posterior Probability Threshold",
        y = "Value") +
   theme_minimal()
 
 # End of backtest and evaluation
+### 4.1.4 PPC ----
+sampleID <- sample(1:sims, 500, replace = FALSE)
+ppc_bars(
+  y = as.numeric(as.character(betting_df$result)),
+  yrep = round(posterior_all_backtest[sampleID,])
+) /
+ppc_dens_overlay(
+  y = as.numeric(as.character(betting_df$result)),
+  yrep = posterior_all_backtest[sampleID,]
+)
+
+ppc_ecdf_overlay(
+  y = betting_df$result,
+  yrep = posterior_all_backtest[sampleID,],
+  discrete = FALSE
+)
+ppc_ecdf_overlay(
+  y = betting_df$result,
+  yrep = round(posterior_all_backtest[sampleID,]),
+  discrete = TRUE
+)
+
+ppc_ecdf_overlay_grouped(
+  y = betting_df$result,
+  yrep = posterior_all_backtest[sampleID,],
+  discrete = FALSE,
+  group = betting_df$season
+)
+ppc_ecdf_overlay_grouped(
+  y = betting_df$result,
+  yrep = round(posterior_all_backtest[sampleID,]),
+  discrete = TRUE,
+  group = betting_df$season
+)
+
+ppc_error_scatter_avg(
+  y = betting_df$result,
+  yrep = posterior_all_backtest[sampleID,]
+  )
+ppc_error_scatter_avg(
+  y = betting_df$result,
+  yrep = round(posterior_all_backtest[sampleID,])
+)
+
+ppc_pit_ecdf(
+  y = betting_df$result,
+  yrep = posterior_all_backtest[sampleID,],
+  plot_diff = TRUE
+) /
+ppc_pit_ecdf(
+  y = betting_df$spread_line,
+  yrep = posterior_all_backtest[sampleID,],
+  plot_diff = TRUE
+)
+ppc_pit_ecdf(
+  y = betting_df$result,
+  yrep = round(posterior_all_backtest[sampleID,]),
+  discrete = TRUE,
+  plot_diff = TRUE
+)
+
+posterior_backtest_draws <- ppc_data(
+  y = betting_df$result,
+  yrep = posterior_all_backtest
+  )
+
+# compute_roi_table.R
+# Function to calculate betting performance metrics with optional grouping
+
+# compute_roi_table.R
+# Function to calculate betting performance metrics with optional grouping
+
+compute_roi_table <- function(posterior_matrix, new_data,
+                              target = c("result", "total"),
+                              group_vars = NULL,
+                              threshold_grid = seq(0.50, 0.70, by = 0.01),
+                              default_odds = -110,
+                              use_historic_odds = TRUE,
+                              stake = 1) {
+  target <- match.arg(target)
+  
+  # Define labels and relevant columns based on target type
+  target_labels <- if (target == "result") c("Home", "Away") else c("Over", "Under")
+  line_col      <- if (target == "result") "spread_line" else "total_line"
+  actual_col    <- if (target == "result") "result" else "total"
+  prob_cols     <- if (target == "result") {
+    c(Home = "home_spread_prob", Away = "away_spread_prob")
+  } else {
+    c(Over = "over_prob", Under = "under_prob")
+  }
+  odds_cols     <- if (target == "result") {
+    c(Home = "home_spread_odds", Away = "away_spread_odds")
+  } else {
+    c(Over = "over_odds", Under = "under_odds")
+  }
+  
+  # Compute cover probabilities and actual outcomes
+  new_data <- new_data %>%
+    mutate(
+      home_cover_prob = map_dbl(1:n(), ~ mean(posterior_matrix[, .x] > .data[[line_col]][.x])),
+      away_cover_prob = map_dbl(1:n(), ~ mean(posterior_matrix[, .x] < .data[[line_col]][.x]))
+    ) %>%
+    mutate(
+      actual_cover = case_when(
+        .data[[actual_col]] > .data[[line_col]] ~ target_labels[1],
+        .data[[actual_col]] < .data[[line_col]] ~ target_labels[2],
+        TRUE                                   ~ NA_character_
+      )
+    )
+  
+  # Loop over thresholds
+  roi_table <- map_dfr(threshold_grid, function(thresh) {
+    temp <- new_data %>%
+      mutate(
+        bet_choice = case_when(
+          home_cover_prob > thresh & home_cover_prob > away_cover_prob ~ target_labels[1],
+          away_cover_prob > thresh & away_cover_prob > home_cover_prob ~ target_labels[2],
+          TRUE ~ NA_character_
+        ),
+        bet_edge = case_when(
+          home_cover_prob > away_cover_prob ~ home_cover_prob - .data[[prob_cols[1]]],
+          away_cover_prob > home_cover_prob ~ away_cover_prob - .data[[prob_cols[2]]],
+          TRUE                             ~ NA_real_
+        ),
+        bet_hit = if_else(bet_choice == actual_cover, 1L, 0L, missing = NA_integer_),
+        raw_odds = case_when(
+          bet_choice == target_labels[1] ~ .data[[odds_cols[1]]],
+          bet_choice == target_labels[2] ~ .data[[odds_cols[2]]],
+          TRUE                           ~ NA_real_
+        ),
+        chosen_odds   = if (use_historic_odds) coalesce(raw_odds, default_odds) else default_odds,
+        payout_ratio = ifelse(chosen_odds < 0, 100/abs(chosen_odds), chosen_odds/100),
+        bet_payout     = case_when(
+          is.na(bet_choice)   ~ 0,
+          bet_hit == 1        ~ payout_ratio * stake,
+          bet_hit == 0        ~ -stake,
+          TRUE                ~ 0
+        ),
+        bet_payout_edge = case_when(
+          is.na(bet_choice) | bet_edge <= 0 ~ 0,
+          bet_hit == 1                      ~ payout_ratio * stake * (1 + bet_edge),
+          bet_hit == 0                      ~ -stake * (1 + bet_edge),
+          TRUE                              ~ 0
+        )
+      )
+    
+    # Indices for placed bets and edge bets
+    placed_idx <- !is.na(temp$bet_choice)
+    edge_idx   <- placed_idx & temp$bet_edge > 0
+    
+    if (!is.null(group_vars)) {
+      # Use reframe to handle non-1 row/group
+      temp %>%
+        filter(placed_idx) %>%
+        group_by(across(all_of(group_vars))) %>%
+        reframe(
+          bets_placed      = sum(placed_idx),
+          bets_won         = sum(bet_hit == 1L, na.rm = TRUE),
+          bets_lost        = sum(bet_hit == 0L, na.rm = TRUE),
+          bets_pushed      = sum(is.na(bet_hit)),
+          profit           = sum(bet_payout, na.rm = TRUE),
+          accuracy         = mean(bet_hit, na.rm = TRUE),
+          roi              = profit / bets_placed,
+          edge_bets_placed = sum(edge_idx, na.rm = TRUE),
+          edge_accuracy    = if (sum(edge_idx, na.rm = TRUE) > 0) sum(bet_hit[edge_idx]==1L, na.rm = TRUE)/sum(edge_idx, na.rm = TRUE) else NA_real_,
+          edge_profit      = sum(bet_payout_edge[edge_idx], na.rm = TRUE),
+          edge_roi         = if (sum(edge_idx, na.rm = TRUE) > 0) edge_profit/sum(edge_idx, na.rm = TRUE) else NA_real_,
+          threshold        = thresh
+        ) %>%
+        mutate(
+          across(c(accuracy, roi, edge_accuracy, edge_roi), ~ round(.x, 4)),
+          across(c(profit, edge_profit), ~ round(.x, 2))
+        )
+    } else {
+      # Ungrouped summary
+      bets_placed      <- sum(placed_idx)
+      bets_won         <- sum(temp$bet_hit[placed_idx] == 1L, na.rm = TRUE)
+      bets_lost        <- sum(temp$bet_hit[placed_idx] == 0L, na.rm = TRUE)
+      bets_pushed      <- sum(is.na(temp$bet_hit) & placed_idx)
+      profit           <- sum(temp$bet_payout, na.rm = TRUE)
+      accuracy         <- if (bets_placed > 0) mean(temp$bet_hit[placed_idx], na.rm = TRUE) else NA_real_
+      roi_val          <- if (bets_placed > 0) profit / bets_placed else NA_real_
+      edge_bets_placed <- sum(edge_idx, na.rm = TRUE)
+      edge_accuracy    <- if (edge_bets_placed > 0) sum(temp$bet_hit[edge_idx]==1L, na.rm = TRUE)/edge_bets_placed else NA_real_
+      edge_profit      <- sum(temp$bet_payout_edge[edge_idx], na.rm = TRUE)
+      edge_roi         <- if (edge_bets_placed > 0) edge_profit/edge_bets_placed else NA_real_
+      tibble(
+        threshold        = thresh,
+        bets_placed      = bets_placed,
+        bets_won         = bets_won,
+        bets_lost        = bets_lost,
+        bets_pushed      = bets_pushed,
+        accuracy         = round(accuracy, 4),
+        roi              = round(roi_val, 4),
+        profit           = round(profit, 2),
+        edge_bets_placed = edge_bets_placed,
+        edge_accuracy    = round(edge_accuracy, 4),
+        edge_profit      = round(edge_profit, 2),
+        edge_roi         = round(edge_roi, 4)
+      )
+    }
+  })
+  
+  return(roi_table)
+}
 
 
+# compute_win_probs.R
+# Function to compute win probabilities from posterior result draws
 
+# Function to evaluate betting strategies
+compute_win_probs <- function(posterior_matrix, new_data) {
+  # posterior_matrix: draws x games matrix for (home_score - away_score)
+  # new_data: tibble of games; must have same number of rows as posterior_matrix columns
+  
+  if (ncol(posterior_matrix) != nrow(new_data)) {
+    stop("Number of games (rows of new_data) must match number of columns in posterior_matrix")
+  }
+  
+  # Calculate probability home wins (result > 0) and away wins (result < 0)
+  home_win_prob <- purrr::map_dbl(seq_len(nrow(new_data)), function(i) {
+    mean(posterior_matrix[, i] > 0)
+  })
+  away_win_prob <- purrr::map_dbl(seq_len(nrow(new_data)), function(i) {
+    mean(posterior_matrix[, i] < 0)
+  })
+  
+  # Bind probabilities to the input data
+  new_data |> 
+    dplyr::mutate(
+      home_win_prob = home_win_prob,
+      away_win_prob = away_win_prob
+    )
+}
 
+# Function to evaluate betting strategies
+evaluate_betting <- function(preds_df,
+                             stake_size = 100,
+                             methods = c("favorite", "ev", "kelly"),
+                             group_vars = NULL) {
+  require(dplyr)
+  df <- preds_df %>%
+    mutate(
+      imp_Home = if_else(home_moneyline > 0,
+                         100/(home_moneyline + 100),
+                         -home_moneyline / (-home_moneyline + 100)),
+      imp_Away = if_else(away_moneyline > 0,
+                         100/(away_moneyline + 100),
+                         -away_moneyline / (-away_moneyline + 100)),
+      dec_Home = if_else(home_moneyline > 0,
+                         home_moneyline/100 + 1,
+                         100/abs(home_moneyline) + 1),
+      dec_Away = if_else(away_moneyline > 0,
+                         away_moneyline/100 + 1,
+                         100/abs(away_moneyline) + 1),
+      kelly_Home = ((dec_Home - 1) * home_win_prob - (1 - home_win_prob)) / (dec_Home - 1),
+      kelly_Away = ((dec_Away - 1) * away_win_prob - (1 - away_win_prob)) / (dec_Away - 1),
+      favorite = if_else(home_win_prob > away_win_prob, "Home", "Away")
+    )
+  
+  get_results <- function(df_sub) {
+    df_sub %>%
+      mutate(
+        correct = (bet_side == winner),
+        actual_return = case_when(
+          bet_side == "Home" & winner == "Home" ~ stake * (dec_Home - 1),
+          bet_side == "Away" & winner == "Away" ~ stake * (dec_Away - 1),
+          bet_side %in% c("Home","Away")       ~ -stake,
+          TRUE                                     ~ 0
+        )
+      )
+  }
+  
+  results_list <- list()
+  if ("favorite" %in% methods) {
+    df1 <- df %>% mutate(bet_side = favorite, stake = stake_size) %>% get_results()
+    results_list[["favorite"]] <- df1
+  }
+  if ("ev" %in% methods) {
+    df2 <- df %>%
+      mutate(
+        EV_Home = home_win_prob * (dec_Home - 1) - (1 - home_win_prob),
+        EV_Away = away_win_prob * (dec_Away - 1) - (1 - away_win_prob),
+        bet_side = case_when(
+          EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+          EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+          TRUE                            ~ NA_character_
+        ),
+        stake = if_else(!is.na(bet_side), stake_size, 0)
+      ) %>% get_results()
+    results_list[["ev"]] <- df2
+  }
+  if ("kelly" %in% methods) {
+    df3 <- df %>%
+      mutate(
+        EV_Home = home_win_prob * (dec_Home - 1) - (1 - home_win_prob),
+        EV_Away = away_win_prob * (dec_Away - 1) - (1 - away_win_prob),
+        bet_side = case_when(
+          EV_Home > EV_Away & EV_Home > 0 ~ "Home",
+          EV_Away > EV_Home & EV_Away > 0 ~ "Away",
+          TRUE                            ~ NA_character_
+        ),
+        stake = case_when(
+          bet_side == "Home" ~ stake_size * kelly_Home,
+          bet_side == "Away" ~ stake_size * kelly_Away,
+          TRUE                ~ 0
+        )
+      ) %>% get_results()
+    results_list[["kelly"]] <- df3
+  }
+  
+  combined <- bind_rows(results_list, .id = "method")
+  if (!is.null(group_vars) && length(group_vars) > 0) {
+    summary <- combined %>%
+      filter(!is.na(bet_side), !is.na(correct)) %>%
+      group_by(across(all_of(group_vars)), method) %>%
+      summarise(
+        n_bets       = n(),
+        pct_correct  = mean(correct, na.rm = TRUE) * 100,
+        total_return = sum(actual_return, na.rm = TRUE),
+        .groups      = "drop"
+      )
+  } else {
+    summary <- combined %>%
+      filter(!is.na(bet_side), !is.na(correct)) %>%
+      group_by(method) %>%
+      summarise(
+        n_bets       = n(),
+        pct_correct  = mean(correct, na.rm = TRUE) * 100,
+        total_return = sum(actual_return, na.rm = TRUE),
+        .groups      = "drop"
+      )
+  }
+  summary
+}
 
+# Win Probability ----
+# 1. Compute win probabilities
+betting_df_win <- compute_win_probs(posterior_all_backtest, betting_df) |> 
+  mutate(winner = as.character(winner))
+
+# 2. Evaluate betting strategies with no grouping
+bet_return_all <- evaluate_betting(
+  betting_df_win,
+  stake_size = 100,
+  methods    = c("favorite", "ev", "kelly"),
+  group_vars = NULL
+)
+print(bet_return_all)
+
+# 3. Evaluate betting by season grouping
+bet_return_season <- evaluate_betting(
+  betting_df_win,
+  stake_size = 100,
+  methods    = c("favorite"),# "ev", "kelly"),
+  group_vars = "season"
+)
+print(bet_return_season)
 
 
