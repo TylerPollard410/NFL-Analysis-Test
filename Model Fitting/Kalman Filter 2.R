@@ -9,7 +9,7 @@ library(tibble)
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 
 # 1. Prepare training data: exclude 2024 and sort
-trainData <- modData |> 
+trainData <- modData #|> 
   #filter(season < 2024) |> 
   arrange(season, week, game_id)
 
@@ -108,8 +108,8 @@ for (week_data in groups_by_week) {
 }
 
 # 7. Combine into finalKFA and build trainKFA
-finalKFA <- bind_rows(kf_rows)
-trainKFA <- finalKFA |> 
+finalKFA2 <- bind_rows(kf_rows)
+trainKFA2 <- finalKFA2 |> 
   select(
     game_id, season, week, home_team, away_team, location,
     home_rating_pre, away_rating_pre, hfa_pre
@@ -303,10 +303,6 @@ library(tibble)
 
 load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 
-# dependencies
-library(dplyr)
-library(tibble)
-
 # --- 1. Setup global constants and indices ----------------------------------
 teams      <- sort(unique(c(modData$home_team, modData$away_team)))
 n_teams    <- length(teams)
@@ -350,7 +346,7 @@ update_week <- function(week_data, state) {
   m_pred <- m
   C_pred <- C + W_mat
   
-  # Inform progress
+  # Inform progress 
   message("  Processing Season ", first_game$season, " Week ", first_game$week, " with ", nrow(week_data), " games...")
   
   # Container for this week's KFA
@@ -439,22 +435,27 @@ batch_run <- function(data) {
 forecast_list <- list()
 
 # Initialize with training on 2007-2009
-train_init_data <- modData |> filter(season >= 2007, season <= 2009)
-message("Initializing with data from 2007-2009 (", nrow(train_init_data), " games)...")
-batch_2007_2009 <- batch_run(train_init_data)
-state           <- attr(batch_2007_2009, "state")
-trainKFA_window <- batch_2007_2009 |>
+train_init_season_start <- 2006
+train_init_season_end <- 2008
+train_init_data <- modData |> filter(season >= train_init_season_start, 
+                                     season <= train_init_season_end)
+message("Initializing with data from ", train_init_season_start, "-", train_init_season_end, " (", nrow(train_init_data), " games)...")
+batch_init_data <- batch_run(train_init_data)
+state           <- attr(batch_init_data, "state")
+trainKFA_window <- batch_init_data |>
   select(game_id, season, week, home_team, away_team, location,
          home_rating_pre, away_rating_pre, hfa_pre)
 
 # Iterate seasons 2010–2024
 # Total number of forecast points across seasons 2010–2024
-total_forecasts <- sum(sapply(2010:2024, function(y) length(unique(modData$week[modData$season==y]))))
-message("Beginning iterative forecasting for 2010-2024 (", total_forecasts, " forecast points)...")
+forecast_season_start <- 2009
+forecast_season_end <- 2024
+total_forecasts <- sum(sapply(forecast_season_start:forecast_season_end, function(y) length(unique(modData$week[modData$season==y]))))
+message("Beginning iterative forecasting for ", forecast_season_start, "-", forecast_season_end, " (", total_forecasts, " forecast points)...")
 
 # Counter for progress
 i <- 1
-for (yr in 2010:2024) {
+for (yr in forecast_season_start:forecast_season_end) {
   wk_list <- sort(unique(modData$week[modData$season == yr]))
   for (wk in wk_list) {
     key <- paste0("S", yr, "_W", wk)
@@ -488,7 +489,6 @@ for (yr in 2010:2024) {
 
 # Final completion message
 message("Forecast list construction complete: ", length(forecast_list), " entries.")
-message("Forecast list construction complete: ", length(forecast_list), " entries.")
 
 
 
@@ -506,6 +506,8 @@ message("Forecast list construction complete: ", length(forecast_list), " entrie
 # dependencies
 library(dplyr)
 library(tibble)
+
+load(url("https://github.com/TylerPollard410/NFL-Analysis-Test/raw/refs/heads/main/app/data/modData.rda"))
 
 # --- 1. Setup global constants and indices ----------------------------------
 teams      <- sort(unique(c(modData$home_team, modData$away_team)))
@@ -612,8 +614,8 @@ update_week <- function(week_data, state) {
 
 # --- 4. Batch-run for initial window (2006-2008) ---------------------------
 train_init_data <- modData |> 
-  filter(season >= 2006, season <= 2008) |> 
-  arrange(season, week, game_id)
+  filter(season >= 2006, season <= 2008) #|> 
+  #arrange(season, week, game_id)
 
 batch_res <- {
   state <- init_state()

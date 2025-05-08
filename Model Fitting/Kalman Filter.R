@@ -102,9 +102,9 @@ ks3 <- KFS(
   fit3$model, 
   filtering = c("state", "mean")
 )
-ks3_alpha_hat <- ks3$alphahat  # N_games × m_states
-ks3_a <- ks3$a
-ks3_att <- ks3$att
+ks_alpha_hat <- ks3$alphahat  # N_games × m_states
+ks_a <- ks3$a
+ks_att <- ks3$att
 
 # 7) Pull out the season‐specific HFA for each game
 nfl <- nfl %>%
