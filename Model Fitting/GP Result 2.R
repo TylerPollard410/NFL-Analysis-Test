@@ -19,6 +19,8 @@ library(bayesplot)
 library(Metrics)  # for MAE, RMSE
 library(broom.mixed)
 library(tidybayes)
+library(discrim)
+library(bayesian)
 library(tidymodels)
 library(nflverse)
 library(tidyverse)
@@ -87,7 +89,12 @@ modData <- modDataBase |> filter(season >= 2007) |>
       TRUE ~ NA
     ),
     winner = factor(winner, levels = c(FALSE, TRUE), labels = c("Away", "Home"))
-  ) 
+  ) # |>
+# mutate(
+#   #location = factor(location, levels = c("Neutral", "Home")),
+#   location = ifelse(location == "Home", 1, 0),
+#   .after = location
+# )
 # modData <- modData |> 
 #   filter(!is.na(winner))
 
@@ -117,7 +124,7 @@ drop_vars <- c(
 )
 
 game_level_vars <- c(
-  "season","week","weekday","time_of_day","location",
+  "season","week","weekday","time_of_day","location", #"is_home",
   "div_game","home_rest","away_rest","roof","surface","temp","wind"
 )
 
@@ -228,6 +235,7 @@ ordered_cols_list <- purrr::map(metric_bases, function(base) {
   get_ordered_metric_cols(feats_net, base)
 })
 ordered_cols_flat <- ordered_cols_list |> unlist() |> unique()
+ordered_cols_flat
 
 # 2.8 Final reordering: static first, then grouped metrics, then all remaining
 feats_net_ordered_all <- feats_net |>
@@ -278,66 +286,121 @@ brms_data <- brms_data |>
   left_join(distinct_weeks) |>
   relocate(week_seq, .after = week)
 
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 3. INITIAL MODEL FORMULAS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-brms_formula_result <-
+
+# Home Score
+brms_formula_home <- 
+  bf(
+    home_score ~
+      # xgb_result + 
+      net_elo +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "student")
+
+# Away Score
+brms_formula_away <- 
+  bf(
+    away_score ~ 
+      # xgb_total + 
+      net_elo +
+      # net_SRS +
+      # net_off_epa +
+      # net_def_epa +
+      # net_turnover_diff +
+      # net_redzone +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "student")
+
+# Scores Joint
+brms_formula_scores <- brms_formula_home + brms_formula_away
+brms_formula_scores <- 
+  bf(
+    mvbind(home_score, away_score) ~
+      net_elo +
+      #home_elo + away_elo +
+      net_SRS_cum +
+      #home_SRS_cum + away_SRS_cum +
+      home_off_epa_sum_cum + home_def_epa_sum_cum +
+      away_off_epa_sum_cum + away_def_epa_sum_cum +
+      home_off_epa_sum_roll + home_def_epa_sum_roll +
+      away_off_epa_sum_roll + away_def_epa_sum_roll +
+      home_turnover_won_cum + home_turnover_lost_cum +
+      away_turnover_won_cum + away_turnover_lost_cum +
+      home_off_red_zone_app_perc_cum + home_def_red_zone_app_perc_cum +
+      home_off_red_zone_eff_cum + home_def_red_zone_eff_cum +
+      away_off_red_zone_app_perc_cum + away_def_red_zone_app_perc_cum +
+      away_off_red_zone_eff_cum + away_def_red_zone_eff_cum +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "discrete_weibull", link = "logit")
+
+# Result
+brms_formula_result <- 
   bf(
     result ~
       #0 + Intercept +
       net_elo +
       #net_elo_pre +
-      #home_elo + away_elo +
       net_rating +
+      hfa_pre +
       #net_rating_hfa +
-      #hfa_pre +
-      #net_SRS_cum +
-      #home_DSRS_cum + 
-      #away_OSRS_cum +
-      #home_net_off_epa_sum_cum +
-      #away_net_off_epa_sum_cum +
-      #home_off_epa_sum_cum + 
-      #home_def_epa_sum_cum +
-      #away_off_epa_sum_cum + 
-      #away_def_epa_sum_cum +
-      #home_net_off_epa_sum_roll +
-      #away_net_off_epa_sum_roll +
-      # home_off_epa_sum_roll + 
-      # home_def_epa_sum_roll +
-      # away_off_epa_sum_roll + 
-      # away_def_epa_sum_roll +
-      #home_turnover_diff_cum +
-      #away_turnover_diff_cum +
-      # home_turnover_won_cum + 
-      # home_turnover_lost_cum +
-      # away_turnover_won_cum + 
-      # away_turnover_lost_cum +
       home_net_off_red_zone_app_perc_cum
-    #away_net_off_red_zone_app_perc_cum 
-    #home_net_off_red_zone_eff_cum +
-    #away_net_off_red_zone_eff_cum
-    # home_off_red_zone_app_perc_cum + 
-    # home_def_red_zone_app_perc_cum +
-    # home_off_red_zone_eff_cum + 
-    # home_def_red_zone_eff_cum +
-    # away_off_red_zone_app_perc_cum + 
-    # away_def_red_zone_app_perc_cum +
-    # away_off_red_zone_eff_cum + 
-    # away_def_red_zone_eff_cum 
-    # gp(season, by = home_team) +
-    # gp(season, by = away_team) 
-    #(1|gr(season, by = home_team, id = "H")) +
-    #(1|gr(season, by = away_team, id = "A"))
-    #s(week_seq) +
-    #(1|season)
-  ) + 
-  brms::mixture(gaussian, nmix = 26)
-  brmsfamily(family = "student", link = "identity") 
-#brmsfamily(family = "cumulative", link = "logit") 
+  ) + brmsfamily(family = "student", link = "identity")
+
+# Total
+brms_formula_total <- 
+  bf(
+    total ~ 
+      # xgb_total + 
+      # xgb_away_score +
+      # xgb_home_score +
+      net_elo +
+      net_SRS +
+      home_SRS_cum +
+      away_SRS_cum +
+      net_epa_cum +
+      net_epa_roll +
+      home_turnover_diff_cum + 
+      away_turnover_diff_cum +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "student")
+
+# Winner
+brms_formula_winner <- 
+  bf(
+    winner ~
+      net_elo +
+      #home_elo + away_elo +
+      net_SRS_cum +
+      #home_SRS_cum + away_SRS_cum +
+      home_win_pct_cum + away_win_pct_cum +
+      home_off_epa_sum_cum + home_def_epa_sum_cum +
+      away_off_epa_sum_cum + away_def_epa_sum_cum +
+      home_off_epa_sum_roll + home_def_epa_sum_roll +
+      away_off_epa_sum_roll + away_def_epa_sum_roll +
+      home_turnover_won_cum + home_turnover_lost_cum +
+      away_turnover_won_cum + away_turnover_lost_cum +
+      home_off_red_zone_app_perc_cum + home_def_red_zone_app_perc_cum +
+      home_off_red_zone_eff_cum + home_def_red_zone_eff_cum +
+      away_off_red_zone_app_perc_cum + away_def_red_zone_app_perc_cum +
+      away_off_red_zone_eff_cum + away_def_red_zone_eff_cum +
+      (1|home_team) +
+      (1|away_team)
+  ) + brmsfamily(family = "bernoulli")
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# 4. PREPROCESS DATA ----
+# 4. PREPROCESSING STEPS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 ## 4.1 Functions ----
@@ -351,6 +414,7 @@ extract_predictors <- function(data, brms_form){
   return(vars_final)
 }
 
+# Run process steps
 preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"), 
                             corr_cutoff = 0.95, 
                             cor_method = "pearson",
@@ -362,34 +426,30 @@ preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"),
   
   removed <- list()
   
-  # 4.1.1 Near-zero variance filtering
+  # 5.1 Near-zero variance filtering
   if ("nzv" %in% steps) {
     nzv_idx <- nearZeroVar(df, names = TRUE)
     removed$nzv <- nzv_idx
     if (length(nzv_idx) > 0) df <- df |> select(-all_of(nzv_idx))
   }
   
-  # 4.1.2 Linear combinations filtering
+  # 5.2 Linear combinations filtering
   if ("lincomb" %in% steps) {
     lin <- findLinearCombos(df)
     removed$lincomb <- if (!is.null(lin$remove)) names(df)[lin$remove] else character(0)
     if (!is.null(lin$remove)) df <- df |> select(-all_of(lin$remove))
   }
   
-  # 4.1.3 High-correlation filtering
+  # 5.3 High-correlation filtering
   if ("corr" %in% steps) {
     corr_mat <- cor(df, use = cor_use, method = cor_method)
-    high_corr_idx <- findCorrelation(corr_mat, cutoff = corr_cutoff, names = TRUE,verbose = TRUE)
+    high_corr_idx <- findCorrelation(corr_mat, cutoff = corr_cutoff, names = TRUE)
     removed$corr <- high_corr_idx
     if (length(high_corr_idx) > 0) df <- df |> select(-all_of(high_corr_idx))
   }
   
   # Return a list of removed variables and the cleaned dataset
   list(
-    nzv_idx,
-    lin,
-    corr_mat,
-    high_corr_idx,
     removed = removed,
     data = df
   )
@@ -397,41 +457,139 @@ preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"),
 
 ## 4.2 Preprocess ----
 # Identify predictors for the winner model
+brms_vars <- extract_predictors(brms_data, brms_formula_result)
+brms_vars_predictors <- brms_vars[!(brms_vars %in% base_cols)]
 
-brms_vars_result <- extract_predictors(brms_data, brms_formula_result)
-brms_vars_result
-
+# Preprocess
 brms_data_prepped <- preprocess_data(brms_data,
-                                     brms_vars_result, 
+                                     brms_vars_predictors, 
                                      corr_cutoff = 0.95,
                                      cor_method = "pearson",
                                      cor_use = "pairwise.complete.obs")
-brms_data_prepped$removed
 
 # Dropped vars
-brms_data_prepped_dropped <- brms_data_prepped$removed |>
+brms_vars_dropped <- brms_data_prepped$removed |>
   list_c() |>
   unique()
 
-brms_data_model <- brms_data |>
-  select(all_of(base_cols), 
-         all_of(brms_vars_result), 
-         -all_of(brms_data_prepped_dropped)) 
-colnames(brms_data_model)
+# Update Data
+# brms_data_clean <- brms_data |>
+#   select(all_of(base_cols)) |>
+#   bind_cols(brms_data_prepped_winner$data |> select(-any_of(base_cols)))
 
+brms_data_clean <- brms_data |>
+  select(all_of(base_cols), 
+         all_of(brms_vars_predictors), 
+         -all_of(brms_vars_dropped)) |>
+  mutate(
+    result_fac = factor(result, levels = min(result):max(result), ordered = TRUE),
+    .after = result
+  )
+colnames(brms_data_clean)
+
+distinct_weeks <- brms_data_clean |>
+  distinct(season, week) |> 
+  arrange(season, week) |> 
+  mutate(week_seq = row_number())
+
+# Merge week_seq into brms_data_clean
+brms_data_clean <- brms_data_clean |> 
+  left_join(distinct_weeks, by = c("season", "week")) |>
+  relocate(week_seq, .after = week)
+colnames(brms_data_clean)
 
 preProc_result <- preProcess(
-  brms_data_model |> 
-    filter(season < 2023) |>
-    select(-all_of(base_cols)),
+  brms_data_clean |> 
+    filter(season >= 2020 & season <= 2022) |>
+    select(all_of(brms_vars_predictors)),
+  #select(-all_of(base_cols)),
   method = c("center", "scale")
 )
 train_data <- predict(preProc_result, 
-                      brms_data |> filter(season < 2023))
+                      brms_data_clean |> filter(season >= 2020 & season <= 2022))
 test_data <- predict(preProc_result, 
-                     brms_data |> filter(season >= 2023))
+                     brms_data_clean |> filter(season == 2023))
 
-default_prior(brms_formula_result, data = train_data)
+
+preProc_result2 <- brms_data_clean |>
+  #filter(season >= 2020 & season <= 2022) |>
+  # mutate(
+  #   location = factor(location, levels = c("Neutral", "Home"))
+  # ) |>
+  recipe() |>
+  # 1) mark the response
+  update_role(result, result_fac, new_role = "outcome") |>
+  # 2) mark your numeric inputs
+  update_role(
+    location,
+    net_elo,
+    net_rating,
+    hfa_pre,
+    home_net_off_red_zone_app_perc_cum,
+    new_role = "predictor"
+  ) |>
+  # 3) mark your grouping factors for brms
+  update_role(
+    home_team,
+    away_team,
+    new_role = "group"
+  ) |>
+  update_role(
+    game_id, season, week,
+    new_role = "id"
+  ) |>
+  # drop unused levels of result_fac
+  step_mutate( 
+    result_fac = droplevels(result_fac)
+  ) |>
+  # 4) preprocessing *only* on those numeric predictors:
+  # near-zero variance
+  step_nzv(all_numeric_predictors()) |>
+  # remove linear combinations
+  step_lincomb(all_numeric_predictors()) |> 
+  # filter by correlation
+  step_corr(all_numeric_predictors(), 
+            threshold = 0.95) |>
+  # center & scale
+  step_normalize(all_numeric_predictors()) |>
+  # dummy code location
+  step_relevel(
+    location, ref_level = "Neutral"
+  ) |>
+  step_dummy(
+    location
+  ) |>
+  # Select only variables used
+  step_select(
+    has_role("id"),
+    has_role("group"),
+    has_role("outcome"),
+    has_role("predictor")
+  )
+preProc_result2
+
+
+prep_result <- preProc_result2 |>
+  prep(
+    training = brms_data_clean |>
+      filter(season >= 2020 & season <= 2022)
+  )
+
+train_data <- prep_result |> 
+  bake(new_data = NULL)
+test_data <- prep_result |> 
+  bake(new_data = brms_data_clean |>
+         filter(season == 2023) 
+  )
+
+train_data3 <- train_data |> select(
+  all_of(colnames(train_data2))
+)
+test_data3 <- test_data |> select(
+  all_of(colnames(test_data2))
+)
+
+
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -441,6 +599,32 @@ iters <- 4000
 burn <- 2000
 chains <- 4
 sims <- (iters-burn)*chains
+
+# Result
+brms_formula_result <- 
+  bf(
+    result_fac ~
+      #0 + Intercept +
+      net_elo +
+      #net_elo_pre +
+      net_rating +
+      #hfa_pre +
+      #net_rating_hfa +
+      home_net_off_red_zone_app_perc_cum +
+      #is_home +
+      #location +
+      (0 + location_Home|home_team) 
+    #gp(season, by = home_team)
+    #gp(week, by = home_team)
+    #ar(gr = home_team)
+    #(is_home|gr(home_team)) 
+    #(1|away_team)
+  ) + 
+  brmsfamily(family = "cumulative", link = "logit", threshold = "flexible")
+#brmsfamily(family = "cumulative", link = "logit")
+#brmsfamily(family = "student", link = "identity")
+
+default_prior(brms_formula_result, data = train_data)
 
 # priors_result <- c(
 #   prior(horseshoe(1), class = "b")
@@ -462,7 +646,7 @@ system.time(
     brms_formula_result,
     data = train_data,
     #prior = priors_result,
-    drop_unused_levels = FALSE,
+    #drop_unused_levels = FALSE,
     save_pars = save_pars(all = TRUE), 
     chains = chains,
     iter = iters,
@@ -477,8 +661,8 @@ system.time(
 )
 
 
-#fit_list <- list()
-#fit <- 1
+fit_list <- list()
+fit <- 1
 #fit_name <- paste0("fit", fit)
 
 fit <- fit + 1
@@ -491,6 +675,10 @@ save(fit_list, file = "~/Desktop/NFL Analysis Data/fit_list_result.rda")
 print(fit_result, digits = 4)
 fixef(fit_result)
 ranef(fit_result)
+
+print(fit_list[[27]], digits = 4)
+fixef(fit_list[[27]])
+ranef(fit_list[[27]])
 
 print(fit_list[[1]], digits = 4)
 print(roi_table_result_historic1, n = nrow(roi_table_result_historic1))
@@ -506,23 +694,107 @@ loo_compare(
 )
 
 ## 5.2 Posterior ----
+train_data2 <- train_data |> 
+  mutate(result_fac = droplevels(result_fac))
+test_data2 <- test_data |> 
+  mutate(result_fac = factor(result,
+                             levels = levels(train_data2$result_fac),
+                             exclude = NULL)
+  )
+
+test_data2 <- test_data |> select(-result_fac)
+
+set.seed(52)
 posterior_result <- posterior_predict(
   fit_result,
-  newdata = test_data,
+  newdata = test_data2,
   ndraws = sims,
   re_formula = NULL,
-  allow_new_levels = TRUE
+  #allow_new_levels = TRUE
+  seed = 52
 )
 
+
+posterior_result2 <- predict(
+  fit_result,
+  newdata = test_data2,
+  ndraws = sims,
+  re_formula = NULL,
+  seed = 52,
+  summary = FALSE
+)
+
+# 1. extract the factor‐levels
+resp_levels <- levels(  fit_result$data[["result_fac"]]  )
+
+# 3. map to level‐labels (character)
+posterior_result_char  <- matrix(resp_levels[posterior_result], 
+                                 nrow = nrow(posterior_result), 
+                                 ncol = ncol(posterior_result))
+
+# 4. (if needed) convert to numeric
+posterior_result <- apply(posterior_result_char, 2, as.numeric)
+
+posterior_result_table <- posterior_table(
+  posterior_result 
+  #levels = levels(train_data$result_fac)
+)
+
+set.seed(52)
+posterior_result_tidy <- predicted_draws(
+  fit_result,
+  newdata = test_data2,
+  ndraws = NULL,
+  re_formula = NULL,
+  #allow_new_levels = TRUE
+  seed = 52
+)
+
+posterior_result_tidy <- posterior_result_tidy |>
+  ungroup() |>
+  select(
+    game_id, season, week, week_seq, home_team, away_team,
+    home_score, away_score, 
+    is_home, net_elo, net_rating, hfa_pre, home_net_off_red_zone_app_perc_cum,
+    result, result_fac, spread_line,
+    .prediction, .row, .chain, .iteration, .draw
+  )
+
+table(posterior_result_tidy |> filter(.row == 1) |> pull(.prediction)) |>
+  prop.table()
+
+variables(fit_result)
+
 ## 5.3 PPC ----
-pp_check(fit_result, resp = "result", 
-         newdata = train_data, 
-         allow_new_levels = TRUE,  
-         type = "dens_overlay",
+pp_check(fit_result, 
+         resp = "result_fac", 
+         #newdata = train_data |> mutate(result_fac = droplevels(result_fac)), 
+         newdata = train_data2,
+         #allow_new_levels = TRUE,  
+         #type = "dens_overlay",
+         type = "bars",
          ndraws = 100)
 
 
 ## 5.3 PPD ----
+pp_check(fit_result, 
+         #resp = "result", 
+         #newdata = test_data |> mutate(result_fac = droplevels(result_fac)), 
+         newdata = test_data2,
+         #allow_new_levels = TRUE, 
+         type = "bars",
+         #type = "dens_overlay",
+         ndraws = 100)
+
+pp_check(fit_list[[25]], resp = "result", 
+         newdata = test_data, 
+         allow_new_levels = TRUE,  
+         type = "dens_overlay",
+         ndraws = 500) +
+  scale_x_continuous(limits = c(-75,75))
+
+
+
 sampleID <- sample(1:sims, 200, replace = FALSE)
 ppc_bars(
   y = as.numeric(as.character(test_data$result)),
@@ -533,18 +805,29 @@ ppc_dens_overlay(
   yrep = posterior_result[sampleID,]
 )
 
+ppc_bars(
+  y = test_data2$result,
+  yrep = posterior_result[sampleID,]
+)
+ppc_dens_overlay(
+  y = as.numeric(as.character(test_data2$result)),
+  yrep = posterior_result[sampleID,]
+)
+ppc_hist(
+  y = test_data2$result,
+  yrep = posterior_result[sampleID,]
+)
+
 
 ## 5.4 Conditional Effects ----
-Fitsmooth <- conditional_smooths(fit_result, 
-                                 resp = "result", 
-                                 method = "posterior_predict"
-)
+conditional_sm <- conditional_smooths(fit_result)
+
 plot(Fitsmooth,
      stype = "contour",
      ask = FALSE)
 
 conditional_eff <- conditional_effects(
-  fit_result,
+  fit_result
   # effects = c(
   #   "home_OSRS_net",
   #   "home_off_epa_roll",
@@ -554,7 +837,7 @@ conditional_eff <- conditional_effects(
   #   "away_off_n"
   # ),
   # method = "posterior_predict", 
-  re_formula = NULL
+  # re_formula = NULL
   # robust = FALSE
 )
 
@@ -562,6 +845,30 @@ plot(conditional_eff,
      points = TRUE, 
      ask = FALSE)
 
+cond_grid <- expand.grid(
+  #is_home = c(0,1),
+  location = c("Neutral", "Home"),
+  home_team = sort(unique(train_data$home_team))
+)
+conditions_result <- make_conditions(
+  x = cond_grid,
+  vars = colnames(cond_grid)
+)
+
+
+
+temp <- conditional_effects(
+  fit_list[[21]],
+  conditions = conditions_result,
+  #method = "posterior_predict",
+  categorical = TRUE,
+  re_formula = NULL,
+  robust = FALSE
+)
+
+plot(temp, 
+     points = TRUE, 
+     ask = FALSE)
 
 # 6.Performance Metrics ----
 ### MAE
@@ -911,7 +1218,7 @@ betting_accuracy_result <- compute_betting_accuracy(
   vegas_prob_col2 = NULL,
   actual_col = NULL,
   xgb_pred_col = NULL,
-  prob_threshold = 0.7,
+  prob_threshold = 0.6,
   group_vars = NULL
 )
 betting_accuracy_result$summary
@@ -1217,7 +1524,7 @@ ggplot(roi_table_backtest_all, aes(x = threshold, y = accuracy)) +
     y = "Accuracy"
   ) +
   theme_bw() +
-ggplot(roi_table_backtest_all, aes(x = threshold, y = profit)) +
+  ggplot(roi_table_backtest_all, aes(x = threshold, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
@@ -1275,19 +1582,19 @@ ggplot(roi_table_backtest_season, aes(x = season, y = accuracy)) +
     y = "Accuracy"
   ) +
   theme_bw() +
-
-# Finally, plot ROI vs. threshold
-# ggplot(roi_table_backtest_season, aes(x = season, y = roi)) +
-#   geom_line() +
-#   geom_point() +
-#   labs(
-#     title = "ROI by Posterior Betting Confidence Threshold - Result",
-#     x = "Posterior Threshold",
-#     y = "ROI"
-#   ) +
-#   theme_bw()
-
-ggplot(roi_table_backtest_season, aes(x = season, y = profit)) +
+  
+  # Finally, plot ROI vs. threshold
+  # ggplot(roi_table_backtest_season, aes(x = season, y = roi)) +
+  #   geom_line() +
+  #   geom_point() +
+  #   labs(
+  #     title = "ROI by Posterior Betting Confidence Threshold - Result",
+  #     x = "Posterior Threshold",
+  #     y = "ROI"
+  #   ) +
+  #   theme_bw()
+  
+  ggplot(roi_table_backtest_season, aes(x = season, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
@@ -1320,19 +1627,19 @@ ggplot(roi_table_backtest_week, aes(x = week, y = accuracy)) +
     y = "Accuracy"
   ) +
   theme_bw() +
-
-# # Finally, plot ROI vs. threshold
-# ggplot(roi_table_backtest_week, aes(x = week, y = roi)) +
-#   geom_line() +
-#   geom_point() +
-#   labs(
-#     title = "ROI by Posterior Betting Confidence Threshold - Result",
-#     x = "Posterior Threshold",
-#     y = "ROI"
-#   ) +
-#   theme_bw()
-
-ggplot(roi_table_backtest_week, aes(x = week, y = profit)) +
+  
+  # # Finally, plot ROI vs. threshold
+  # ggplot(roi_table_backtest_week, aes(x = week, y = roi)) +
+  #   geom_line() +
+  #   geom_point() +
+  #   labs(
+  #     title = "ROI by Posterior Betting Confidence Threshold - Result",
+  #     x = "Posterior Threshold",
+  #     y = "ROI"
+  #   ) +
+  #   theme_bw()
+  
+  ggplot(roi_table_backtest_week, aes(x = week, y = profit)) +
   geom_line() +
   geom_point() +
   labs(
@@ -1400,10 +1707,10 @@ ppc_bars(
   y = as.numeric(as.character(betting_df$result)),
   yrep = round(posterior_all_backtest[sampleID,])
 ) /
-ppc_dens_overlay(
-  y = as.numeric(as.character(betting_df$result)),
-  yrep = posterior_all_backtest[sampleID,]
-)
+  ppc_dens_overlay(
+    y = as.numeric(as.character(betting_df$result)),
+    yrep = posterior_all_backtest[sampleID,]
+  )
 
 ppc_ecdf_overlay(
   y = betting_df$result,
@@ -1432,7 +1739,7 @@ ppc_ecdf_overlay_grouped(
 ppc_error_scatter_avg(
   y = betting_df$result,
   yrep = posterior_all_backtest[sampleID,]
-  )
+)
 ppc_error_scatter_avg(
   y = betting_df$result,
   yrep = round(posterior_all_backtest[sampleID,])
@@ -1443,11 +1750,11 @@ ppc_pit_ecdf(
   yrep = posterior_all_backtest[sampleID,],
   plot_diff = TRUE
 ) /
-ppc_pit_ecdf(
-  y = betting_df$spread_line,
-  yrep = posterior_all_backtest[sampleID,],
-  plot_diff = TRUE
-)
+  ppc_pit_ecdf(
+    y = betting_df$spread_line,
+    yrep = posterior_all_backtest[sampleID,],
+    plot_diff = TRUE
+  )
 ppc_pit_ecdf(
   y = betting_df$result,
   yrep = round(posterior_all_backtest[sampleID,]),
@@ -1458,7 +1765,7 @@ ppc_pit_ecdf(
 posterior_backtest_draws <- ppc_data(
   y = betting_df$result,
   yrep = posterior_all_backtest
-  )
+)
 
 # compute_roi_table.R
 # Function to calculate betting performance metrics with optional grouping

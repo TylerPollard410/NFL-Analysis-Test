@@ -2,6 +2,8 @@
 
 library(readr)
 library(tidytext)
+library(MASS)
+library(Metrics)
 # library(tidyr)
 # library(purrr)
 library(plotly)
@@ -11,11 +13,14 @@ library(rBayesianOptimization)
 library(xgboost)
 library(caret)
 library(cmdstanr)
+library(rstanarm)
 library(brms)
 library(bayesplot)
 library(Metrics)  # for MAE, RMSE
 library(broom.mixed)
 library(tidybayes)
+library(discrim)
+library(bayesian)
 library(tidymodels)
 library(nflverse)
 library(tidyverse)
@@ -225,6 +230,7 @@ ordered_cols_list <- purrr::map(metric_bases, function(base) {
   get_ordered_metric_cols(feats_net, base)
 })
 ordered_cols_flat <- ordered_cols_list |> unlist() |> unique()
+ordered_cols_flat
 
 # 2.8 Final reordering: static first, then grouped metrics, then all remaining
 feats_net_ordered_all <- feats_net |>
@@ -336,17 +342,14 @@ brms_formula_scores <-
 brms_formula_result <- 
   bf(
     result ~
+      #0 + Intercept +
       net_elo +
-      net_SRS +
-      home_SRS_cum +
-      away_SRS_cum +
-      net_epa_cum +
-      net_epa_roll +
-      home_turnover_diff_cum + 
-      away_turnover_diff_cum +
-      (1|home_team) +
-      (1|away_team)
-  ) + brmsfamily(family = "student")
+      #net_elo_pre +
+      net_rating +
+      hfa_pre +
+      #net_rating_hfa +
+      home_net_off_red_zone_app_perc_cum
+  ) + brmsfamily(family = "student", link = "identity")
 
 # Total
 brms_formula_total <- 
@@ -449,57 +452,71 @@ preprocess_data <- function(data, preds, steps = c("nzv", "lincomb", "corr"),
 
 ## 4.2 Preprocess ----
 # Identify predictors for the winner model
-brms_vars_winner <- extract_predictors(brms_data, brms_formula_winner)
+brms_vars <- extract_predictors(brms_data, brms_formula_result)
 
 # Preprocess
-brms_data_prepped_winner <- preprocess_data(brms_data,
-                                            brms_vars_winner, 
-                                            corr_cutoff = 0.95,
-                                            cor_method = "pearson",
-                                            cor_use = "pairwise.complete.obs")
+brms_data_prepped <- preprocess_data(brms_data,
+                                     brms_vars, 
+                                     corr_cutoff = 0.95,
+                                     cor_method = "pearson",
+                                     cor_use = "pairwise.complete.obs")
 
 # Dropped vars
-brms_vars_winner_dropped <- brms_data_prepped_winner$removed |>
+brms_vars_dropped <- brms_data_prepped$removed |>
   list_c() |>
   unique()
 
 # Update Data
-# brms_data_winner <- brms_data |>
+# brms_data_clean <- brms_data |>
 #   select(all_of(base_cols)) |>
 #   bind_cols(brms_data_prepped_winner$data |> select(-any_of(base_cols)))
 
-brms_data_winner <- brms_data |>
+brms_data_clean <- brms_data |>
   select(all_of(base_cols), 
-         all_of(brms_vars_winner), 
-         -all_of(brms_vars_winner_dropped))
-colnames(brms_data_winner)
+         all_of(brms_vars), 
+         -all_of(brms_vars_dropped))
+colnames(brms_data_clean)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 5. UPDATE MODEL FORMULAS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-# Winner
-brms_formula_winner <- 
+# Result
+brms_formula_result <- 
   bf(
-    winner ~
+    result ~
+      #0 + Intercept +
       net_elo +
-      #home_elo + away_elo +
-      net_SRS_cum +
-      #home_SRS_cum + away_SRS_cum +
-      home_win_pct_cum + away_win_pct_cum +
-      home_off_epa_sum_cum + home_def_epa_sum_cum +
-      away_off_epa_sum_cum + away_def_epa_sum_cum +
-      home_off_epa_sum_roll + home_def_epa_sum_roll +
-      away_off_epa_sum_roll + away_def_epa_sum_roll +
-      home_turnover_won_cum + home_turnover_lost_cum +
-      away_turnover_won_cum + away_turnover_lost_cum +
-      home_off_red_zone_app_perc_cum + home_def_red_zone_app_perc_cum +
-      home_off_red_zone_eff_cum + home_def_red_zone_eff_cum +
-      away_off_red_zone_app_perc_cum + away_def_red_zone_app_perc_cum +
-      away_off_red_zone_eff_cum + away_def_red_zone_eff_cum +
-      (1|home_team) +
-      (1|away_team)
-  ) + brmsfamily(family = "bernoulli")
+      #net_elo_pre +
+      net_rating +
+      hfa_pre +
+      #net_rating_hfa +
+      home_net_off_red_zone_app_perc_cum
+  ) + brmsfamily(family = "student", link = "identity")
+
+
+# # Winner
+# brms_formula_winner <- 
+#   bf(
+#     winner ~
+#       net_elo +
+#       #home_elo + away_elo +
+#       net_SRS_cum +
+#       #home_SRS_cum + away_SRS_cum +
+#       home_win_pct_cum + away_win_pct_cum +
+#       home_off_epa_sum_cum + home_def_epa_sum_cum +
+#       away_off_epa_sum_cum + away_def_epa_sum_cum +
+#       home_off_epa_sum_roll + home_def_epa_sum_roll +
+#       away_off_epa_sum_roll + away_def_epa_sum_roll +
+#       home_turnover_won_cum + home_turnover_lost_cum +
+#       away_turnover_won_cum + away_turnover_lost_cum +
+#       home_off_red_zone_app_perc_cum + home_def_red_zone_app_perc_cum +
+#       home_off_red_zone_eff_cum + home_def_red_zone_eff_cum +
+#       away_off_red_zone_app_perc_cum + away_def_red_zone_app_perc_cum +
+#       away_off_red_zone_eff_cum + away_def_red_zone_eff_cum +
+#       (1|home_team) +
+#       (1|away_team)
+#   ) + brmsfamily(family = "bernoulli")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 6. DATA SPLITTING ----
@@ -507,21 +524,21 @@ brms_formula_winner <-
 
 ## 6.1 Create sequential week index ----
 # Build a week_seq that increments with each unique season/week combination
-distinct_weeks <- brms_data_winner |>
+distinct_weeks <- brms_data_clean |>
   distinct(season, week) |> 
   arrange(season, week) |> 
   mutate(week_seq = row_number())
 
-# Merge week_seq into brms_data_winner
-brms_data_winner <- brms_data_winner |> 
+# Merge week_seq into brms_data_clean
+brms_data_clean <- brms_data_clean |> 
   left_join(distinct_weeks, by = c("season", "week")) |>
   relocate(week_seq, .after = week)
 
 ## 6.2 Train/Test Split ----
 #   - Use seasons 2007–2021 for training/validation
 #   - Hold out seasons 2022–2024 for final testing
-train_data <- brms_data_winner |> filter(season <= 2021)
-test_data  <- brms_data_winner |> filter(season >= 2022)
+train_data <- brms_data_clean |> filter(season <= 2021)
+test_data  <- brms_data_clean |> filter(season >= 2022)
 
 ## 6.3 Define CV Time-Series Folds -----
 ## 6.3.1 Weekly Folds ----
@@ -608,6 +625,48 @@ rolling_splits_season <- manual_rset(
 )
 rolling_splits_season
 
+
+## 6.3.3 Three Season Roll week Folds ----
+splits_tbl <- brms_data_clean |>
+  distinct(season, week) |>
+  filter(season >= 2010) |>
+  arrange(season, week) |>
+  mutate(
+    # create a unique ID for each fold
+    id = sprintf("S%04d_W%02d", season, week),
+    # build the split object for each (season, week)
+    split = map2(season, week, ~ {
+      # analysis indices: prior 3 seasons OR same season & weeks < forecast week
+      train_idx <- which(
+        (brms_data_clean$season >= .x - 3 & brms_data_clean$season < .x) |
+          (brms_data_clean$season == .x & brms_data_clean$week < .y)
+      )
+      # assessment indices: exactly this season & this week
+      test_idx <- which(
+        brms_data_clean$season == .x & brms_data_clean$week == .y
+      )
+      # build an rsplit
+      make_splits(
+        list(analysis   = train_idx,
+             assessment = test_idx),
+        data = brms_data_clean
+      )
+    })
+  )
+
+# assemble into an rsample object
+nfl_backtest_splits <- manual_rset(
+  splits = splits_tbl$split,
+  ids    = splits_tbl$id
+)
+
+nfl_backtest_splits
+nfl_backtest_splits$splits[[1]]
+nfl_backtest_splits$splits[[23]]
+tidy(nfl_backtest_splits)
+class(nfl_backtest_splits)
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 7. RECIPE & WORKFLOWS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -624,25 +683,82 @@ rolling_splits_season
 # the same preprocessing (dummy encoding, normalization) defined in the recipe.
 
 ## 7.1 Winner Model ----
-# Pre-subset training data to only the outcome and predictors needed for winner model
-winner_preds <- extract_predictors(brms_data_winner, brms_formula_winner)
-train_winner <- train_data |> 
+# Pre-subset training data to only the outcome and predictors needed for result model
+result_preds <- extract_predictors(brms_data_clean, brms_formula_result)
+train_result <- train_data |> 
   select(
-    game_id, winner, 
-    all_of(winner_preds),
+    game_id, result, 
+    all_of(result_preds),
+  ) #|>
+# mutate(
+#   result = factor(result, levels = sort(unique(result)))
+# )
+
+test_result <- test_data |> 
+  select(
+    game_id, result, 
+    all_of(result_preds),
   )
 
 # Define recipe: encode categorical predictors and normalize numeric ones
-winner_recipe <- recipe(winner ~ ., data = train_winner) |>  
-  update_role(game_id, home_team, away_team, new_role = "id") |>                # preserve game_id column
-  step_dummy(all_nominal_predictors(), -all_outcomes()) |> # one-hot encode factors
+result_recipe <- recipe(
+  result ~ 
+  # #0 + Intercept +
+  net_elo +
+  net_rating +
+  hfa_pre +
+  home_net_off_red_zone_app_perc_cum,
+  data = train_data
+) |>  
+  # step_mutate(
+  #   role = "response",
+  #   result =  factor(result, levels = sort(unique(result)), ordered = TRUE)
+  # ) |>
+  # step_mutate(all_outcomes(),
+  #             levels = sort(unique(all_outcomes())),
+  #             ordered = TRUE) |>
+  update_role(game_id, new_role = "id") |>                # preserve game_id column
+  #step_dummy(all_nominal_predictors(), -all_outcomes()) |> # one-hot encode factors
   step_normalize(all_numeric_predictors())                 # center and scale numerics
+
+result_recipe <- brms_data |>
+  recipe() |>
+  # 1) mark the response
+  update_role(result, new_role = "outcome") |>
+  # 2) mark your numeric inputs
+  update_role(
+    net_elo,
+    net_rating,
+    hfa_pre,
+    home_net_off_red_zone_app_perc_cum,
+    new_role = "predictor"
+  ) |>
+  # 3) mark your grouping factors for brms
+  update_role(
+    home_team,
+    away_team,
+    new_role = "group"
+  ) |>
+  update_role(
+    game_id,
+    new_role = "id"
+  ) |>
+  # 4) preprocessing *only* on those numeric predictors:
+  step_nzv(all_numeric_predictors()) |>  # near-zero variance
+  step_lincomb(all_numeric_predictors()) |>  # remove linear combinations
+  step_corr(all_numeric_predictors(),       # filter by correlation
+            threshold = 0.95) |>
+  step_normalize(all_numeric_predictors())    # center & scale
+result_recipe
 
 
 ## 7.1.1 Model specifications ----
-bayes_winner_spec <- logistic_reg(mode = "classification") |> 
+naiveBayes_result_spec <- naive_Bayes(mode = "classification") |>
+  set_engine("klaR") |> set_args(usekernel = FALSE)
+naiveBayes_result_spec |> translate()
+bayes_result_spec <- logistic_reg(mode = "classification") |> 
   set_engine("stan")
-xgb_winner_spec  <- boost_tree(
+xgb_result_spec  <- boost_tree(
   trees = 1000,
   tree_depth = 6,
   learn_rate = 0.01
@@ -651,12 +767,15 @@ xgb_winner_spec  <- boost_tree(
   set_mode("classification")
 
 ## 7.1.2 Build workflows ----
-wf_bayes_winner <- workflow() |> 
-  add_recipe(winner_recipe) |> 
-  add_model(bayes_winner_spec)
-wf_xgb_winner  <- workflow() |> 
-  add_recipe(winner_recipe) |> 
-  add_model(xgb_winner_spec)
+wf_naiveBayes_result <- workflow() |> 
+  add_recipe(result_recipe) |> 
+  add_model(naiveBayes_result_spec)
+wf_bayes_result <- workflow() |> 
+  add_recipe(result_recipe) |> 
+  add_model(bayes_result_spec)
+wf_xgb_result  <- workflow() |> 
+  add_recipe(result_recipe) |> 
+  add_model(xgb_result_spec)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 8. RESAMPLING EVALUATION ----
@@ -669,7 +788,7 @@ eval_metrics <- metric_set(accuracy, roc_auc, brier_class)
 ### 8.1.1 Season Rolling Window ----
 # Bayesian logistic CV
 bayes_res_roll_season <- fit_resamples(
-  wf_bayes_winner,
+  wf_bayes_result,
   resamples = rolling_splits_season,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -677,7 +796,7 @@ bayes_res_roll_season <- fit_resamples(
 
 # XGBoost CV
 xgb_res_roll_season <- fit_resamples(
-  wf_xgb_winner,
+  wf_xgb_result,
   resamples = rolling_splits_season,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -686,7 +805,7 @@ xgb_res_roll_season <- fit_resamples(
 ### 8.1.2 Season Expanding Window ----
 # Bayesian logistic CV
 bayes_res_expanding_season <- fit_resamples(
-  wf_bayes_winner,
+  wf_bayes_result,
   resamples = expanding_splits_season,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -694,16 +813,23 @@ bayes_res_expanding_season <- fit_resamples(
 
 # XGBoost CV
 xgb_res_expanding_season <- fit_resamples(
-  wf_xgb_winner,
+  wf_xgb_result,
   resamples = expanding_splits_season,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
 )
 
 ### 8.1.3 Week Rolling Window ----
+naiveBayes_res_roll_week <- fit_resamples(
+  wf_naiveBayes_result,
+  resamples = rolling_splits_week,
+  metrics   = eval_metrics,
+  control   = control_resamples(save_pred = TRUE)
+)
+
 # Bayesian logistic CV
 bayes_res_roll_week <- fit_resamples(
-  wf_bayes_winner,
+  wf_bayes_result,
   resamples = rolling_splits_week,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -711,7 +837,7 @@ bayes_res_roll_week <- fit_resamples(
 
 # XGBoost CV
 xgb_res_roll_week <- fit_resamples(
-  wf_xgb_winner,
+  wf_xgb_result,
   resamples = rolling_splits_week,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -720,7 +846,7 @@ xgb_res_roll_week <- fit_resamples(
 ### 8.1.4 Week Expanding Window ----
 # Bayesian logistic CV
 bayes_res_expanding_week <- fit_resamples(
-  wf_bayes_winner,
+  wf_bayes_result,
   resamples = expanding_splits_week,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -728,7 +854,7 @@ bayes_res_expanding_week <- fit_resamples(
 
 # XGBoost CV
 xgb_res_expanding_week <- fit_resamples(
-  wf_xgb_winner,
+  wf_xgb_result,
   resamples = expanding_splits_week,
   metrics   = eval_metrics,
   control   = control_resamples(save_pred = TRUE)
@@ -747,6 +873,9 @@ bayes_cv_metrics_expanding_season <- collect_metrics(bayes_res_expanding_season)
 xgb_cv_metrics_expanding_season   <- collect_metrics(xgb_res_expanding_season) |>
   mutate(model = "XGBoost", resamp_window = "Expanding", resamp_fold = "Season")
 
+
+naiveBayes_cv_metrics_roll_week <- collect_metrics(naiveBayes_res_roll_week) |>
+  mutate(model = "Naive Bayes", resamp_window = "Rolling", resamp_fold = "Week")
 bayes_cv_metrics_roll_week <- collect_metrics(bayes_res_roll_week) |>
   mutate(model = "Bayesian Logistic", resamp_window = "Rolling", resamp_fold = "Week")
 xgb_cv_metrics_roll_week   <- collect_metrics(xgb_res_roll_week) |>
@@ -819,11 +948,11 @@ cv_predictions_all <- bind_rows(
   bayes_cv_predictions_expanding_week,
   xgb_cv_predictions_expanding_week
 )
-cv_predictions_all <- train_winner |>
+cv_predictions_all <- train_result |>
   mutate(.row = row_number()) |>
   select(.row, game_id) |>
   right_join(cv_predictions_all, by = join_by(.row)) |>
-  left_join(brms_data_winner |> select(game_id, season, week, home_team, away_team),
+  left_join(brms_data_clean |> select(game_id, season, week, home_team, away_team),
             by = join_by(game_id))
 
 cv_bayes_predictions <- cv_predictions_all |> 
@@ -837,9 +966,9 @@ cv_xgb_predictions <- cv_predictions_all |>
 overall_cv_metrics <- cv_predictions_all |> 
   group_by(model, resamp_window, resamp_fold) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier_class = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier_class = brier_class_vec(result, .pred_Home),
     n = n()
   ) 
 print(overall_cv_metrics)
@@ -849,9 +978,9 @@ print(overall_cv_metrics)
 season_cv_metrics <- cv_predictions_all |> 
   group_by(model, resamp_window, resamp_fold, season) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
 print(season_cv_metrics)
@@ -860,9 +989,9 @@ print(season_cv_metrics)
 week_cv_metrics <- cv_predictions_all |> 
   group_by(model, resamp_window, resamp_fold, season) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
 print(week_cv_metrics)
@@ -874,101 +1003,105 @@ print(week_cv_metrics)
 # After inspecting CV results, refit on entire train_data and predict on test_data
 
 ## 9.1 Fit Models ----
-bayes_winner_fit   <- fit(wf_bayes_winner, data = train_winner)
-xgb_winner_fit    <- fit(wf_xgb_winner,  data = train_winner)
+bayes_result_fit   <- fit(wf_bayes_result, data = train_result)
+xgb_result_fit    <- fit(wf_xgb_result,  data = train_result)
 
 ## 9.2 Predictions ----
 # Predictions will undergo the same preprocessing steps defined in the recipe
 # when calling `predict()`, ensuring test_data is transformed identically to train.
 # Compare posteriors/implied probabilities vs. actual outcomes to evaluate test performance.
-bayes_winner_preds <- bind_cols(
-  test_data |> select(game_id, season, week, home_team, away_team, winner),
-  predict(bayes_winner_fit, test_data, type = "class"),
-  predict(bayes_winner_fit, test_data, type = "prob"),
-  predict(bayes_winner_fit, test_data, type = "conf_int")
+bayes_result_preds <- bind_cols(
+  test_data |> select(game_id, season, week, home_team, away_team, result),
+  predict(bayes_result_fit, test_data, type = "class"),
+  predict(bayes_result_fit, test_data, type = "prob"),
+  predict(bayes_result_fit, test_data, type = "conf_int")
 ) |>
   mutate(model = "Bayesian Logistic", .before = 1)
 
-xgb_winner_preds <- bind_cols(
-  test_data |> select(game_id, season, week, home_team, away_team, winner),
-  predict(xgb_winner_fit, test_data, type = "class"),
-  predict(xgb_winner_fit, test_data, type = "prob")
+xgb_result_preds <- bind_cols(
+  test_data |> select(game_id, season, week, home_team, away_team, result),
+  predict(xgb_result_fit, 
+          test_data |> select(game_id, result, all_of(result_preds)),
+          type = "class"),
+  predict(xgb_result_fit, 
+          test_data |> select(game_id, result, all_of(result_preds)),
+          type = "prob")
 )  |>
   mutate(model = "XGBoost", .before = 1)
 
-winner_scores <- test_data |>
+result_scores <- test_data |>
   select(game_id, home_score, away_score, result, total)
 
-winner_preds <- bind_rows(
-  left_join(bayes_winner_preds, winner_scores, by = "game_id") |>
+result_preds <- bind_rows(
+  left_join(bayes_result_preds, result_scores, by = "game_id") |>
     select(-contains("lower"), -contains("upper")),
-  left_join(xgb_winner_preds, winner_scores, by = "game_id")
+  left_join(xgb_result_preds, result_scores, by = "game_id")
 )
-winner_preds
+result_preds
 
 ## 9.3 Performance ----
 # Compute performance metrics with vector functions
 
 ### 9.3.1 Model ----
-winner_test_metrics_model <- winner_preds |>
+result_test_metrics_model <- result_preds |>
   group_by(model) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
-print(winner_test_metrics_model, n = nrow(winner_test_metrics_model))
+print(result_test_metrics_model, n = nrow(result_test_metrics_model))
 
 ### 9.3.2 Season ----
-winner_test_metrics_season <- winner_preds |>
+result_test_metrics_season <- result_preds |>
   group_by(model, season) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
-print(winner_test_metrics_season, n = nrow(winner_test_metrics_season))
+print(result_test_metrics_season, n = nrow(result_test_metrics_season))
 
 ### 9.3.3 Week ----
-winner_test_metrics_week <- winner_preds |>
+result_test_metrics_week <- result_preds |>
   group_by(model, week) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
-print(winner_test_metrics_week, n = nrow(winner_test_metrics_week))
+print(result_test_metrics_week, n = nrow(result_test_metrics_week))
 
 ### 9.3.4 Season & Week ----
-winner_test_metrics_season_week <- winner_preds |>
+result_test_metrics_season_week <- result_preds |>
   group_by(model, season, week) |>
   summarise(
-    accuracy = accuracy_vec(winner, .pred_class),
-    roc_auc = roc_auc_vec(winner, .pred_Home, event_level = "second"),
-    brier = brier_class_vec(winner, .pred_Home),
+    accuracy = accuracy_vec(result, .pred_class),
+    roc_auc = roc_auc_vec(result, .pred_Home, event_level = "second"),
+    brier = brier_class_vec(result, .pred_Home),
     .groups = "drop"
   )
-print(winner_test_metrics_season_week, n = nrow(winner_test_metrics_season_week))
+print(result_test_metrics_season_week, n = nrow(result_test_metrics_season_week))
 
 ## 9.4 ROC Curve ----
-# Use prediction tibbles: bayes_winner_preds and xgb_winner_preds
-roc_bayes <- roc_curve(bayes_winner_preds, truth = winner, .pred_Home) |> 
+# Use prediction tibbles: bayes_result_preds and xgb_result_preds
+roc_bayes <- roc_curve(bayes_result_preds, truth = result, .pred_Home) |> 
   mutate(model = "Bayesian Hierarchical")
-roc_xgb   <- roc_curve(xgb_winner_preds,   truth = winner, .pred_Home) |> 
+roc_xgb   <- roc_curve(xgb_result_preds,   truth = result, .pred_Home) |> 
   mutate(model = "XGBoost")
 
-winner_roc_curve <- winner_preds |>
+result_roc_curve <- result_preds |>
   group_by(model) |>
-  roc_curve(truth = winner, .pred_Home, event_level = "second")
+  roc_curve(truth = result, .pred_Home, event_level = "second")
 
-winner_roc_auc <- winner_preds |>
+result_roc_auc <- result_preds |>
   group_by(model) |>
-  roc_auc(truth = winner, .pred_Home, event_level = "second")
+  roc_auc(truth = result, .pred_Home, event_level = "second")
 
-roc_plot <- winner_roc_curve |> 
+roc_plot <- result_roc_curve |> 
   ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
   geom_line(linewidth = 1.2) +
   labs(title = "Test Set ROC Curves",

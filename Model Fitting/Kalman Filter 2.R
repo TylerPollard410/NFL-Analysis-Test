@@ -633,7 +633,8 @@ batch_res <- {
 
 trainKFA_window <- batch_res |> 
   select(game_id, season, week, home_team, away_team, location,
-         home_rating_pre, away_rating_pre, hfa_pre)
+         home_rating_pre, away_rating_pre, hfa_pre,
+         home_rating, away_rating, hfa)
 state <- attr(batch_res, "state")
 
 # --- 5. Iterate from 2009 week 1 until current -----------------------------
@@ -653,8 +654,8 @@ for (yr in years_to_run) {
     # collect test features
     test_feats <- kfa_week |> 
       select(game_id, season, week, home_team, away_team, location,
-             home_rating_pre, away_rating_pre, hfa_pre)
-             #home_rating, away_rating, hfa)
+             home_rating_pre, away_rating_pre, hfa_pre,
+             home_rating, away_rating, hfa)
     all_tests <- append(all_tests, list(test_feats))
     
     # append to training window
