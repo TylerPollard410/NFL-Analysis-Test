@@ -802,6 +802,7 @@ save(finalScoresData, file = "./app/data/finalScoresData.rda")
 ## STEP 4: Season-Specific Aggregates (Cumulative Mean) ----
 # For each season and team, order by week, lag each EPA metric by one game, then compute cumulative mean.
 scoresSeason <- scoresFeatures |>
+  select(-contains("points")) |>
   #group_by(season, team) |>
   #arrange(week) |>
   mutate(
@@ -826,6 +827,7 @@ scoresSeason <- scoresFeatures |>
 ## STEP 5: Multi-Season Aggregates (5-Game Rolling Average) ----
 # For continuity across seasons, group by team (ordered by season then week), lag, then compute a 5-game rolling average.
 scoresMulti <- scoresFeatures |>
+  select(-contains("points")) |>
   mutate(
     across(all_of(scores_cols),
            ~slidify_vec(
@@ -861,7 +863,8 @@ scoresMulti <- scoresFeatures |>
 ## STEP 6: Combine scores Features ----
 scoresFinal <- gameDataLong |>
   select(all_of(id_cols)) |>
-  #left_join(scoresFeatures, by = join_by(game_id, season, week, team, opponent)) |>
+  left_join(scoresFeatures |> select(all_of(id_cols), contains("points")), 
+            by = join_by(game_id, season, week, team, opponent)) |>
   left_join(scoresSeason, by = join_by(game_id, season, week, team, opponent)) |>
   left_join(scoresMulti,  by = join_by(game_id, season, week, team, opponent))
 

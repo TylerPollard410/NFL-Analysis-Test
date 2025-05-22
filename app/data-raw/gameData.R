@@ -5,7 +5,8 @@ require(tidyverse)
 # Create game data -----
 allSeasons <- 2006:most_recent_season()
 
-gameData <- load_schedules(seasons = allSeasons) |>
+gameData <- load_schedules() |> #load_schedules(seasons = allSeasons) |>
+  filter(season >= 2006) |>
   mutate(
     home_team = clean_team_abbrs(home_team),
     away_team = clean_team_abbrs(away_team)
