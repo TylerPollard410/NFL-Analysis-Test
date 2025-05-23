@@ -2,7 +2,6 @@
 # Last Update: 
 
 
-
 # Libraries ----
 ## Helpers ----
 library(tictoc)
@@ -10,8 +9,8 @@ library(progressr)
 
 ## Database 
 library(future)
-library(DBI)
-library(RPostgres)
+#library(DBI)
+#library(RPostgres)
 
 ## Manipulate Data ----
 library(DescTools)
@@ -121,8 +120,9 @@ cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Generating seasonStandings", "\n",
     "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
+env_vars <- ls()
 source("./app/data-raw/seasonStandings.R")
-save(seasonStandings, file = "./app/data/seasonStandings.rda")
+#save(seasonStandings, file = "./app/data/seasonStandings.rda")
 #toc()
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Finished seasonStandings", "\n",
@@ -134,8 +134,10 @@ cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Generating seasonWeekStandings", "\n",
     "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
+env_vars <- ls()
+rm(list = setdiff(ls(), env_vars))
 source("./app/data-raw/seasonWeekStandings.R")
-save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
+#save(seasonWeekStandings, file = "./app/data/seasonWeekStandings.rda")
 #toc()
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Finished seasonWeekStandings", "\n",
@@ -147,8 +149,14 @@ cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Generating eloData", "\n",
     "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n")
+env_vars <- ls()
+rm(list = setdiff(ls(), env_vars))
 source("./app/data-raw/eloData.R")
-save(eloData, file = "./app/data/eloData.rda")
+#save(eloData, file = "./app/data/eloData.rda")
+save(eloData,
+     eloFinals, 
+     file = "./scripts/UpdateData/PriorData/eloData.rda")
+save(eloFinals, file = "./scripts/UpdateData/PriorData/eloFinals.rda")
 #toc()
 cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n",
     "Finished eloData", "\n",
