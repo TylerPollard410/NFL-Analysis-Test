@@ -103,6 +103,7 @@ cat("Generating EPA Data", "\n")
 ## Penalty Sturcture 2 ----
 ## STEP 1: Compute game-level offensive EPA metrics from pbpData ----
 ### Offense Data ----
+system.time(
 epaOffData <- pbpData |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, posteam, home_team, away_team) |>
@@ -143,8 +144,10 @@ epaOffData <- pbpData |>
   mutate(opponent = rev(posteam), .after = posteam) |>
   rename(team = posteam) |>
   ungroup()
+)
 
 ### Defense Data ----
+system.time(
 epaDefData <- pbpData |>
   filter(!is.na(epa) & !is.na(ep) & !is.na(posteam)) |>
   group_by(game_id, season, week, defteam, home_team, away_team) |>
@@ -185,7 +188,7 @@ epaDefData <- pbpData |>
   mutate(opponent = rev(defteam), .after = defteam) |>
   rename(team = defteam) |>
   ungroup()
-
+)
 ## STEP 2: Merge defensive EPA metrics ----
 # Here we assume that a team's defensive EPA can be represented by the opponent’s offensive metrics.
 # epaData <- epaOffData |>
