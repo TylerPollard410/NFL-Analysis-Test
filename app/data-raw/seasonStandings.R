@@ -1,9 +1,7 @@
 # seasonStandings.R
 # Helper script to compute season standings and rating statistics (MOV, SOS, SRS, OSRS, DSRS)
 
-# Libraries ----
-library(dplyr)
-library(nflverse)
+# Dependencies: dplyr, nflverse (loaded externally in UpdateData.R)
 
 #' Compute rating statistics (SOS, SRS, OSRS, DSRS) for a single season
 #'
@@ -11,7 +9,7 @@ library(nflverse)
 #' @param season_year  Integer specifying the season year for messaging
 #' @param tol       Numeric tolerance for convergence (default 1e-3)
 #' @param max_iter  Maximum iterations to attempt before stopping (default 100)
-#' @param print_message Prints progress updates while looping through fucntion
+#' @param print_message Prints progress updates while looping through function
 #' @return A tibble with columns team, MOV, SOS, SRS, OSRS, DSRS
 compute_ratings <- function(df, season_year, tol = 1e-3, max_iter = 100, print_message = TRUE) {
   if(print_message) {
@@ -31,6 +29,7 @@ compute_ratings <- function(df, season_year, tol = 1e-3, max_iter = 100, print_m
     mutate(
       team_PPG = team_score / games_played,
       opp_PPG  = opponent_score / games_played,
+      #MOV      = (team_score - opponent_score) / games_played
       MOV      = result / games_played
     )
   
@@ -41,6 +40,7 @@ compute_ratings <- function(df, season_year, tol = 1e-3, max_iter = 100, print_m
   ratings <- base |> 
     transmute(
       team,
+      #games_played, team_score, opponent_score, team_PPG, opp_PPG, result,
       MOV,
       SOS  = 0,
       SRS  = MOV,
@@ -100,24 +100,28 @@ compute_ratings <- function(df, season_year, tol = 1e-3, max_iter = 100, print_m
 #'
 #' @param gameData Data frame of all games, must include columns season, team, opponent, result, team_score, opponent_score
 #' @return A tibble with combined standings and rating stats
-compute_season_standings <- function(gameData) {
+compute_season_standings <- function(gameData, ...) {
+  
+  # Always filter to regular season
+  reg_data <- gameData |> 
+    filter(season_type == "REG", !is.na(result))
+  
   # Base standings via nflverse
-  base_tbl <- nfl_standings(games = gameData |> filter(!is.na(result)))  # fileciteturn1file4
+  base_tbl <- nfl_standings(games = reg_data)
   
   # Prepare long-format game data
-  long <- gameData |> 
-    filter(!is.na(result)) |> 
+  long <- reg_data |>  
     clean_homeaway(invert = c("result", "spread_line"))
   
   # Compute ratings per season, passing the grouping key for messaging
   rating_tbl <- long |> 
     group_by(season) |> 
-    group_modify(~ compute_ratings(.x, season_year = .y$season)) |> 
+    group_modify(function(.x, .y) compute_ratings(.x, season_year = .y$season, ...)) |>
+    #group_modify(function(.x, .y) compute_ratings(.x, season_year = .y$season), .keep = TRUE) |>
     ungroup()
   
   # Merge base standings and ratings
   out_tbl <- base_tbl |> 
-    rename(season = season, team = team) |> 
     left_join(rating_tbl, by = c("season", "team")) |>
     arrange(season, team) |>
     relocate(
@@ -130,8 +134,8 @@ compute_season_standings <- function(gameData) {
 
 
 # Auto-run when sourced in UpdateData.R ----
-if (exists("gameData")) {
-  seasonStandings <- compute_season_standings(gameData)
-}
+# if (exists("gameData")) {
+#   seasonStandings <- compute_season_standings(gameData)
+# }
 
 
