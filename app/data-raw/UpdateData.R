@@ -322,6 +322,7 @@ save(redzoneData, file = "~/Desktop/NFL Analysis Data/UpdateData/redzoneData.rda
 
 cat("\n", "✅" , "Finished redzoneData", "\n")
 
+c(eloData, seasonWeekStandings, epaData, scoresData, seriesData, turnoverData, redzoneData)
 
 ## modData ----
 # About 8 minutes
