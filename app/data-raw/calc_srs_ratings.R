@@ -12,10 +12,10 @@
 #' @param print_message Prints progress updates while looping through function
 #' @return A tibble with columns team, MOV, SOS, SRS, OSRS, DSRS
 calc_srs_ratings <- function(game_long_df = game_data_long, 
-                                season_year = get_current_season(), 
-                                tol = 1e-3, 
-                                max_iter = 100, 
-                                print_message = TRUE) {
+                             season_year = get_current_season(), 
+                             tol = 1e-3, 
+                             max_iter = 100, 
+                             print_message = TRUE) {
   if(print_message) {
     cat("Computing Season", season_year, "...\n")
   }

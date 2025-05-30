@@ -256,7 +256,7 @@ srs_data <- compute_srs_data(
   tol = 1e-3,
   max_iter = 200,
   recompute_all = FALSE,
-  cache_file = "app/data/feature-data/srs_data.rda"
+  cache_file = "./app/data/feature-data/srs_data.rda"
 )
 save(srs_data, file = "app/data/feature-data/srs_data.rda")
 

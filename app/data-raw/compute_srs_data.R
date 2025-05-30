@@ -1,5 +1,6 @@
 # compute_srs_data.R
-# Helper script to compute weekly SRS data for multiple reset window options with caching and incremental update
+# Helper script to compute weekly SRS data for multiple reset window options
+# with caching and incremental updates
 
 # Dependencies: dplyr, purrr
 
@@ -14,75 +15,102 @@
 #' @param ...          Additional arguments passed to calc_weekly_standings
 #' @return A tibble with season, week, team, summary columns and rating stats (MOV, SOS, SRS, OSRS, DSRS) for each reset window
 compute_srs_data <- function(game_df,
-                             resets = list(TRUE, 10, 20),
-                             tol = 1e-3,
-                             max_iter = 100,
-                             recompute_all = FALSE,
-                             cache_file = "app/data/srs_data.rda",
+                             resets       = list(TRUE, 10, 20),
+                             tol          = 1e-3,
+                             max_iter     = 100,
+                             recompute_all= FALSE,
+                             cache_file   = "app/data/srs_data.rda",
                              ...) {
-  # Helper to compute for a subset of game_df
+  # Internal helper: compute ratings for a subset of games
   compute_for_df <- function(df_subset) {
-    # Define rating columns
     rating_cols <- c("MOV", "SOS", "SRS", "OSRS", "DSRS")
-    # Generate suffixes
-    suffixes <- map_chr(resets, function(r) if (identical(r, TRUE)) "" else paste0("_", r))
-    # Compute weekly standings for each reset
-    srs_list <- map2(resets, suffixes, function(r, suffix) {
-      df_weekly <- calc_weekly_standings(
+    suffixes    <- map_chr(resets, ~ if (identical(.x, TRUE)) "" else paste0("_", .x))
+    srs_list    <- map2(resets, suffixes, function(r, suffix) {
+      weekly <- calc_weekly_standings(
         df_subset,
-        tol = tol,
+        tol      = tol,
         max_iter = max_iter,
-        reset = r,
+        reset    = r,
         ...
       )
       if (suffix == "") {
-        df_weekly |>
+        weekly |>
           select(season, week, team,
                  games, wins, losses, ties, pf, pa, pd, win_pct,
                  all_of(rating_cols))
       } else {
-        df_weekly |>
+        weekly |>
           select(season, week, team, all_of(rating_cols)) |>
           rename_with(~ paste0(.x, suffix), all_of(rating_cols))
       }
     })
-    # Join all
     reduce(srs_list, left_join, by = c("season", "week", "team"))
   }
   
-  # If cache exists and not forced to recompute, load and update incrementally
+  # Full compute vs. incremental update
   if (!recompute_all && file.exists(cache_file)) {
     message("Loading cached SRS data from: ", cache_file)
-    load(cache_file)  # loads 'srs_data'
+    load(cache_file)  # this must load an object named `srs_data`
     existing <- srs_data
-    # Determine max computed week per season
-    max_weeks <- existing |>
-      group_by(season) |>
-      summarize(max_week = max(week), .groups = "drop")
-    # Identify new games needing computation
+    
+    # Find which season-weeks need computing
     new_games <- game_df |>
-      left_join(max_weeks, by = "season") |>
-      filter(is.na(max_week) | week > max_week) |>
-      select(-max_week)
+      filter(!is.na(result)) |>
+      distinct(season, week) |>
+      anti_join(existing |> distinct(season, week),
+                by = c("season", "week"))
     if (nrow(new_games) == 0) {
-      message("No new weeks to compute; returning existing data.")
+      message("No new weeks; returning cached data.")
       return(existing)
     }
-    message("Computing SRS for new weeks...")
-    new_srs <- compute_for_df(new_games)
-    # Combine and return
-    combined <- bind_rows(existing, new_srs) |>
-      arrange(season, week, team)
-    return(combined)
+    
+    message("Computing SRS for new weeks with rolling context…")
+    # Build an index of all valid season-weeks
+    weekGrid <- game_df |>
+      filter(!is.na(result)) |>
+      distinct(season, week) |>
+      arrange(season, week) |>
+      mutate(idx = row_number())
+    
+    new_idx   <- weekGrid |>
+      semi_join(new_games, by = c("season", "week")) |>
+      pull(idx)
+    max_win   <- max(unlist(Filter(is.numeric, resets)), na.rm = TRUE)
+    start_idx <- max(1, min(new_idx) - max_win)
+    
+    context_weeks <- weekGrid |>
+      slice(start_idx:max(new_idx)) |>
+      select(season, week)
+    
+    # Subset games for context and compute
+    df_subset <- game_df |>
+      semi_join(context_weeks, by = c("season", "week")) |>
+      filter(!is.na(result))
+    
+    full_new <- compute_for_df(df_subset)
+    
+    # Extract only newly-needed weeks
+    new_ratings <- full_new |>
+      semi_join(new_games, by = c("season", "week"))
+    
+    srs_data <- bind_rows(existing, new_ratings)
+    
+  } else {
+    # No valid cache or forced full recompute
+    message(ifelse(!file.exists(cache_file),
+                   "Cache not found; computing all SRS data…",
+                   "Recomputing all SRS data from scratch…"))
+    srs_data <- compute_for_df(game_df)
   }
   
-  # Otherwise, compute all from scratch
-  message(ifelse(!file.exists(cache_file),
-                 "Cache not found; computing all SRS data...",
-                 "Recomputing all SRS data from scratch..."))
-  srs_data <- compute_for_df(game_df) |> arrange(season, week, team)
-  return(srs_data)
+  # Return in sorted order
+  srs_data |>
+    arrange(season, week, team)
 }
+
+
+
+
 
 
 # 
