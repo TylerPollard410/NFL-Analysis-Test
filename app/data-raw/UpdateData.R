@@ -37,12 +37,13 @@ env_vars <- ls()
 
 # Load/Updata Data ----
 ## gameData -------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating gameData")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating gameData", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
 
-source("./app/data-raw/gameData.R")
+#source("./app/data-raw/gameData.R")
+source("./app/data-raw/compute_game_data.R")
 gameData <- compute_game_data(allSeasons)
 
 cat("\n", "✅" , "Finished gameData", "\n")
@@ -50,7 +51,7 @@ cat("\n", "✅" , "Finished gameData", "\n")
 
 
 ## gameDataLong -------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating gameDataLong")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating gameDataLong", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))

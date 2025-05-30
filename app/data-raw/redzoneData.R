@@ -5,18 +5,19 @@
 
 #' Compute red-zone feature dataset for modeling
 #'
-#' @param gameDataLong Tibble of long-format game-team rows with columns: game_id, season, week, team, opponent
-#' @param pbpData      Play-by-play tibble including: game_id, season, week,
+#' @param game_long_df Tibble of long-format game-team rows with columns: game_id, season, week, team, opponent
+#' @param pbp_df      Play-by-play tibble including: game_id, season, week,
 #'                      posteam, home_team, away_team, fixed_drive,
 #'                      fixed_drive_result, drive_inside20, drive_ended_with_score
 #' @return Tibble with one row per game-team containing:
 #'   off_red_zone_app_perc, off_red_zone_eff,
 #'   def_red_zone_app_perc, def_red_zone_eff
-compute_redzone_data <- function(gameDataLong, pbpData) {
+compute_redzone_data <- function(game_long_df = game_data_long, 
+                                 pbp_df = pbp_data) {
   # uses dplyr
   
   # STEP 1: Summarise raw red-zone metrics per team-game
-  redzoneData <- pbpData |>
+  redzoneData <- pbp_df |>
     filter(!is.na(posteam)) |>
     select(
       game_id, season, week,
@@ -56,7 +57,7 @@ compute_redzone_data <- function(gameDataLong, pbpData) {
   
   # STEP 3: Merge into gameDataLong ordering
   id_cols <- c("game_id", "season", "week", "team", "opponent")
-  redzone_data <- gameDataLong |>
+  redzone_data <- game_long_df |>
     select(all_of(id_cols)) |>
     left_join(redzone_features, by = id_cols) |>
     mutate(across(starts_with("off_"),  ~ replace_na(.x, 0)),
