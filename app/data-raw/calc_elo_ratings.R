@@ -16,73 +16,97 @@
 #'   \item{elo_history}{Data frame of pre- and post-game ratings for each game}
 #'   \item{final_ratings}{Named vector of final team ratings after all games}
 #'   \item{team_ratings}{Data frame of end-of-week ratings snapshots with season and week}
-calc_elo_ratings <- function(games,
-                             initial_elo = 1500,
-                             K = 20,
-                             home_advantage = 65,
-                             d = 400,
-                             apply_margin_multiplier = TRUE) {
-  games <- games[order(as.Date(games$gameday)), ]
-  games <- games |> filter(!is.na(home_score), !is.na(away_score))
-  teams <- sort(unique(c(games$home_team, games$away_team)))
-  # Initialize elo_ratings: scalar or named vector
-  if (length(initial_elo) == 1) {
-    elo_ratings <- setNames(rep(initial_elo, length(teams)), teams)
+calc_elo_ratings <- function(
+    games,
+    initial_elo            = 1500,
+    K                      = 20,
+    home_advantage         = 65,
+    d                      = 400,
+    apply_margin_multiplier = TRUE
+) {
+  library(dplyr)
+  
+  # 1) order & filter
+  games <- games %>%
+    arrange(season, week, as.Date(gameday), game_id) %>%
+    filter(!is.na(home_score), !is.na(away_score))
+  
+  # 2) init ratings
+  teams <- unique(c(games$home_team, games$away_team))
+  if (length(initial_elo)==1) {
+    ratings <- setNames(rep(initial_elo, length(teams)), teams)
   } else {
-    if (is.null(names(initial_elo))) stop("initial_elo vector must be named by team")
-    elo_ratings <- initial_elo[teams]
-  }
-  elo_history <- games[, c("game_id", "season", "week", "gameday", 
-                           "home_team", "away_team", "home_score", "away_score")]
-  elo_history$home_elo_pre <- NA_real_
-  elo_history$away_elo_pre <- NA_real_
-  elo_history$home_elo_post <- NA_real_
-  elo_history$away_elo_post <- NA_real_
-  
-  expected_prob <- function(rating_A, rating_B, home_field = 0, home_field_ind = 0, d = 400) {
-    home_field_adj <- home_field * home_field_ind
-    1 / (1 + 10 ^ ((rating_B - (rating_A + home_field_adj)) / d))
+    if (is.null(names(initial_elo)))
+      stop("initial_elo must be a named, named vector")
+    ratings <- initial_elo[teams]
   }
   
-  team_ratings_full <- data.frame()
+  # 3) prepare output
+  hist <- games %>%
+    select(game_id, season, week, gameday,
+           home_team, away_team, home_score, away_score, location) %>%
+    mutate(home_elo_pre  = NA_real_,
+           away_elo_pre  = NA_real_,
+           home_elo_post = NA_real_,
+           away_elo_post = NA_real_)
+  snaps <- tibble()
+  
+  # 4) loop
   for (i in seq_len(nrow(games))) {
-    game <- games[i, ]
-    home_team <- game$home_team
-    away_team <- game$away_team
-    home_elo <- elo_ratings[home_team]
-    away_elo <- elo_ratings[away_team]
-    elo_history$home_elo_pre[i] <- home_elo
-    elo_history$away_elo_pre[i] <- away_elo
-    is_home <- ifelse(game$location == "Home", 1, 0)
-    exp_home <- expected_prob(home_elo, away_elo, home_field = home_advantage, home_field_ind = is_home, d = d)
-    outcome_home <- ifelse(game$home_score > game$away_score, 1,
-                           ifelse(game$home_score < game$away_score, 0, 0.5))
-    margin <- abs(game$home_score - game$away_score)
-    multiplier <- if (apply_margin_multiplier) {
-      log(margin + 1) * (2.2 / ((0.001 * abs(home_elo - away_elo)) + 2.2))
-    } else 1
-    home_elo_new <- home_elo + K * multiplier * (outcome_home - exp_home)
-    away_elo_new <- away_elo + K * multiplier * ((1 - outcome_home) - (1 - exp_home))
-    elo_history$home_elo_post[i] <- home_elo_new
-    elo_history$away_elo_post[i] <- away_elo_new
-    elo_ratings[home_team] <- home_elo_new
-    elo_ratings[away_team] <- away_elo_new
+    g <- games[i,]
     
-    # Determine if we've reached end of current week or season
-    next_week <- if (i < nrow(games)) games$week[i + 1] else NA_integer_
-    if (is.na(next_week) || game$week != next_week) {
-      team_ratings_full <- rbind(
-        team_ratings_full,
-        data.frame(team = names(elo_ratings), elo_ratings = as.numeric(elo_ratings),
-                   season = game$season, week = game$week)
+    # sanity: must have seeds for both teams
+    missing <- setdiff(c(g$home_team, g$away_team), names(ratings))
+    if (length(missing)>0) {
+      stop("No seed for teams: ", paste(missing, collapse=", "))
+    }
+    
+    is_home <- ifelse(g$location=="Home", 1, 0)
+    hfa_adj <- home_advantage * is_home
+    
+    he <- ratings[g$home_team]
+    ae <- ratings[g$away_team]
+    hist$home_elo_pre[i] <- he
+    hist$away_elo_pre[i] <- ae
+    
+    exp_h <- 1/(1 + 10^((ae - (he+hfa_adj))/d))
+    if      (g$home_score>g$away_score) { sh<-1; sa<-0 }
+    else if (g$home_score<g$away_score) { sh<-0; sa<-1 }
+    else                                { sh<-0.5; sa<-0.5 }
+    
+    mult <- 1
+    if (apply_margin_multiplier && g$home_score!=g$away_score) {
+      m    <- abs(g$home_score - g$away_score)
+      diff <- abs(he - ae + hfa_adj)
+      mult <- log(m+1)*(2.2/((diff*0.001)+2.2))
+    }
+    
+    nh <- he + K*mult*(sh - exp_h)
+    na <- ae + K*mult*(sa - (1 - exp_h))
+    ratings[g$home_team] <- nh
+    ratings[g$away_team] <- na
+    
+    hist$home_elo_post[i] <- nh
+    hist$away_elo_post[i] <- na
+    
+    # snapshot at end of week
+    next_wk <- if (i < nrow(games)) games$week[i+1] else NA_integer_
+    if (is.na(next_wk) || games$week[i] != next_wk) {
+      snaps <- bind_rows(
+        snaps,
+        tibble(team = names(ratings),
+               elo  = as.numeric(ratings),
+               season = g$season,
+               week   = g$week)
       )
-      message("Finished ELO for Season ", game$season, " Week ", game$week)
+      message("Finished ELO for Season ", g$season, " Week ", g$week)
     }
   }
+  
   list(
-    elo_history = elo_history,
-    final_ratings = elo_ratings,
-    team_ratings = team_ratings_full
+    elo_history   = hist,
+    final_ratings = ratings,
+    team_ratings  = snaps
   )
 }
 

@@ -1,4 +1,4 @@
-# seasonStandings.R
+# calc_srs_ratings.R
 # Helper script to compute season standings and rating statistics (MOV, SOS, SRS, OSRS, DSRS)
 
 # Dependencies: dplyr, nflverse (loaded externally in UpdateData.R)

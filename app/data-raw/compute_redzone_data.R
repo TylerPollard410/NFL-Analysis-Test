@@ -58,6 +58,7 @@ compute_redzone_data <- function(game_long_df = game_data_long,
   # STEP 3: Merge into gameDataLong ordering
   id_cols <- c("game_id", "season", "week", "team", "opponent")
   redzone_data <- game_long_df |>
+    filter(!is.na(result)) |>
     select(all_of(id_cols)) |>
     left_join(redzone_features, by = id_cols) |>
     mutate(across(starts_with("off_"),  ~ replace_na(.x, 0)),

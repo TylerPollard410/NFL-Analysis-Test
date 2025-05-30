@@ -14,86 +14,135 @@
 #'   \item{final_elos}{Named vector or tibble of final season ratings}
 compute_elo_data <- function(
     game_df,
-    initial_elo = 1500,
-    K = 20,
-    home_advantage = 0,
-    d = 400,
+    initial_elo            = 1500,
+    K                      = 20,
+    home_advantage         = 65,
+    d                      = 400,
     apply_margin_multiplier = TRUE,
-    recompute_all = FALSE,
-    cache_file = "./scripts/UpdateData/PriorData/elo_data.rda",
-    season_factor = 0
+    recompute_all          = FALSE,
+    cache_file             = "./app/data/elo_data.rda",
+    season_factor          = 0.6
 ) {
-  # Load existing cache if available
-  if (!recompute_all && file.exists(cache_file)) {
+  library(dplyr)
+  
+  game_df <- game_df %>%
+    arrange(season, week, as.Date(gameday), game_id)
+  
+  if (recompute_all) {
+    message("Full Elo recompute requested...")
+    do_inc <- FALSE
+  } else if (!file.exists(cache_file)) {
+    message("No cache found; performing full recompute...")
+    do_inc <- FALSE
+  } else {
     message("Loading cached Elo data from ", cache_file)
-    load(cache_file)  # loads 'eloData'
-    elo_prev <- elo_data |> filter(season != get_current_season())
-    # Prepare last season's final ratings if rolling over
-    if (season_factor > 0 && nrow(elo_prev) > 0) {
-      last_season <- max(elo_prev$season, na.rm = TRUE)
-      season_games_prev <- game_df |> filter(season == last_season,
-                                              !is.na(home_score), !is.na(away_score))
-      prev_res <- calc_elo_ratings(
-        games = season_games_prev,
-        initial_elo = initial_elo,
-        K = K,
-        home_advantage = home_advantage,
-        d = d,
+    do_inc <- TRUE
+  }
+  
+  if (!do_inc) {
+    # full recompute (unchanged)...
+    elo_hist  <- tibble()
+    teams_all <- unique(c(game_df$home_team, game_df$away_team))
+    ratings   <- setNames(rep(initial_elo, length(teams_all)), teams_all)
+    for (ss in sort(unique(game_df$season))) {
+      message("Season start: ", ss)
+      games_ss <- game_df %>% filter(season == ss)
+      if (ss != min(game_df$season)) {
+        m       <- mean(ratings, na.rm = TRUE)
+        ratings <- ratings * season_factor + m * (1 - season_factor)
+      }
+      res      <- calc_elo_ratings(
+        games                  = games_ss,
+        initial_elo            = ratings,
+        K                      = K,
+        home_advantage         = home_advantage,
+        d                      = d,
         apply_margin_multiplier = apply_margin_multiplier
       )
-      prev_final <- tibble(team = names(prev_res$final_ratings), rating = prev_res$final_ratings)
-    } else {
-      prev_final <- NULL
+      # same update for full recompute
+      ratings  <- res$final_ratings
+      elo_hist <- bind_rows(elo_hist, res$elo_history)
     }
-  } else {
-    if (file.exists(cache_file)) message("Recomputing Elo data for all seasons...")
-    else message("No cache found; computing Elo data for all seasons...")
-    elo_prev <- tibble()
-    prev_final <- NULL
+    return(elo_hist)
   }
   
-  # Seasons to compute
-  seasons_to_run <- if (recompute_all || nrow(elo_prev) == 0) sort(unique(game_df$season))
-  else get_current_season()
+  # incremental update
+  load(cache_file)    # loads elo_data
+  elo_hist <- elo_data
   
-  all_history <- list()
-  for (season_i in seasons_to_run) {
-    season_games <- game_df |> filter(season == season_i,
-                                       !is.na(home_score), !is.na(away_score))
-    # Determine initial ratings
-    if (is.null(prev_final) || season_factor == 0) {
-      init_elo_param <- initial_elo
-    } else {
-      mean_prev <- mean(prev_final$rating, na.rm = TRUE)
-      init_vec <- prev_final$rating * season_factor + mean_prev * (1 - season_factor)
-      names(init_vec) <- prev_final$team
-      init_elo_param <- init_vec
+  last_season <- max(elo_hist$season)
+  last_week   <- max(filter(elo_hist, season == last_season)$week)
+  message("Cache covers up through Season ", last_season, " Week ", last_week)
+  
+  remainder <- game_df %>%
+    filter(season == last_season, week > last_week)
+  future    <- game_df %>%
+    filter(season > last_season)
+  new_gms   <- bind_rows(remainder, future) %>%
+    arrange(season, week, as.Date(gameday), game_id)
+  
+  if (nrow(new_gms) == 0) {
+    message("No new games to update Elo for.")
+    return(elo_hist)
+  }
+  
+  # seed from end-of-week snapshot
+  finals <- elo_hist %>%
+    filter(season < last_season |
+             (season == last_season & week <= last_week)) %>%
+    transmute(season, week, team = home_team, elo = home_elo_post) %>%
+    bind_rows(
+      elo_hist %>%
+        filter(season < last_season |
+                 (season == last_season & week <= last_week)) %>%
+        transmute(season, week, team = away_team, elo = away_elo_post)
+    ) %>%
+    arrange(season, week) %>%
+    group_by(team) %>%
+    slice_tail(n = 1) %>%
+    ungroup()
+  
+  all_teams  <- unique(c(game_df$home_team, game_df$away_team))
+  mean_final <- mean(finals$elo, na.rm = TRUE)
+  ratings    <- setNames(
+    sapply(all_teams, function(tm) {
+      x <- finals$elo[finals$team == tm]
+      if (length(x) == 0) mean_final else x
+    }),
+    all_teams
+  )
+  message("Seeded ", length(ratings),
+          " teams from up through Season ", last_season,
+          " Week ", last_week,
+          "; mean Elo = ", round(mean(ratings),3))
+  
+  # now the one-line tweak: update only players who actually played
+  elo_out        <- elo_hist
+  current_season <- last_season
+  for (ss in sort(unique(new_gms$season))) {
+    if (ss != current_season) {
+      message("Rolling over into Season ", ss)
+      m       <- mean(ratings, na.rm = TRUE)
+      ratings <- ratings * season_factor + m * (1 - season_factor)
+      current_season <- ss
     }
-    # Compute season ELO
+    message("Computing Elo for Season ", ss,
+            if (ss == last_season) " (remainder)" else " (new)")
+    games_ss <- new_gms %>% filter(season == ss)
+    
     res <- calc_elo_ratings(
-      games = season_games,
-      initial_elo = init_elo_param,
-      K = K,
-      home_advantage = home_advantage,
-      d = d,
+      games                  = games_ss,
+      initial_elo            = ratings,
+      K                      = K,
+      home_advantage         = home_advantage,
+      d                      = d,
       apply_margin_multiplier = apply_margin_multiplier
     )
-    all_history[[as.character(season_i)]] <- res$elo_history
+    # <— update only the teams who played this batch
+    ratings[names(res$final_ratings)] <- res$final_ratings
     
-    # Update prev_final for next season rollover
-    if (nrow(res$team_ratings) > 0) {
-      final_week <- max(res$team_ratings$week, na.rm = TRUE)
-      prev_final <- res$team_ratings |> filter(.data$week == final_week) |> transmute(team, rating = .data$elo_ratings)
-    }
+    elo_out <- bind_rows(elo_out, res$elo_history)
   }
   
-  # Combine history and cache
-  eloData <- bind_rows(elo_prev, bind_rows(all_history))
-  eloFinals <- prev_final
-  
-  # Return both
-  list(
-    elo_history = eloData,
-    final_elos = eloFinals
-  )
+  elo_out
 }

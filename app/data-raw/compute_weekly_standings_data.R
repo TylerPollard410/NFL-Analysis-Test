@@ -1,4 +1,4 @@
-# seasonWeekStandings.R
+# compute_weekly_standings_data.R
 # Wrapper script to update cumulative weekly SRS standings for each season-week with caching
 
 # Dependencies: dplyr, nflverse (loaded externally in UpdateData.R)

@@ -1,4 +1,4 @@
-# seasonWeekStandings.R
+# calc_weekly_standings.R
 # Helper script to compute cumulative weekly SRS standings for each season-week
 
 # Dependencies: dplyr, nflverse (loaded externally in UpdateData.R)

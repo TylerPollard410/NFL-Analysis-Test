@@ -108,6 +108,7 @@ compute_scores_data <- function(game_long_df = game_data_long,
   
   # STEP 6: Combine with gameDataLong and compute point breakdowns
   scoresFeatures <- game_long_df |>
+    filter(!is.na(result)) |>
     select(all_of(id_cols)) |>
     left_join(scoresDataAgg, by = join_by(season, week, team)) |>
     mutate(

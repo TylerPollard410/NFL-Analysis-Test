@@ -47,6 +47,7 @@ compute_turnover_data <- function(game_long_df = game_data_long,
   )
   
   turnoverFeatures <- game_long_df |>
+    filter(!is.na(result)) |>
     select(all_of(id_cols)) |>
     left_join(
       turnoverData |>

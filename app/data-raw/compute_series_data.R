@@ -18,6 +18,7 @@ compute_series_data <- function(game_long_df = game_data_long,
   # STEP 2: Merge with gameDataLong to enforce ordering
   id_cols <- c("game_id", "season", "week", "team", "opponent")
   seriesFeatures <- game_long_df |>
+    filter(!is.na(result)) |>
     select(all_of(id_cols)) |>
     left_join(seriesData, by = join_by(season, week, team))
   

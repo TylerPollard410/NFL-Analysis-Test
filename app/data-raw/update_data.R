@@ -14,7 +14,6 @@ library(future)
 
 ## Manipulate Data ----
 library(DescTools)
-library(stringr)
 library(pracma)
 library(timetk)
 
@@ -24,7 +23,7 @@ library(tidyverse)
 
 # Set wd ----
 #setwd("/Users/tylerpollard/Desktop/NFLAnalysisTest")
-
+tic()
 # Universal Variables ----
 all_seasons <- 2006:most_recent_season()
 teams_data <- load_teams(current = FALSE)
@@ -52,7 +51,7 @@ cat("\n", "✅" , "Finished game_data", "\n")
 
 
 ## game_data_long -------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating game_data_long",)
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating game_data_long", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -67,7 +66,7 @@ cat("\n", "✅" , "Finished game_data_long", "\n")
 
 
 ## pbp_data ------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating pbp_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating pbp_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -122,7 +121,7 @@ cat("\n", "✅" , "Finished pbp_data", "\n")
 
 
 ## player_offense_data ---------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating player_offense_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating player_offense_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -141,7 +140,7 @@ cat("\n", "✅" , "Finished player_offense_data", "\n")
 
 
 ## season_standings_data ------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating season_standings_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating season_standings_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -162,7 +161,7 @@ cat("\n", "✅" , "Finished season_standings_data", "\n")
 
 
 ## weekly_standings_data ------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating weekly_standings_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating weekly_standings_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -200,7 +199,7 @@ save(weekly_standings_data, file = "./app/data/weekly_standings_data.rda")
 # #save(weekly_standings, file = "./app/data/weekly_standings.rda")
 # save(weekly_standings_roll20, file = "~/Desktop/NFL Analysis Data/UpdateData/weekly_standings_roll20.rda")
 # 
-# weekly_standings_roll10 <- update_weekly_standings(
+# weekly_standings_roll10 <- compute_weekly_standings_data(
 #   game_data,
 #   tol = 1e-3,
 #   max_iter = 200,
@@ -216,7 +215,7 @@ cat("\n", "✅" , "Finished weekly_standings", "\n")
 
 
 ## elo_data ------------------------------
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating elo_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating elo_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -225,7 +224,7 @@ rm(list = setdiff(ls(), env_vars))
 source("./app/data-raw/calc_elo_ratings.R")
 source("./app/data-raw/compute_elo_data.R")
 
-elo_result <- compute_elo_data(
+elo_data <- compute_elo_data(
   game_df = game_data,
   initial_elo = 1500,
   K = 20,
@@ -234,26 +233,39 @@ elo_result <- compute_elo_data(
   apply_margin_multiplier = TRUE,
   recompute_all = FALSE,
   #cache_file = "~/Desktop/NFL Analysis Data/UpdateData/elo_data.rda",
-  cache_file = "./app/data/elo_data.rda",
+  cache_file = "./app/data/feature-data/elo_data.rda",
   season_factor = 0.6
 )
-elo_data   <- elo_result$elo_history
-eloFinals <- elo_result$final_elos
-
-
-rm(elo_result)
-#elo_data0   <- elo_result$elo_history
-#eloFinals0 <- elo_result$final_elos
-elo_data1   <- elo_result$elo_history
-eloFinals1 <- elo_result$final_elos
-save(elo_data, eloFinals, file = "./app/data/elo_data.rda")
+save(elo_data, file = "./app/data/feature-data/elo_data.rda")
 #save(elo_data, eloFinals, file = "~/Desktop/NFL Analysis Data/UpdateData/elo_data.rda")
 
 cat("\n", "✅" , "Finished elo_data", "\n")
 
 
+## srs_data ------------------------------
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating srs_data", "\n")
+
+env_vars <- ls()
+rm(list = setdiff(ls(), env_vars))
+
+source("./app/data-raw/compute_srs_data.R")
+
+srs_data <- compute_srs_data(
+  game_data,
+  resets = list(TRUE, 10, 20),
+  tol = 1e-3,
+  max_iter = 200,
+  recompute_all = FALSE,
+  cache_file = "app/data/feature-data/srs_data.rda"
+)
+save(srs_data, file = "app/data/feature-data/srs_data.rda")
+
+cat("\n", "✅" , "Finished srs_data", "\n")
+
+
+
 ## epa_data ----
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating epa_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating epa_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -265,7 +277,7 @@ epa_data <- compute_epa_data(
   pbp_df = pbp_data, 
   scaled_wp = FALSE
   )
-save(epa_data, file = "./app/data/epa_data.rda")
+save(epa_data, file = "./app/data/feature-data/epa_data.rda")
 #save(epa_data, file = "~/Desktop/NFL Analysis Data/UpdateData/epa_data.rda")
 
 cat("\n", "✅" , "Finished epa_data", "\n")
@@ -273,7 +285,7 @@ cat("\n", "✅" , "Finished epa_data", "\n")
 
 
 ## scores_data ----
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating scores_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating scores_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -281,7 +293,7 @@ rm(list = setdiff(ls(), env_vars))
 source("./app/data-raw/calc_weekly_team_stats.R")
 source("./app/data-raw/compute_scores_data.R")
 
-nflStatsWeek_loc   <- "~/Desktop/NFL Analysis Data/UpdateData/nflStatsWeek.rda"
+nflStatsWeek_loc   <- "app/data/feature-data/nflStatsWeek.rda"
 scores_data <- compute_scores_data(
   game_long_df = game_data_long,
   pbp_df = pbp_data,
@@ -292,7 +304,7 @@ scores_data <- compute_scores_data(
   stats_loc = nflStatsWeek_loc,
   recompute_all = FALSE
 )
-save(scores_data, file = "./app/data/scores_data.rda")
+save(scores_data, file = "./app/data/feature-data/scores_data.rda")
 #save(scores_data, file = "~/Desktop/NFL Analysis Data/UpdateData/scores_data.rda")
 
 cat("\n", "✅" , "Finished scores_data", "\n")
@@ -300,7 +312,7 @@ cat("\n", "✅" , "Finished scores_data", "\n")
 
 
 ## series_data ----
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating series_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating series_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -308,13 +320,14 @@ rm(list = setdiff(ls(), env_vars))
 source("./app/data-raw/calc_weekly_series_stats.R")
 source("./app/data-raw/compute_series_data.R")
 
-nflSeriesWeek_loc   <- "~/Desktop/NFL Analysis Data/UpdateData/nflSeriesWeek.rda"
+nflSeriesWeek_loc   <- "app/data/feature-data/nflSeriesWeek.rda"
 series_data <- compute_series_data(
-  game_data_long, pbp_data, 
+  game_data_long, 
+  pbp_data, 
   series_loc = nflSeriesWeek_loc, 
   recompute_all = FALSE
 )
-save(series_data, file = "./app/data/series_data.rda")
+save(series_data, file = "./app/data/feature-data/series_data.rda")
 #save(series_data, file = "~/Desktop/NFL Analysis Data/UpdateData/series_data.rda")
 
 cat("\n", "✅" , "Finished series_data", "\n")
@@ -322,7 +335,7 @@ cat("\n", "✅" , "Finished series_data", "\n")
 
 
 ## turnover_data ----
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating turnover_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating turnover_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -333,7 +346,7 @@ turnover_data <- compute_turnover_data(
   game_long_df = game_data_long, 
   pbp_df = pbp_data
   )
-save(turnover_data, file = "./app/data/turnover_data.rda")
+save(turnover_data, file = "./app/data/feature-data/turnover_data.rda")
 #save(turnover_data, file = "~/Desktop/NFL Analysis Data/UpdateData/turnover_data.rda")
 
 cat("\n", "✅" , "Finished turnover_data", "\n")
@@ -341,7 +354,7 @@ cat("\n", "✅" , "Finished turnover_data", "\n")
 
 
 ## redzone_data ----
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating redzone_data")
+cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating redzone_data", "\n")
 
 env_vars <- ls()
 rm(list = setdiff(ls(), env_vars))
@@ -352,7 +365,7 @@ redzone_data <- compute_redzone_data(
   game_long_df = game_data_long, 
   pbp_df = pbp_data
 )
-save(redzone_data, file = "./app/data/redzone_data.rda")
+save(redzone_data, file = "./app/data/feature-data/redzone_data.rda")
 #save(redzone_data, file = "~/Desktop/NFL Analysis Data/UpdateData/redzone_data.rda")
 
 cat("\n", "✅" , "Finished redzone_data", "\n")
@@ -361,18 +374,18 @@ cat("\n", "✅" , "Finished redzone_data", "\n")
 
 ## modData ----
 # About 8 minutes
-cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating modData and modDataLong")
-
-env_vars <- ls()
-rm(list = setdiff(ls(), env_vars))
-
-system.time(
-  source("./app/data-raw/modData.R")
-)
-#save(modDataLong, file = "./app/data/modDataLong.rda")
-save(modData, file = "./app/data/modData.rda")
-
-cat("\n", "✅" , "Finished modData and modDataLong", "\n")
+# cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "Generating modData and modDataLong")
+# 
+# env_vars <- ls()
+# rm(list = setdiff(ls(), env_vars))
+# 
+# system.time(
+#   source("./app/data-raw/modData.R")
+# )
+# #save(modDataLong, file = "./app/data/modDataLong.rda")
+# save(modData, file = "./app/data/modData.rda")
+# 
+# cat("\n", "✅" , "Finished modData and modDataLong", "\n")
 
 
 
@@ -382,5 +395,6 @@ cat("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%", "\n", "\n",
     "-", attributes(game_data)$nflverse_timestamp
 )
 
+toc()
 
 
