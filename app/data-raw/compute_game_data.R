@@ -71,7 +71,8 @@ compute_game_data <- function(seasons = 2006:most_recent_season()) {
     relocate(spreadCover,       .after = spread_line) |>
     relocate(totalCover,        .after = total_line) |>
     relocate(winner,            .after = result) |>
-    relocate(time_of_day,       .after = gametime)
+    relocate(time_of_day,       .after = gametime) |>
+    add_week_seq()
 }
 
 # # Auto-run when sourced in UpdateData.R ----
