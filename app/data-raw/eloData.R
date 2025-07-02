@@ -115,7 +115,7 @@ update_elo_data <- function(
   if (!recompute_all && file.exists(cache_file)) {
     message("Loading cached Elo data from ", cache_file)
     load(cache_file)  # loads 'eloData'
-    elo_prev <- eloData |> filter(season != get_current_season())
+    elo_prev <- elo_data |> filter(season != get_current_season())
     # Prepare last season's final ratings if rolling over
     if (season_factor > 0 && nrow(elo_prev) > 0) {
       last_season <- max(elo_prev$season, na.rm = TRUE)
