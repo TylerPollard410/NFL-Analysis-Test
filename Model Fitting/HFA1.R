@@ -80,22 +80,45 @@ game_model_data <- game_model_data |>
                   labels = c("Neutral", "Home"))
     )
 
-train_start_idx <- game_model_data |>
+team_model_data <- game_model_data |>
+  clean_homeaway(invert = c("result", "spread_line")) |>
+  mutate(
+    hfa0 = factor(ifelse(location == "home", 1, 0),
+                  levels = c(0, 1), 
+                  labels = c("notHome", "Home"))
+  )
+
+
+train_start_idx <- 
+  game_model_data |>
+  #team_model_data |>
   filter(season == 2022, week == 1) |>
   pull(week_seq) |> unique()
-train_end_idx <- game_model_data |>
+train_end_idx <- 
+  game_model_data |>
+  #team_model_data |>
   filter(season == 2024, week == 8) |>
   pull(week_seq) |> unique()
 
-test_start_idx <- game_model_data |>
+test_start_idx <- 
+  game_model_data |>
+  #team_model_data |>
   filter(season == 2024, week == 9) |>
   pull(week_seq) |> unique()
-test_end_idx <- game_model_data |>
+test_end_idx <- 
+  game_model_data |>
+  #team_model_data |>
   filter(season == 2025, week == 1) |>
   pull(week_seq) |> unique()
 
-train_data <- game_model_data |> filter(between(week_seq, train_start_idx, train_end_idx))
-test_data <- game_model_data |> filter(between(week_seq, test_start_idx, test_end_idx))
+train_data <- 
+  game_model_data |>
+  #team_model_data |>
+  filter(between(week_seq, train_start_idx, train_end_idx))
+test_data <- 
+  game_model_data |>
+  #team_model_data |>
+  filter(between(week_seq, test_start_idx, test_end_idx))
 
 ## Define initial window of weeks (warm-up: Seasons 2007–2009)
 initial_window <- game_model_data |> 
@@ -122,13 +145,24 @@ test_data <- test_data |> mutate(homeWeight = 1, awayWeight = -1) |>
 
 ## 2.1 Formula ----
 hfa_formula <- bf(
-  result ~ 0 + Intercept +
+  result ~ 0 + #Intercept +
+    #factor(season) +
     #hfa +
-    s(week_seq) +
-    (hfa|mm(home_team, away_team, 
+    spread_line +
+    net_elo_pre +
+    (1 + hfa|mm(home_team, away_team, 
           weights = cbind(homeWeight, awayWeight),
-          scale = FALSE))
+          scale = FALSE, cor = FALSE))
 ) + brmsfamily(family = "student")
+
+hfa_formula <- bf(
+  result ~ 0 + Intercept +
+    #factor(season) +
+    #hfa +
+    s(season, )
+    (1 + hfa0|gr(team))
+) + brmsfamily(family = "student")
+
 
 default_prior(hfa_formula, train_data)
 
@@ -181,6 +215,13 @@ print(hfa_fit, digits = 4)
 fixef(hfa_fit)
 ranef(hfa_fit)
 
+loo(hfa_fit)
+
+rmse(data = test_data |> mutate(preds = predict(hfa_fit, test_data)[,"Estimate"]), 
+     truth = result, estimate = spread_line)
+rmse(data = test_data |> mutate(preds = predict(hfa_fit, test_data)[,"Estimate"]),
+     truth = result, estimate = spread_line)
+
 ## 2.3 Posterior ----
 set.seed(52)
 train_posterior <- posterior_predict(
@@ -232,6 +273,13 @@ ppc_dens_overlay(
 ) +
   labs(title = "PPD")
 
+ppc_ribbon_grouped(
+  y = test_data$result,
+  yrep = test_posterior[sampleID,],
+  group = test_data$home_team
+) +
+  geom_line(aes(y = test_data$spread_line), color = "red")
+
 
 ## 2.6 Conditional Effects ----
 Fitsmooth <- conditional_smooths(fit_result, 
@@ -263,13 +311,32 @@ plot(conditional_eff,
 
 
 
+check_toa_key()
+data(toa_sports_keys)
+toa_requests()
+
+test <- toa_sports_odds(sport_key = 'americanfootball_nfl', 
+                        region = 'us2', 
+                        markets = 'spreads', 
+                        odds_format = 'decimal',
+                        date_format = 'iso')
 
 
-
-
-
-
-
+test2 <- toa_event_odds(
+  sport_key = 'americanfootball_nfl',
+  event_id = 'dee0a41ed5e8201a96d457899adbe918',
+  regions = "us2",
+  markets = "totals",
+  odds_format = "decimal",
+  date_format = "iso",
+  bookmakers = 'hardrockbet'
+)
+  
+  toa_sports_odds(sport_key = 'americanfootball_nfl', 
+                        region = 'us2', 
+                        markets = 'spreads', 
+                        odds_format = 'decimal',
+                        date_format = 'iso')
 
 
 
