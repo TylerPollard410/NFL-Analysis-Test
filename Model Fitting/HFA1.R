@@ -11,18 +11,18 @@ library(rBayesianOptimization)
 library(xgboost)
 library(caret)
 library(cmdstanr)
-library(rstanarm)
+library(rstan)
 library(brms)
 library(bayesplot)
 library(Metrics)  # for MAE, RMSE
 library(broom.mixed)
+library(vip)
 library(tidybayes)
 library(discrim)
 library(bayesian)
 library(timetk)
 library(modeltime)
 library(tidymodels)
-library(vip)
 
 library(nflverse)
 library(tidyverse)
@@ -43,6 +43,7 @@ github_data_repo <- "TylerPollard410/nflendzoneData"
 
 ## nflverse ----
 teams_data <- load_teams(current = TRUE)
+teams <- teams_data$team_abbr
 
 ### games ----
 game_data <- load_game_data()
@@ -55,73 +56,89 @@ game_long_id_keys <- game_data_long |> select(
   game_id, season, game_type, season_type, week, team, opponent, location
 )
 
+### release data ----
+tag <- "game_features"
+game_features_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+
 tag <- "game_model"
-game_model_data <- rds_from_url(paste0(base_repo_url, 
-                                       tag, "/",
-                                       tag, ".rds"))
+game_model_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+
+tag <- "team_features"
+team_features_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+
+tag <- "team_model"
+team_model_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 
 tag <- "nfl_stats_week_team_regpost"
-nfl_stats_week_team_regpost <- rds_from_url(paste0(base_repo_url, 
-                                                   tag, "/",
-                                                   tag, ".rds"))
+nfl_stats_week_team_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+
 tag <- "nfl_stats_week_player_regpost"
-nfl_stats_week_player_regpost <- rds_from_url(paste0(base_repo_url, 
-                                                     tag, "/",
-                                                     tag, ".rds"))
+nfl_stats_week_player_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 
-
+## Set up modeling data ----
 #   - Use seasons 2007–2021 for training/validation
 #   - Hold out seasons 2022–2024 for final testing
 game_model_data <- game_model_data |>
   mutate(
-    hfa = factor(location, levels = c("Neutral", "Home")),
-    hfa0 = factor(ifelse(location == "Home", 1, 0),
-                  levels = c(0, 1), 
-                  labels = c("Neutral", "Home"))
+    hfa = ifelse(location == "Home", 1, 0)
     )
 
-team_model_data <- game_model_data |>
-  clean_homeaway(invert = c("result", "spread_line")) |>
+team_model_data <- team_model_data |>
   mutate(
-    hfa0 = factor(ifelse(location == "home", 1, 0),
-                  levels = c(0, 1), 
-                  labels = c("notHome", "Home"))
+    hfa = case_when(
+      location == "home" ~ 1,
+      location == "away" ~ -1,
+      location == "neutral" ~ 0,
+      TRUE ~ NA
+    )
   )
 
 
+game_fit_data <- game_model_data |>
+  filter(!is.na(result)) |>
+  mutate(
+    home_id = match(home_team, teams),
+    away_id = match(away_team, teams),
+    .after = away_team
+  ) |>
+  select(
+    game_id, season, week, week_seq, game_type, season_type,
+    home_team, away_team, home_id, away_id,
+    location, hfa,
+    home_score, away_score, 
+    result, spread_line,
+    total, total_line
+  )
+
 train_start_idx <- 
-  game_model_data |>
-  #team_model_data |>
-  filter(season == 2022, week == 1) |>
+  game_fit_data |>
+  filter(season == 2020, week == 1) |>
   pull(week_seq) |> unique()
 train_end_idx <- 
-  game_model_data |>
-  #team_model_data |>
-  filter(season == 2024, week == 8) |>
+  game_fit_data |>
+  filter(season == 2022, week == 22) |>
   pull(week_seq) |> unique()
 
 test_start_idx <- 
-  game_model_data |>
-  #team_model_data |>
-  filter(season == 2024, week == 9) |>
+  game_fit_data |>
+  filter(season == 2023, week == 1) |>
   pull(week_seq) |> unique()
 test_end_idx <- 
-  game_model_data |>
-  #team_model_data |>
-  filter(season == 2025, week == 1) |>
+  game_fit_data |>
+  filter(season == 2023, week == 22) |>
   pull(week_seq) |> unique()
 
 train_data <- 
-  game_model_data |>
+  game_fit_data |>
   #team_model_data |>
   filter(between(week_seq, train_start_idx, train_end_idx))
 test_data <- 
-  game_model_data |>
+  game_fit_data |>
   #team_model_data |>
   filter(between(week_seq, test_start_idx, test_end_idx))
 
 ## Define initial window of weeks (warm-up: Seasons 2007–2009)
-initial_window <- game_model_data |> 
+initial_window <- game_fit_data |> 
   filter(season %in% 2007:2009) |> 
   pull(week_seq) |> 
   max()
@@ -139,6 +156,11 @@ fold_seasons <- seasons[seasons > max(warmup_seasons)]
 # 2. MODEL ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
+stan_model_dictionary <- tribble(
+  ~model_name, ~data_format, ~description,
+  "stan_model1", "game", "State-Space with varying team strengths and hfa by week for each team"
+)
+
 train_data <- train_data |> mutate(homeWeight = 1, awayWeight = -1)
 test_data <- test_data |> mutate(homeWeight = 1, awayWeight = -1) |>
   filter(!is.na(result))
@@ -148,8 +170,8 @@ hfa_formula <- bf(
   result ~ 0 + #Intercept +
     #factor(season) +
     #hfa +
-    spread_line +
-    net_elo_pre +
+    #spread_line +
+    #net_elo_pre +
     (1 + hfa|mm(home_team, away_team, 
           weights = cbind(homeWeight, awayWeight),
           scale = FALSE, cor = FALSE))
@@ -168,7 +190,7 @@ default_prior(hfa_formula, train_data)
 
 iters <- 4000
 burn <- 2000
-chains <- 1
+chains <- 2
 sims <- (iters-burn)*chains
 
 ## Stancode
@@ -321,6 +343,15 @@ test <- toa_sports_odds(sport_key = 'americanfootball_nfl',
                         odds_format = 'decimal',
                         date_format = 'iso')
 
+
+toa_sports_odds_history(sport_key = 'americanfootball_nfl', 
+                        #event_ids = '48db9c3293a52baab881d95d38f37a98',
+                        date = '2024-01-19T18:30:00Z',
+                        regions = 'us2', 
+                        markets = 'spreads', 
+                        odds_format = 'decimal',
+                        date_format = 'iso',
+                        bookmakers = "hardrockbet")
 
 test2 <- toa_event_odds(
   sport_key = 'americanfootball_nfl',
