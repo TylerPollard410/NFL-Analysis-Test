@@ -487,7 +487,7 @@ srs_estimates2 |>
 
 colMeans(srs_estimates2 |> select(-c(1))) |> round(6)
 
-tibble(
+srs_mod_perf2 <- tibble(
   variable = c(rep("sos", 6), rep("srs", 6), rep("osrs", 3), rep("dsrs", 3)),
   estimate = c(rep(c("MCMC", "MCMC2", "MLE", "MLE2", "MAP", "MAP2"), 2),
                rep(c("MCMC2", "MLE2", "MAP2"), 2)),
@@ -533,6 +533,225 @@ tibble(
   )
 )
 
+
+## 2.3 SRS OSRS no HFA cmdstanr ----
+
+### Compile ----
+stan_model2 <- cmdstan_model("Model Fitting/stan_models/static_SRS_full.stan")
+mod_vars <- stan_model2$variables()
+
+### Stan Data ----
+stan_data <- list(
+  N_games = nrow(train_data),
+  N_teams = length(teams),
+  #N_weeks = max(week_tbl_rolling$week_idx),
+  #N_seasons = length(fit_season_idx),
+  #game_week = train_data$week_idx,
+  home_id = train_data$home_id,
+  away_id = train_data$away_id,
+  result = train_data$result,
+  home_score = train_data$home_score,
+  away_score = train_data$away_score
+  #game_season = train_data$season_idx,
+  #week_season = week_tbl_rolling$season_idx,
+  #season_start_week = season_start_week,
+  #season_end_week   = season_end_week,
+  #hfa = as.integer(train_data$hfa)
+)
+
+mod_seed <- 52
+mod_output_dir <- "Model Fitting/stan_models"
+
+### MCMC ----
+mod_iters <- 4000
+mod_warmup <- 500
+mod_chains <- 1
+mod_thin <- 1
+mod_sims <- ((mod_iters)/mod_thin)*mod_chains
+mod_parallel_chains <- parallel::detectCores()
+mod_adapt_delta <- 0.95
+mod_max_treedeepth <- 15
+
+### Fit ----
+#### MCMC ----
+fit_mcmc2 <- stan_model2$sample(
+  data = stan_data,
+  output_dir = mod_output_dir,
+  chains = mod_chains,
+  parallel_chains = mod_parallel_chains,
+  iter_sampling = mod_iters, 
+  iter_warmup = mod_warmup,
+  thin = mod_thin,
+  adapt_delta = mod_adapt_delta, 
+  max_treedepth = mod_max_treedeepth,
+  seed = mod_seed
+)
+fit_mcmc2$save_object(file = "Model Fitting/stan_models/static_SRS_MCMC_full.rds")
+
+mcmc_print2 <- fit_mcmc2$summary(variables = c("srs", "srs2", "osrs", "dsrs")) |>
+  mutate(variable = str_remove(variable, "\\[.*\\]")) |>
+  mutate(team = rep(teams, 4), .after = 1) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = mean
+  ) |>
+  left_join(
+    srs_data |>
+      filter(season == 2024, week == 18) |>
+      select(team, MOV, SOS, SRS, OSRS, DSRS)
+  ) |>
+  mutate(
+    sos = srs - MOV, .before = srs
+  ) |>
+  mutate(
+    sos2 = srs2 - MOV, .before = srs2
+  )
+
+
+#### MLE ----
+fit_mle2 <- stan_model2$optimize(
+  data = stan_data,
+  #output_dir = mod_output_dir,
+  iter = 4000,
+  jacobian = FALSE,
+  seed = mod_seed
+  #init = 0.1
+)
+
+mle_print2 <- fit_mle2$summary(variables = c("srs", "srs2", "osrs", "dsrs")) |>
+  mutate(variable = str_remove(variable, "\\[.*\\]")) |>
+  mutate(team = rep(teams, 4), .after = 1) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = estimate
+  ) |>
+  left_join(
+    srs_data |>
+      filter(season == 2024, week == 18) |>
+      select(team, MOV, SOS, SRS, OSRS, DSRS)
+  ) |>
+  mutate(
+    sos = srs - MOV, .before = srs
+  ) |>
+  mutate(
+    sos2 = srs2 - MOV, .before = srs2
+  )
+
+#### MAP -----
+fit_map2 <- stan_model2$optimize(
+  data = stan_data,
+  #output_dir = mod_output_dir,
+  iter = 4000,
+  jacobian = TRUE,
+  seed = mod_seed
+  #init = 0.1
+)
+
+map_print2 <- fit_map2$summary(variables = c("srs", "srs2", "osrs", "dsrs")) |>
+  mutate(variable = str_remove(variable, "\\[.*\\]")) |>
+  mutate(team = rep(teams, 4), .after = 1) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = estimate
+  ) |>
+  left_join(
+    srs_data |>
+      filter(season == 2024, week == 18) |>
+      select(team, MOV, SOS, SRS, OSRS, DSRS)
+  ) |>
+  mutate(
+    sos = srs - MOV, .before = srs
+  ) |>
+  mutate(
+    sos2 = srs2 - MOV, .before = srs2
+  )
+
+srs_estimates2 <- mcmc_print2 |> 
+  left_join(
+    mle_print2 |> select(team, 
+                         mle_sos = sos,
+                         mle_srs = srs,
+                         mle_sos2 = sos2,
+                         mle_srs2 = srs2,
+                         mle_osrs = osrs,
+                         mle_dsrs = dsrs
+    )
+  ) |>
+  left_join(
+    map_print2 |> select(team, 
+                         map_sos = sos,
+                         map_srs = srs,
+                         map_sos2 = sos2,
+                         map_srs2 = srs2,
+                         map_osrs = osrs,
+                         map_dsrs = dsrs
+    )
+  ) |>
+  relocate(MOV, SOS, SRS, OSRS, DSRS, .after = last_col()) |>
+  select(team, 
+         MOV,
+         sos, sos2, mle_sos, mle_sos2, map_sos, map_sos2, SOS,
+         srs, srs2, mle_srs, mle_srs2, map_srs, map_srs2, SRS,
+         osrs, mle_osrs, map_osrs, OSRS,
+         dsrs, mle_dsrs, map_dsrs, DSRS
+  )
+
+srs_estimates2 |> 
+  summarise(
+    across(-c(1:2),
+           ~mean)
+  )
+
+colMeans(srs_estimates2 |> select(-c(1))) |> round(6)
+
+srs_mod_perf2b <- tibble(
+  variable = c(rep("sos", 6), rep("srs", 6), rep("osrs", 3), rep("dsrs", 3)),
+  estimate = c(rep(c("MCMC", "MCMC2", "MLE", "MLE2", "MAP", "MAP2"), 2),
+               rep(c("MCMC2", "MLE2", "MAP2"), 2)),
+  rmse = c(
+    rmse(srs_estimates2$SOS, srs_estimates2$sos),
+    rmse(srs_estimates2$SOS, srs_estimates2$sos2),
+    rmse(srs_estimates2$SOS, srs_estimates2$mle_sos),
+    rmse(srs_estimates2$SOS, srs_estimates2$mle_sos2),
+    rmse(srs_estimates2$SOS, srs_estimates2$map_sos),
+    rmse(srs_estimates2$SOS, srs_estimates2$map_sos2),
+    rmse(srs_estimates2$SRS, srs_estimates2$srs),
+    rmse(srs_estimates2$SRS, srs_estimates2$srs2),
+    rmse(srs_estimates2$SRS, srs_estimates2$mle_srs),
+    rmse(srs_estimates2$SRS, srs_estimates2$mle_srs2),
+    rmse(srs_estimates2$SRS, srs_estimates2$map_srs),
+    rmse(srs_estimates2$SRS, srs_estimates2$map_srs2),
+    rmse(srs_estimates2$OSRS, srs_estimates2$osrs),
+    rmse(srs_estimates2$OSRS, srs_estimates2$mle_osrs),
+    rmse(srs_estimates2$OSRS, srs_estimates2$map_osrs),
+    rmse(srs_estimates2$DSRS, srs_estimates2$dsrs),
+    rmse(srs_estimates2$DSRS, srs_estimates2$mle_dsrs),
+    rmse(srs_estimates2$DSRS, srs_estimates2$map_dsrs)
+  ),
+  mae = c(
+    mae(srs_estimates2$SOS, srs_estimates2$sos),
+    mae(srs_estimates2$SOS, srs_estimates2$sos2),
+    mae(srs_estimates2$SOS, srs_estimates2$mle_sos),
+    mae(srs_estimates2$SOS, srs_estimates2$mle_sos2),
+    mae(srs_estimates2$SOS, srs_estimates2$map_sos),
+    mae(srs_estimates2$SOS, srs_estimates2$map_sos2),
+    mae(srs_estimates2$SRS, srs_estimates2$srs),
+    mae(srs_estimates2$SRS, srs_estimates2$srs2),
+    mae(srs_estimates2$SRS, srs_estimates2$mle_srs),
+    mae(srs_estimates2$SRS, srs_estimates2$mle_srs2),
+    mae(srs_estimates2$SRS, srs_estimates2$map_srs),
+    mae(srs_estimates2$SRS, srs_estimates2$map_srs2),
+    mae(srs_estimates2$OSRS, srs_estimates2$osrs),
+    mae(srs_estimates2$OSRS, srs_estimates2$mle_osrs),
+    mae(srs_estimates2$OSRS, srs_estimates2$map_osrs),
+    mae(srs_estimates2$DSRS, srs_estimates2$dsrs),
+    mae(srs_estimates2$DSRS, srs_estimates2$mle_dsrs),
+    mae(srs_estimates2$DSRS, srs_estimates2$map_dsrs)
+  )
+)
 
 ## 2.2 brms SRS ----
 srs_formula <- bf(

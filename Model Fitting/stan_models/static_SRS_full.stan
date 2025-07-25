@@ -10,9 +10,12 @@ data {
 parameters {
   sum_to_zero_vector[N_teams] srs;  // SRS from MOV model
   sum_to_zero_vector[N_teams] osrs; // Offense rating
-  sum_to_zero_vector[N_teams] dsrs; // Defense rating
+  //sum_to_zero_vector[N_teams] dsrs; // Defense rating
   real<lower=0> sigma_srs;
   real<lower=0> sigma_pts;
+}
+transformed parameters{
+  vector[N_teams] dsrs = srs - osrs;
 }
 model {
   // Classic SRS model
@@ -22,7 +25,7 @@ model {
 
   // Off/def model for scores
   osrs ~ normal(0, 100);
-  dsrs ~ normal(0, 100);
+  //dsrs ~ normal(0, 100);
   sigma_pts ~ normal(0, 10);
 
   home_score ~ normal(osrs[home_id] - dsrs[away_id], sigma_pts);
