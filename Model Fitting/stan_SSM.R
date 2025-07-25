@@ -145,30 +145,40 @@ team_plot_data <- game_fit_data |>
     by = join_by(team == team_abbr)
   )
 
+team_colors <- teams_data$team_color
+names(team_colors) <- teams_data$team_abbr
+team_colors
 
 p <- ggplot(
   data = team_plot_data,
   aes(x = week_idx, y = result, 
       colour = team)
 ) +
-  geom_line() +
+  #geom_line(alpha = 0.1) +
+  # geom_smooth(
+  #   method = "gam",
+  #   formula = y ~ s(x, bs = "tp", k = 20),
+  #   se = FALSE) +
   geom_smooth(
-    method = "gam",
-    formula = y ~ s(x, bs = "tp", k = 20),
+    method = "loess",
+    formula = y ~ x,
+    #n = 100,
+    span = 0.1,
     se = FALSE) +
   scale_color_manual(values = team_colors) +
   # ggrepel::geom_text_repel(
   #   data = season_breaks |> filt
   #                            ) +
-  gghighlight::gghighlight(#team_division == "AFC North",
-    team == "BAL",
+  gghighlight::gghighlight(
+    team_division == "AFC North",line_label_type = "ggrepel_text",
+    #team == "BAL",
     use_group_by = FALSE,
     use_direct_label = FALSE) +
   #facet_wrap(vars(team_division), ncol = 1, dir = "v") +
   #scale_color_nfl()
   scale_x_continuous(
     breaks = season_breaks$week_idx,
-    minor_breaks = team_plot_data$week_idx,
+    minor_breaks = seq(1, max(team_plot_data$week_idx),1),
     labels = season_breaks$season
   ) +
   #coord_cartesian(ylim = c(-20, 20)) +
@@ -200,20 +210,117 @@ first_oos_week <-
 last_oos_week <- 
   game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 
-# Compile Stan model once
+## Compile Stan model ----
 stan_model <- cmdstan_model("Model Fitting/stan_models/stan_model1.stan")
+stan_variables <- stan_model$variables()
 
-oos_predictions <- list()
-current_train_max <- last_train_week
+## Stan method variables ----
 
+mod_seed = 52
+mod_output_dir <- "Model Fitting/stan_models"
+
+### MCMC ----
 mod_iters <- 1000
 mod_warmup <- 500
 mod_chains <- 2
 mod_thin <- 1
 mod_sims <- ((mod_iters)/mod_thin)*mod_chains
+mod_parallel_chains <- parallel::detectCores()
+mod_adapt_delta <- 0.95
+mod_max_treedeepth <- 15
+
+### Optimize ----
+
+
+## Stan Data ----
+### Train data ----
+train_data <- game_fit_data_all |>
+  filter(week_idx >= first_train_week, week_idx <= current_train_max)
+
+### Prediction Data ----
+predict_data <- game_fit_data_all |>
+  filter(week_idx == pred_week)
+
+### Stan Indexing ----
+fit_seasons    <- sort(unique(train_data$season))
+fit_season_idx <- sort(unique(train_data$season_idx))
+fit_weeks      <- sort(unique(train_data$week_idx))
+
+week_tbl_rolling <- game_fit_data_all |>
+  filter(season %in% fit_seasons) |>
+  select(season, season_idx, week, week_idx) |>
+  distinct() |>
+  arrange(week_idx)
+
+season_start_week <- week_tbl_rolling |>
+  group_by(season_idx) |>
+  summarise(start = min(week_idx), .groups = "drop") |>
+  arrange(season_idx) |>
+  pull(start)
+season_end_week <- week_tbl_rolling |>
+  group_by(season_idx) |>
+  summarise(end = max(week_idx), .groups = "drop") |>
+  arrange(season_idx) |>
+  pull(end)
+
+### Stan Data List ----
+stan_data <- list(
+  N_games = nrow(train_data),
+  N_teams = length(teams),
+  N_weeks = max(week_tbl_rolling$week_idx),
+  N_seasons = length(fit_season_idx),
+  game_week = train_data$week_idx,
+  home_id = train_data$home_id,
+  away_id = train_data$away_id,
+  result = train_data$result,
+  game_season = train_data$season_idx,
+  week_season = week_tbl_rolling$season_idx,
+  season_start_week = season_start_week,
+  season_end_week   = season_end_week
+)
+
+
+## Run Models ----
+### MCMC ----
+fit_mcmc <- stan_model$sample(
+  data = stan_data,
+  output_dir = mod_output_dir,
+  chains = mod_chains,
+  parallel_chains = mod_parallel_chains,
+  iter_sampling = mod_iters, 
+  iter_warmup = mod_warmup,
+  thin = mod_thin,
+  adapt_delta = mod_adapt_delta, 
+  max_treedepth = mod_max_treedeepth,
+  seed = mod_seed
+)
+
+### Optimize ----
+#### MLE -----
+fit_mle <- stan_model$optimize(
+  data = stan_data,
+  #output_dir = mod_output_dir,
+  jacobian = FALSE,
+  seed = mod_seed
+)
+
+#### MAP -----
+fit_map <- stan_model$optimize(
+  data = stan_data,
+  #output_dir = mod_output_dir,
+  jacobian = TRUE,
+  seed = mod_seed
+)
+
+
+
+
+
+
+
 
 tictoc::tic("Full OOS rolling fit")
-for (pred_week in seq(first_oos_week, last_oos_week)) {
+#for (pred_week in seq(first_oos_week, last_oos_week)) {
   # --- Training data: all games up to the current max training week
   train_data <- game_fit_data_all |>
     filter(week_idx >= first_train_week, week_idx <= current_train_max)
@@ -330,8 +437,83 @@ for (pred_week in seq(first_oos_week, last_oos_week)) {
   
   # Expand window for next week
   current_train_max <- pred_week
-}
+#}
 tictoc::toc()
+
+
+fit$diagnostic_summary()
+fit$save_object(file = "Model Fitting/stan_models/mod1.rds")
+
+fit_mle <- stan_model$optimize(
+  data = stan_data,
+  output_dir = "Model Fitting/stan_models",
+  chains = mod_chains,
+  parallel_chains = parallel::detectCores(),
+  iter_sampling = mod_iters, 
+  iter_warmup = mod_warmup,
+  thin = mod_thin,
+  adapt_delta = 0.95, 
+  max_treedepth = 15,
+  seed = 52
+)
+
+
+# --- Extract posterior draws using tidybayes for all OOS prediction games ---
+pred_week_num   <- unique(predict_data$week_idx)[1]
+pred_season_num <- unique(predict_data$season_idx)[1]
+draws <- fit$draws(c("strength", "hfa"))
+
+pred_long <- predict_data |>
+  mutate(game_row = row_number()) |>
+  select(game_row, game_id, home_id, away_id, season_idx) |>
+  expand_grid(.draw = 1:posterior::ndraws(draws)) |>
+  left_join(
+    tidybayes::spread_draws(draws, strength[week, team]) |>
+      filter(week == pred_week_num) |>
+      rename(strength_home = .value),
+    by = c(".draw", "home_id" = "team")
+  ) |>
+  left_join(
+    tidybayes::spread_draws(draws, strength[week, team]) |>
+      filter(week == pred_week_num) |>
+      rename(strength_away = .value),
+    by = c(".draw", "away_id" = "team")
+  ) |>
+  left_join(
+    tidybayes::spread_draws(draws, hfa[team, season]) |>
+      filter(season == pred_season_num) |>
+      rename(hfa_home = .value),
+    by = c(".draw", "home_id" = "team")
+  ) |>
+  mutate(
+    pred_margin = strength_home - strength_away + hfa_home
+  ) |>
+  select(game_id, .draw, pred_margin)
+
+pred_summary <- pred_long |>
+  group_by(game_id) |>
+  summarise(
+    pred_draws = list(pred_margin),
+    .groups = "drop"
+  ) |>
+  left_join(predict_data, by = "game_id") |>
+  mutate(
+    pred_mean   = map_dbl(pred_draws, mean),
+    pred_median = map_dbl(pred_draws, median),
+    pred_p95    = map_dbl(pred_draws, ~quantile(.x, 0.95)),
+    pred_p05    = map_dbl(pred_draws, ~quantile(.x, 0.05)),
+    prob_cover  = map2_dbl(pred_draws, spread_line, ~mean(.x > .y))
+  )
+
+oos_predictions[[as.character(pred_week)]] <- pred_summary
+
+
+
+
+
+
+
+
 
 # Combine all weeks for downstream analysis
 oos_predictions_all <- bind_rows(oos_predictions, .id = "week_idx_pred")
