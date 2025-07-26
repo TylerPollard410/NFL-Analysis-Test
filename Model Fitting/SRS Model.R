@@ -150,15 +150,15 @@ first_train_week <-
 last_train_week <- 
   game_fit_data_all |> filter(season == 2023, week == 22) |> pull(week_idx) |> unique()
 first_oos_week <- 
-  game_fit_data_all |> filter(season == 2024, week == 1)  |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
 last_oos_week <- 
-  game_fit_data_all |> filter(season == 2024, week == 18) |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 
 train_data <- game_fit_data_all |> 
-  filter(between(week_idx, first_oos_week, last_oos_week)) |>
-  mutate(homeWeight = 1, awayWeight = -1)
-#mutate(homeWeight = row_number(), .by = "home_team") |>
-#mutate(awayWeight = -row_number(), .by = "away_team")
+  filter(!is.na(result)) 
+  #filter(between(week_idx, first_oos_week, last_oos_week))
+train_data
+
 
 ## 2.1 SRS no HFA cmdstanr ----
 
@@ -458,7 +458,7 @@ srs_estimates2 <- mcmc_print2 |>
                          mle_srs2 = srs2,
                          mle_osrs = osrs,
                          mle_dsrs = dsrs
-                         )
+    )
   ) |>
   left_join(
     map_print2 |> select(team, 
@@ -477,7 +477,7 @@ srs_estimates2 <- mcmc_print2 |>
          srs, srs2, mle_srs, mle_srs2, map_srs, map_srs2, SRS,
          osrs, mle_osrs, map_osrs, OSRS,
          dsrs, mle_dsrs, map_dsrs, DSRS
-         )
+  )
 
 srs_estimates2 |> 
   summarise(
@@ -912,27 +912,61 @@ srs_draws_df |>
 srs_posterior <- posterior_predict(srs_fit) 
 
 
+colnames(game_model_data)
 
+srs_roll_comp <- game_model_data |>
+  filter(!is.na(result)) |>
+  #group_by(season) |>
+  summarise(
+    across(contains("net_SRS"),
+           list(
+             rmse = ~rmse(result, .x),
+             mae = ~mae(result, .x)
+           ),
+           .unpack = FALSE
+    )
+  ) |>
+  pivot_longer(
+    #cols = -season,
+    cols = everything(),
+    names_to = c("srs", ".value"),
+    names_pattern = "(net_SRS(?:_\\d+)?)[_]?(rmse|mae)"
+  ) |>
+  mutate(
+    srs = case_when(
+      srs == "net_SRS" ~ "cum",
+      str_detect(srs, "^net_SRS_\\d+$") ~ str_replace(srs, "^net_SRS_(\\d+)$", "roll_\\1"),
+      TRUE ~ srs
+    )
+  ) |>
+  mutate(
+    srs = factor(
+      srs,
+      levels = c("cum", paste0("roll_", 5:20))
+    )
+  )
 
+srs_roll_comp |> arrange(rmse)
+srs_roll_comp |> arrange(mae)
 
+srs_roll_comp <- srs_roll_comp |>
+  pivot_longer(
+    cols = c(rmse, mae),
+    names_to = "metric",
+    values_to = "value"
+  ) 
 
-data(loss)
-head(loss)
+srs_roll_comp
 
-fit_loss_code <- stancode(
-  bf(cum ~ ult * (1 - exp(-(dev/theta)^omega)),
-     ult ~ 1 + (1|AY), omega ~ 1, theta ~ 1,
-     nl = TRUE),
-  data = loss, family = gaussian(),
-  prior = c(
-    prior(normal(5000, 1000), nlpar = "ult"),
-    prior(normal(1, 2), nlpar = "omega"),
-    prior(normal(45, 10), nlpar = "theta")
-  ),
-  control = list(adapt_delta = 0.9)
-)
-fit_loss_code
-
-
+srs_roll_comp |>
+  ggplot() +
+  geom_line(aes(x = srs, y = value, color = metric, group = metric)) +
+  geom_vline(xintercept = srs_roll_comp |> 
+               group_by(metric) |> 
+               filter(value == min(value)) |>
+               pull(srs)
+  ) +
+  #facet_wrap(~ season) +
+  theme_bw()
 
 
