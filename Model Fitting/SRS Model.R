@@ -754,6 +754,22 @@ srs_mod_perf2b <- tibble(
 )
 
 ## 2.2 brms SRS ----
+first_train_week <- 
+  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
+last_train_week <- 
+  game_fit_data_all |> filter(season == 2023, week == 22) |> pull(week_idx) |> unique()
+first_oos_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 1)  |> pull(week_idx) |> unique()
+last_oos_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 18) |> pull(week_idx) |> unique()
+
+train_data_brms <- game_fit_data_all |> 
+  filter(!is.na(result)) |>
+  filter(between(week_idx, first_oos_week, last_oos_week)) |>
+  mutate(homeWeight = 1, awayWeight = -1) |>
+  mutate(hfa_away = ifelse(hfa == 1, 0, 0), .after = hfa)
+train_data_brms
+
 srs_formula <- bf(
   result ~ 0 + #Intercept +
     hfa + 
@@ -764,16 +780,17 @@ srs_formula <- bf(
 )
 
 srs_formula <- bf(
-  result ~ 0 + #Intercept +
-    hfa + 
-    (0 + hfa|gr(home_team)) +
-    mm(home_team, away_team,
+  result ~ #0 + #Intercept +
+    hfa + mmc()
+    #(0 + hfa|gr(home_team)) +
+    (1 + hfa|mm(home_team, away_team, #mmc(hfa, hfa_away)
        weights = cbind(homeWeight, awayWeight),
-       scale = FALSE, cor = TRUE)
+       scale = F, 
+       cor = FALSE))
 )
 
 
-default_prior(srs_formula, train_data)
+default_prior(srs_formula, train_data_brms)
 
 # Define priors.
 priors <- c(
@@ -783,8 +800,8 @@ priors <- c(
   prior(student_t(3, 0, 10), class = "sigma", lb = 0)
 )
 
-iters <- 4000
-burn <- 2000
+iters <- 1500
+burn <- 500
 chains <- 2
 sims <- (iters-burn)*chains
 
@@ -798,11 +815,11 @@ srs_stanvars <- stanvar(
 
 srs_stancode <- stancode(
   srs_formula,
-  data = train_data,
+  data = train_data_brms,
   prior = priors,
   drop_unused_levels = FALSE,
   save_pars = save_pars(all = TRUE), 
-  stanvars = srs_stanvars,
+  #stanvars = srs_stanvars,
   chains = chains,
   iter = iters,
   warmup = burn,
@@ -817,10 +834,10 @@ srs_stancode
 
 srs_standata <- standata(
   srs_formula,
-  data = train_data,
-  prior = priors,
+  data = train_data_brms,
+  #prior = priors,
   drop_unused_levels = FALSE,
-  stanvars = srs_stanvars,
+  #stanvars = srs_stanvars,
   save_pars = save_pars(all = TRUE), 
   chains = chains,
   iter = iters,
@@ -838,10 +855,10 @@ srs_standata
 system.time(
   srs_fit <- brm(
     srs_formula,
-    data = train_data,
-    prior = priors,
+    data = train_data_brms,
+    #prior = priors,
     drop_unused_levels = FALSE,
-    stanvars = srs_stanvars,
+    #stanvars = srs_stanvars,
     save_pars = save_pars(all = TRUE), 
     chains = chains,
     iter = iters,
@@ -851,24 +868,90 @@ system.time(
     normalize = F,
     control = list(adapt_delta = 0.95),
     backend = "cmdstanr",
-    seed = 52, silent = TRUE
+    seed = 52
   )
 )
 
 ### Check Fit ----
 print(srs_fit, digits = 4)
+srs_ranef <- ranef(srs_fit)
+srs_ranef
 
 variables(srs_fit)
 
-fixef_list <- list()
-ranef_list <- list()
+# brms_hfa_mod_list <- list()
+# fixef_list <- list()
+# ranef_list <- list()
+# 
+# fit <- 1
+fit <- fit + 1
 
 srs_fixef <- fixef(srs_fit)
 srs_fixef
-fixef_list[["Intercept=TRUE,Normalize=TRUE"]] <- srs_fixef
+fixef_list[[paste0("fit", fit)]] <- srs_fixef
 srs_ranef <- ranef(srs_fit)
 srs_ranef
-ranef_list[["Intercept=TRUE,Normalize=TRUE"]] <- srs_ranef
+ranef_list[[paste0("fit", fit)]] <- srs_ranef
+
+variables(srs_fit)
+
+srs_team_strength <- srs_ranef$mmhome_teamaway_team[,,"Intercept"] |>
+  as_tibble(rownames = NA) |>
+  rownames_to_column(var = "team")
+
+srs_team_strength <- srs_fit |>
+  spread_draws(r_mmhome_teamaway_team[team,]) |>
+  rename(team_strength = r_mmhome_teamaway_team) |>
+  summarise_draws()
+
+srs_team_hfa <- srs_ranef$home_team[,,"hfa"] |>
+  as_tibble(rownames = NA) |>
+  rownames_to_column(var = "team")
+
+srs_team_hfa_total <- srs_fit |>
+  spread_draws(r_home_team[team, ], b_hfa) |>
+  mutate(
+    team_hfa = r_home_team + b_hfa
+  ) |>
+  summarise_draws() |>
+  filter(variable == "team_hfa")
+
+srs_team_hfa <- srs_fit |>
+  spread_draws(hfa_team[team]) |>
+  mutate(
+    team = teams[team]
+  ) |>
+  median_hdci()
+srs_team_hfa
+
+srs_league_hfa <- srs_fit |>
+  spread_draws(hfa_mean) |>
+  median_hdci()
+srs_league_hfa
+
+srs_team_final_sum <- bind_rows(
+  srs_team_hfa_total,
+  srs_team_strength
+) |> 
+  arrange(team)
+
+srs_team_final <- srs_team_final_sum |>
+  mutate(
+    variable = case_when(
+      variable == "team_hfa" ~ "srs_hfa",
+      variable == "team_strength" ~ "srs_strength"
+    )
+  ) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = c(mean, median),
+    names_glue = "{variable}_{.value}"
+  )
+
+
+
+
 #posterior_summary(srs_fit)
 mean(srs_ranef$home_team[,,"hfa"][,"Estimate"])
 mean(srs_ranef$mmhome_teamaway_team[,,"Intercept"][,"Estimate"])

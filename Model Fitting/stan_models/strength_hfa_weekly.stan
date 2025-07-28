@@ -10,7 +10,7 @@ data {
 }
 parameters {
   matrix[N_teams, N_weeks] raw_team_strength;      // latent ability (before centering)
-  sum_to_zero_vector[N_teams] hfa_team;            // team-specific HFA (static)
+  vector[N_teams] hfa_team;            // team-specific HFA (static)
   real<lower=0> tau_team;      // random walk SD for team strength
   real<lower=0> sigma;         // residual SD
 }
@@ -24,7 +24,7 @@ transformed parameters {
 model {
   // Initial prior for week 1
   for (k in 1:N_teams)
-    raw_team_strength[k, 1] ~ normal(0, 5);
+    raw_team_strength[k, 1] ~ normal(0, 10);
 
   // Random walk for team strength over weeks
   for (w in 2:N_weeks)
@@ -32,11 +32,11 @@ model {
       raw_team_strength[k, w] ~ normal(team_strength[k, w-1], tau_team);
 
   // Team HFA prior (mean zero by sum_to_zero_vector)
-  hfa_team ~ normal(0, 3);
+  hfa_team ~ normal(2,2);
 
   // Priors for SDs
-  tau_team ~ normal(0, 2);
-  sigma ~ normal(0, 10);
+  tau_team ~ student_t(3, 0, 2);
+  sigma ~ student_t(3, 0, 10);
 
   // Likelihood: one row per game
   for (i in 1:N_games) {
@@ -53,4 +53,5 @@ generated quantities {
   // Optionally output the team_strength and HFA for later plotting or forecasting
   matrix[N_teams, N_weeks] team_strength_gq = team_strength;
   vector[N_teams] hfa_team_gq = hfa_team;
+  real hfa_mean = mean(hfa_team);
 }
