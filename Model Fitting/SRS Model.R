@@ -113,15 +113,19 @@ game_fit_data_all <- game_model_data |>
     home_team, away_team, home_id, away_id,
     location, hfa,
     home_score, away_score, 
-    result, spread_line,
-    total, total_line
+    result, spread_line, 
+    home_spread_odds, away_spread_odds, 
+    home_spread_prob, away_spread_prob,
+    total, total_line,
+    over_odds, under_odds,
+    over_prob, under_prob,
+    winner,
+    home_moneyline, away_moneyline,
+    home_moneyline_prob, away_moneyline_prob
   )
 
 team_fit_data_all <- game_fit_data_all |>
-  clean_homeaway(invert = c("result", "spread_line", "hfa")) |>
-  mutate(
-    home_games
-  )
+  clean_homeaway(invert = c("result", "spread_line", "hfa")) 
 
 game_fit_data <- game_fit_data_all |>
   filter(!is.na(result))
@@ -755,9 +759,9 @@ srs_mod_perf2b <- tibble(
 
 ## 2.2 brms SRS ----
 first_train_week <- 
-  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2020, week == 1)  |> pull(week_idx) |> unique()
 last_train_week <- 
-  game_fit_data_all |> filter(season == 2023, week == 22) |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 first_oos_week <- 
   game_fit_data_all |> filter(season == 2024, week == 1)  |> pull(week_idx) |> unique()
 last_oos_week <- 
@@ -765,28 +769,19 @@ last_oos_week <-
 
 train_data_brms <- game_fit_data_all |> 
   filter(!is.na(result)) |>
-  filter(between(week_idx, first_oos_week, last_oos_week)) |>
+  filter(between(week_idx, first_train_week, last_train_week)) |>
   mutate(homeWeight = 1, awayWeight = -1) |>
-  mutate(hfa_away = ifelse(hfa == 1, 0, 0), .after = hfa)
+  mutate(hfa_away = ifelse(hfa == 1, 0, 0), .after = hfa) |>
+  mutate(team = cbind(home_id, away_id))
 train_data_brms
 
 srs_formula <- bf(
   result ~ 0 + #Intercept +
-    hfa + 
+    hfa +
     (0 + hfa|gr(home_team)) +
     (1|mm(home_team, away_team,
           weights = cbind(homeWeight, awayWeight),
-          scale = FALSE, cor = TRUE))
-)
-
-srs_formula <- bf(
-  result ~ #0 + #Intercept +
-    hfa + mmc()
-    #(0 + hfa|gr(home_team)) +
-    (1 + hfa|mm(home_team, away_team, #mmc(hfa, hfa_away)
-       weights = cbind(homeWeight, awayWeight),
-       scale = F, 
-       cor = FALSE))
+          scale = FALSE, cor = FALSE))
 )
 
 
@@ -816,7 +811,7 @@ srs_stanvars <- stanvar(
 srs_stancode <- stancode(
   srs_formula,
   data = train_data_brms,
-  prior = priors,
+  #prior = priors,
   drop_unused_levels = FALSE,
   save_pars = save_pars(all = TRUE), 
   #stanvars = srs_stanvars,
@@ -825,7 +820,7 @@ srs_stancode <- stancode(
   warmup = burn,
   cores = parallel::detectCores(),
   #init = 0,
-  normalize = F,
+  normalize = T,
   control = list(adapt_delta = 0.95),
   backend = "cmdstanr",
   seed = 52
@@ -865,8 +860,8 @@ system.time(
     warmup = burn,
     cores = parallel::detectCores(),
     #init = 0,
-    normalize = F,
-    control = list(adapt_delta = 0.95),
+    normalize = T,
+    control = list(adapt_delta = 0.95, max_treedepth = 10),
     backend = "cmdstanr",
     seed = 52
   )
@@ -886,12 +881,23 @@ variables(srs_fit)
 # fit <- 1
 fit <- fit + 1
 
+brms_hfa_mod_list[[paste0("fit", fit)]] <- srs_fit
+
 srs_fixef <- fixef(srs_fit)
 srs_fixef
 fixef_list[[paste0("fit", fit)]] <- srs_fixef
+
 srs_ranef <- ranef(srs_fit)
 srs_ranef
 ranef_list[[paste0("fit", fit)]] <- srs_ranef
+
+
+loo_list <- list()
+loo(srs_fit)
+loo_list[[paste0("fit", fit)]] <- loo(brms_hfa_mod_list[[paste0("fit", fit)]])
+loo_compare(loo_list)
+
+
 
 variables(srs_fit)
 

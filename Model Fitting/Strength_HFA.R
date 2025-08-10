@@ -704,7 +704,7 @@ fit_mcmc$diagnostic_summary()
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
 first_train_week <- 
-  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2020, week == 1)  |> pull(week_idx) |> unique()
 last_train_week <- 
   game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 first_oos_week <- 
@@ -720,7 +720,7 @@ train_data
 
 ## 4.1 Compile Model ----
 hfa3_mod <- cmdstan_model(
-  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/strength_hfa_week_season.stan"
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa3.stan"
 )
 hfa3_mod_variables <- hfa3_mod$variables()
 
@@ -777,7 +777,7 @@ hfa3_stan_data <- list(
 
 hfa3_iters <- 2000
 hfa3_warmup <- 1000
-hfa3_chains <- 2
+hfa3_chains <- 4
 hfa3_thin <- 1
 hfa3_sims <- ((hfa3_iters)/hfa3_thin)*hfa3_chains
 hfa3_parallel_chains <- parallel::detectCores()
@@ -801,7 +801,7 @@ hfa3_mcmc_fit <- hfa3_mod$sample(
 )
 
 ### Save
-hfa3_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa_mcmc.rds")
+hfa3_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa3_mcmc_fit_recent.rds")
 
 ### 4.4.2 Diagnostics ----
 hfa3_mod_variables
@@ -809,17 +809,16 @@ hfa3_mcmc_fit$sampler_diagnostics()
 hfa3_mcmc_fit$cmdstan_diagnose()
 hfa3_mcmc_fit$diagnostic_summary()
 
-hfa3_mcmc_fit$print(max_rows = 100)
+hfa3_mcmc_fit_vars <- hfa3_mcmc_fit$metadata()$stan_variable_sizes
+hfa3_mcmc_fit_vars
+hfa3_mcmc_fit$output()
 hfa3_mcmc_sum <- hfa3_mcmc_fit$summary(
-  variables = c(
-    "lp__",
-    "league_hfa", "sigma_team_hfa",
-    "beta_w", "sigma_w",
-    "beta_s", "sigma_s",
-    "sigma_y"
-  )
-)
-print(hfa3_mcmc_sum, n= Inf, digits = 4)
+  variables = subset(names(hfa3_mcmc_fit_vars),
+                     hfa3_mcmc_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa3_mcmc_sum, n = Inf)
 
 hfa3_mcmc_fit |>
   spread_draws(lp__) |>
@@ -1275,12 +1274,114 @@ hfa3_map_team_estimates <- hfa3_map_team_strength |>
   left_join(hfa3_map_team_total_hfa) |>
   relocate(contains("map"), .after = last_col())
 
+## 4.6 Variational ----
+hfa3_vi_fit <- hfa3_mod$variational(
+  data = hfa3_stan_data,
+  init = 1,
+  iter = 20000,
+  draws = hfa3_iters,
+  seed = hfa3_seed
+)
+
+hfa3_vi_fit_vars <- hfa3_vi_fit$metadata()$stan_variable_sizes
+hfa3_vi_fit_vars
+hfa3_vi_fit$output()
+hfa3_vi_sum <- hfa3_vi_fit$summary(
+  variables = subset(names(hfa3_vi_fit_vars),
+                     hfa3_vi_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa3_vi_sum, n = Inf)
+
+hfa3_vi_team_strength <- hfa3_vi_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_vi",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa3_vi_league_hfa <- hfa3_vi_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_vi",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa3_vi_team_hfa_dev <- hfa3_vi_fit$draws(
+  variables = c("team_hfa_dev"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "team_hfa_vi",
+    names_transform = list(team = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team]
+  )
+
+hfa3_vi_team_total_hfa <- hfa3_vi_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa3_vi_team_estimates <- hfa3_vi_team_strength |>
+  left_join(week_tbl_hfa3) |>
+  left_join(hfa3_vi_league_hfa) |>
+  left_join(hfa3_vi_team_hfa_dev) |>
+  left_join(hfa3_vi_team_total_hfa) |>
+  relocate(contains("vi"), .after = last_col())
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 # 5. MODEL hfa4 ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
 first_train_week <- 
-  game_fit_data_all |> filter(season == 2006, week == 1)  |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2020, week == 1)  |> pull(week_idx) |> unique()
 last_train_week <- 
   game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 first_oos_week <- 
@@ -1296,9 +1397,14 @@ train_data
 
 ## 5.1 Compile Model ----
 hfa4_mod <- cmdstan_model(
-  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/strength_week_hfa_season.stan"
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa4.stan"
 )
 hfa4_mod_variables <- hfa4_mod$variables()
+
+hfa4_mod_stan <- stan_model(
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/strength_week_hfa_season.stan"
+)
+hfa4_mod_variables_stan <- hfa4_mod_stan$variables()
 
 ## 5.2 Stan Data ----
 
@@ -1353,7 +1459,7 @@ hfa4_stan_data <- list(
 
 hfa4_iters <- 2000
 hfa4_warmup <- 1000
-hfa4_chains <- 2
+hfa4_chains <- 4
 hfa4_thin <- 1
 hfa4_sims <- ((hfa4_iters)/hfa4_thin)*hfa4_chains
 hfa4_parallel_chains <- parallel::detectCores()
@@ -1379,7 +1485,7 @@ system.time(
 )
 
 ### Save
-hfa4_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa4_mcmc_fit.rds")
+hfa4_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa4_mcmc_fit_recent.rds")
 
 ### 5.5.2 Diagnostics ----
 hfa4_mod_variables
@@ -1387,18 +1493,16 @@ hfa4_mcmc_fit$sampler_diagnostics(format = "df")
 hfa4_mcmc_fit$cmdstan_diagnose()
 hfa4_mcmc_fit$diagnostic_summary()
 
-hfa4_mcmc_fit$print(max_rows = 100)
+hfa4_mcmc_fit_vars <- hfa4_mcmc_fit$metadata()$stan_variable_sizes
+hfa4_mcmc_fit_vars
+hfa4_mcmc_fit$output()
 hfa4_mcmc_sum <- hfa4_mcmc_fit$summary(
-  variables = c(
-    "lp__",
-    "league_hfa", "sigma_team_hfa_dev",
-    "beta_w", "sigma_w",
-    "beta_hfa", "sigma_hfa",
-    "beta_s", "sigma_s",
-    "sigma_y"
-  )
-)
-print(hfa4_mcmc_sum, n= Inf, digits = 4)
+  variables = subset(names(hfa4_mcmc_fit_vars),
+                     hfa4_mcmc_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa4_mcmc_sum, n = Inf)
 
 scalar_draws <- hfa4_mcmc_fit$draws(
   variables = c(
@@ -1913,7 +2017,1724 @@ hfa4_map_team_estimates <- hfa4_map_team_strength |>
   relocate(contains("map"), .after = last_col())
 
 
+## 5.6 Variational ----
+hfa4_vi_fit <- hfa4_mod$variational(
+  data = hfa4_stan_data,
+  init = 0,
+  iter = 20000,
+  draws = hfa4_iters,
+  seed = hfa4_seed
+)
+
+hfa4_vi_fit_vars <- hfa4_vi_fit$metadata()$stan_variable_sizes
+hfa4_vi_fit_vars
+hfa4_vi_fit$output()
+hfa4_vi_sum <- hfa4_vi_fit$summary(
+  variables = subset(names(hfa4_vi_fit_vars),
+                     hfa4_vi_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa4_vi_sum, n = Inf)
+
+hfa4_vi_team_strength <- hfa4_vi_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_vi",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa4_vi_league_hfa <- hfa4_vi_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_vi",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa4_vi_team_hfa_dev <- hfa4_vi_fit$draws(
+  variables = c("team_hfa_dev"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "team_hfa_vi",
+    names_transform = list(team = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team]
+  )
+
+hfa4_vi_team_total_hfa <- hfa4_vi_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa4_vi_team_estimates <- hfa4_vi_team_strength |>
+  left_join(week_tbl_hfa4) |>
+  left_join(hfa4_vi_league_hfa) |>
+  left_join(hfa4_vi_team_hfa_dev) |>
+  left_join(hfa4_vi_team_total_hfa) |>
+  relocate(contains("vi"), .after = last_col())
+
+## 5.7 Laplace ----
+hfa4_lap_fit <- hfa4_mod$laplace(
+  data = hfa4_stan_data,
+  init = 0,
+  jacobian = TRUE,
+  draws = hfa4_iters,
+  seed = hfa4_seed
+)
+
+hfa4_lap_fit_vars <- hfa4_lap_fit$metadata()$stan_variable_sizes
+hfa4_lap_fit_vars
+hfa4_lap_fit$output()
+hfa4_lap_sum <- hfa4_lap_fit$summary(
+  variables = subset(names(hfa4_lap_fit_vars),
+                     hfa4_lap_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa4_lap_sum, n = Inf)
+
+hfa4_lap_team_strength <- hfa4_lap_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_lap",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa4_lap_league_hfa <- hfa4_lap_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_lap",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa4_lap_team_hfa_dev <- hfa4_lap_fit$draws(
+  variables = c("team_hfa_dev"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "team_hfa_lap",
+    names_transform = list(team = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team]
+  )
+
+hfa4_lap_team_total_hfa <- hfa4_lap_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_lap",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa4_lap_team_estimates <- hfa4_lap_team_strength |>
+  left_join(week_tbl_hfa4) |>
+  left_join(hfa4_lap_league_hfa) |>
+  left_join(hfa4_lap_team_hfa_dev) |>
+  left_join(hfa4_lap_team_total_hfa) |>
+  relocate(contains("lap"), .after = last_col())
 
 
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+# 6. MODEL hfa5 ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
+first_train_week <- 
+  game_fit_data_all |> filter(season == 2020, week == 1)  |> pull(week_idx) |> unique()
+last_train_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
+first_oos_week <- 
+  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
+last_oos_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
+
+train_data <- game_fit_data_all |> 
+  filter(!is.na(result)) |>
+  filter(between(week_idx, first_train_week, last_train_week))
+train_data
+
+
+## 6.1 Compile Model ----
+hfa5_mod <- cmdstan_model(
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa5.stan"
+)
+hfa5_mod_variables <- hfa5_mod$variables()
+
+## 6.2 Stan Data ----
+
+# Master lookup objects
+teams   <- sort(unique(c(train_data$home_team, train_data$away_team)))
+seasons <- sort(unique(train_data$season))
+weeks   <- sort(unique(train_data$week_idx))
+
+# 1. week_season: length N_weeks, maps each week (in 'weeks') to a season index (1-based)
+# For each week_idx in 'weeks', find season_idx in week_tbl, then remap to 1:N_seasons
+week_tbl_season_map <- setNames(seq_along(seasons), seasons)
+
+week_tbl_hfa5 <- week_tbl |>
+  mutate(season_id = week_tbl_season_map[as.character(season)]) |> # 1-based season index
+  filter(week_idx %in% weeks)
+
+week_season <- week_tbl_hfa5$season_id[match(weeks, week_tbl_hfa5$week_idx)] # length N_weeks, 1-based
+
+# 2. first/last week of each season (values are week_idx, NOT positions)
+first_week_of_season <- week_tbl_hfa5 |>
+  group_by(season_id) |>
+  summarise(first = min(week_idx), .groups = "drop") |>
+  pull(first) |>
+  match(weeks)  # Get position in weeks
+
+last_week_of_season <- week_tbl_hfa5 |>
+  group_by(season_id) |>
+  summarise(last = max(week_idx), .groups = "drop") |>
+  pull(last) |>
+  match(weeks)  # Get position in weeks
+
+# 6. Stan data
+hfa5_stan_data <- list(
+  N_games    = nrow(train_data),
+  N_teams    = length(teams),
+  N_seasons  = length(seasons),
+  N_weeks    = length(weeks),
+  home_id    = as.integer(factor(train_data$home_team, levels = teams)),
+  away_id    = as.integer(factor(train_data$away_team, levels = teams)),
+  week_id    = as.integer(factor(train_data$week_idx, levels = weeks)),
+  season_id  = as.integer(factor(train_data$season, levels = seasons)),
+  week_season = week_season,  # length N_weeks, value in 1:N_seasons
+  first_week_of_season = first_week_of_season, # N_seasons, value is week_idx
+  last_week_of_season  = last_week_of_season,  # N_seasons, value is week_idx
+  hfa        = as.integer(train_data$hfa), # 1 = home, 0 = neutral
+  result     = as.numeric(train_data$result) # home - away margin
+)
+
+
+
+#mod_output_dir <- "Model Fitting/stan_models"
+
+hfa5_iters <- 2000
+hfa5_warmup <- 1000
+hfa5_chains <- 4
+hfa5_thin <- 1
+hfa5_sims <- ((hfa5_iters)/hfa5_thin)*hfa5_chains
+hfa5_parallel_chains <- parallel::detectCores()
+hfa5_adapt_delta <- 0.95
+hfa5_max_treedeepth <- 15
+hfa5_seed <- 52
+
+## 6.3 MCMC ----
+### 6.3.1 Fit Model ----
+system.time(
+  hfa5_mcmc_fit <- hfa5_mod$sample(
+    data = hfa5_stan_data,
+    #output_dir = hfa5_output_dir,
+    chains = hfa5_chains,
+    parallel_chains = hfa5_parallel_chains,
+    iter_sampling = hfa5_iters, 
+    iter_warmup = hfa5_warmup,
+    thin = hfa5_thin,
+    adapt_delta = hfa5_adapt_delta, 
+    max_treedepth = hfa5_max_treedeepth,
+    seed = hfa5_seed
+  )
+)
+
+### Save
+hfa5_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa5_mcmc_fit_recent.rds")
+
+### 6.3.2 Diagnostics ----
+hfa5_mod_variables
+hfa5_mcmc_fit$sampler_diagnostics(format = "df")
+hfa5_mcmc_fit$cmdstan_diagnose()
+hfa5_mcmc_fit$diagnostic_summary()
+
+hfa5_mcmc_fit_vars <- hfa5_mcmc_fit$metadata()$stan_variable_sizes
+hfa5_mcmc_fit_vars
+hfa5_mcmc_fit$output()
+hfa5_mcmc_sum <- hfa5_mcmc_fit$summary(
+  variables = subset(names(hfa5_mcmc_fit_vars),
+                     hfa5_mcmc_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5_mcmc_sum, n = Inf)
+
+
+### 6.3.3 Posterior ----
+hfa5_mcmc_team_strength2 <- hfa5_mcmc_fit |>
+  spread_draws(team_strength[team, week_idx]) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  ) |>
+  summarise_draws()
+hfa5_mcmc_team_strength2 <- hfa5_team_strength |>
+  left_join(week)
+
+hfa5_mcmc_team_hfa <- hfa5_mcmc_fit |>
+  spread_draws(team_hfa[team, season]) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  ) |>
+  summarise_draws()
+hfa5_mcmc_team_hfa
+
+hfa5_mcmc_league_hfa <- hfa5_mcmc_fit |>
+  spread_draws(league_hfa[season]) |>
+  mutate(
+    season = seasons[season]
+  ) |>
+  summarise_draws()
+hfa5_mcmc_league_hfa
+
+hfa5_team_hfa_total <- hfa5_mcmc_fit |>
+  spread_draws(league_hfa[season], 
+               team_hfa_dev[team],
+               team_total_hfa[team, season]) |>
+  #mutate(team_hfa_total2 = team_hfa_dev + league_hfa) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  ) |>
+  rename(team_hfa_total = team_total_hfa) |>
+  summarise_draws()
+hfa5_team_hfa_total
+
+
+
+# hfa5_team_strength_end <- week_tbl |>
+#   right_join(hfa5_team_strength) |>
+#   slice_tail(n = 1, by = team)
+
+hfa5_team_strength_end <- hfa5_team_strength |>
+  ungroup() |>
+  arrange(week_idx, team) |>
+  slice_tail(n = 1, by = c(team, variable))
+
+hfa5_team_hfa_end <- hfa5_team_hfa_total |>
+  ungroup() |>
+  arrange(season, team) |>
+  slice_tail(n = 1, by = c(team, variable))
+
+hfa5_team_total <- bind_rows(
+  hfa5_team_hfa_end,
+  hfa5_team_strength_end
+) |>
+  fill(season, week_idx, .direction = "downup") |>
+  select(season, week_idx, team, everything()) |>
+  arrange(team) |>
+  filter(variable %in% c("team_hfa_total", "team_strength")) |>
+  mutate(
+    variable = case_when(
+      variable == "team_hfa_total" ~ "sp_hfa",
+      variable == "team_strength" ~ "sp_strength"
+    )
+  ) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = c(mean, median),
+    names_glue = "{variable}_{.value}"
+  )
+
+### 6.3.4 Plots ----
+p <- hfa5_mcmc_team_strength |>
+  left_join(week_tbl) |>
+  ggplot(
+    aes(x = week_idx, y = mean, color = team, group = team,
+        text = paste0(
+          "team: ", team, "\n",
+          sprintf("strength: %.2f", mean), "\n",
+          "season: ", season, "\n",
+          "week: ", week, "\n",
+          "week_idx: ", week_idx
+        )
+    )
+  ) +
+  geom_line() +
+  #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
+  #facet_wrap(~team) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = first_week_of_season,  # Show season boundaries on x-axis
+    labels = seasons
+    # sec.axis = dup_axis(
+    #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
+    #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
+    #   name = "Week Number"
+    # )
+  ) +
+  scale_color_nfl(guide = guide_legend()) +
+  labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength (SRS)") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  ) +
+  guides(
+    color = guide_legend(
+      nrow = 3,  # Use 2, 4, or 8 depending on what fits
+      byrow = TRUE,
+      title.position = "top"
+    )
+  )
+p
+ggplotly(p, tooltip = "text")
+
+pb <- ggplot_build(p)
+
+# Join home/away strength
+hfa5_game_strengths <- train_data |>
+  left_join(
+    hfa5_team_strength |>
+      pivot_wider(
+        id_cols = c(team, week_idx),
+        names_from = variable,
+        values_from = c(mean, median),
+        names_glue = "{variable}_{.value}"
+      ) |>
+      select(home_team = team, week_idx, home_strength = team_strength_mean),
+    by = c("home_team", "week_idx")
+  ) |>
+  left_join(
+    hfa5_team_strength |>
+      pivot_wider(
+        id_cols = c(team, week_idx),
+        names_from = variable,
+        values_from = c(mean, median),
+        names_glue = "{variable}_{.value}"
+      ) |>
+      select(away_team = team, week_idx, away_strength = team_strength_mean),
+    by = c("away_team", "week_idx")
+  ) |>
+  left_join(
+    hfa5_team_hfa_total |>
+      filter(variable == "team_hfa_total") |>
+      pivot_wider(
+        id_cols = c(team, season),
+        names_from = variable,
+        values_from = c(mean, median),
+        names_glue = "{variable}_{.value}"
+      ) |>
+      select(home_team = team, season, home_hfa = team_hfa_total_mean),
+    by = c("home_team", "season")
+  ) |>
+  mutate(
+    pred_result = home_strength - away_strength + home_hfa*hfa,
+    pred_error = pred_result - result,
+    spread_error = spread_line - result
+  )
+
+# hfa5_game_strengths <- hfa5_team_hfa_total |>
+#   filter(variable %in% c("team_hfa_total", "team_strength"))
+
+ggplot(hfa5_game_strengths, aes(x = pred_result, y = result)) +
+  geom_point(alpha = 0.4) +
+  smplot2::sm_statCorr(r2 = TRUE, color = "blue", linewidth = 0.75) +
+  geom_abline(slope = 1, intercept = 0, color = "red", 
+              linetype = "dashed", linewidth = 0.75) +
+  labs(
+    x = "Model Expected Spread",
+    y = "Actual Result (Home Margin)",
+    title = "Model Spread vs Actual Result"
+  )
+
+ggplot(hfa5_game_strengths, aes(x = pred_result, y = pred_error)) +
+  geom_point(alpha = 0.4) +
+  smplot2::sm_statCorr(r2 = TRUE, color = "blue", linewidth = 0.75) +
+  geom_abline(slope = 0, intercept = 0, color = "red", 
+              linetype = "dashed", linewidth = 0.75) +
+  labs(
+    x = "Model Expected Spread",
+    y = "Model Expected Spread - Actual Result (Home Margin)",
+    title = "Model Spread vs Residuals"
+  )
+
+ggplot(hfa5_game_strengths, aes(x = pred_result, y = spread_line)) +
+  geom_point(alpha = 0.4) +
+  smplot2::sm_statCorr(r2 = TRUE, color = "blue", linewidth = 0.75) +
+  geom_abline(slope = 1, intercept = 0, color = "red", 
+              linetype = "dashed", linewidth = 0.75) +
+  labs(
+    x = "Model Expected Spread",
+    y = "Vegas Spread",
+    title = "Model vs Vegas Spread"
+  )
+
+ggplot(hfa5_game_strengths, aes(x = pred_error)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(
+    x = "Model Spread Error (Model - Actual)",
+    y = "Count",
+    title = "Distribution of Spread Errors"
+  )
+
+hfa5_metrics <- tibble(
+  MAE   = mae(hfa5_game_strengths$result, hfa5_game_strengths$pred_result),
+  RMSE  = rmse(hfa5_game_strengths$result, hfa5_game_strengths$pred_result),
+  Bias  = mean(hfa5_game_strengths$pred_error),
+  SD_Error = sd(hfa5_game_strengths$pred_error)
+)
+hfa5_metrics_vegas <- tibble(
+  MAE   = mae(hfa5_game_strengths$result, hfa5_game_strengths$spread_line),
+  RMSE  = rmse(hfa5_game_strengths$result, hfa5_game_strengths$spread_line),
+  Bias  = mean(hfa5_game_strengths$spread_error),
+  SD_Error = sd(hfa5_game_strengths$spread_error)
+)
+hfa5_metrics <- hfa5_metrics |>
+  mutate(Metric = "Model4", .before = 1) |>
+  bind_rows(
+    hfa5_metrics_vegas |>
+      mutate(Metric = "Vegas", .before = 1)
+  ) |>
+  mutate(Model = "hfa5", .before = 1)
+
+hfa_metrics <- bind_rows(
+  hfa3_metrics,
+  hfa5_metrics
+)
+print(hfa_metrics)
+
+hfa5_league_hfa |>
+  ggplot(aes(x = season, y = mean)) +
+  geom_line() +
+  geom_point() +
+  geom_ribbon(aes(ymin = q5, ymax = q95), fill = "blue", alpha = 0.2) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = seasons,  # Show season boundaries on x-axis
+    minor_breaks = FALSE,
+    labels = seasons
+  ) +
+  labs(title = "League-wide Home Field Advantage by Season",
+       subtitle = "Model hfa5",
+       x = "Season",
+       y = "League HFA (mean ± 90% interval)") +
+  theme_minimal()
+
+## 6.4 MLE ----
+hfa5_mle_fit <- hfa5_mod$optimize(
+  data = hfa5_stan_data,
+  #output_dir = hfa5_output_dir,
+  iter = 20000, 
+  jacobian = FALSE,
+  seed = hfa5_seed
+)
+
+hfa5_mle_fit_vars <- hfa5_mle_fit$metadata()$stan_variable_sizes
+hfa5_mle_fit_vars
+hfa5_mle_fit$output()
+hfa5_mle_sum <- hfa5_mle_fit$summary(
+  variables = subset(names(hfa5_mle_fit_vars),
+                     hfa5_mle_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(estimate = round(estimate, 4))
+print(hfa5_mle_sum, n = Inf)
+
+hfa5_mle_team_strength <- hfa5_mle_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_mle",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5_mle_league_hfa <- hfa5_mle_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_mle",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5_mle_team_hfa <- hfa5_mle_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_mle",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_mle_team_total_hfa <- hfa5_mle_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_mle",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_mle_team_estimates <- hfa5_mle_team_strength |>
+  left_join(week_tbl_hfa5) |>
+  left_join(hfa5_mle_league_hfa) |>
+  left_join(hfa5_mle_team_hfa_dev) |>
+  left_join(hfa5_mle_team_total_hfa) |>
+  relocate(contains("mle"), .after = last_col())
+
+## 6.5 MAP ----
+hfa5_map_fit <- hfa5_mod$optimize(
+  data = hfa5_stan_data,
+  #output_dir = hfa5_output_dir,
+  iter = 20000, 
+  jacobian = TRUE,
+  seed = hfa5_seed
+)
+hfa5_map_fit_vars <- hfa5_map_fit$metadata()$stan_variable_sizes
+hfa5_map_fit_vars
+hfa5_map_fit$output()
+hfa5_map_sum <- hfa5_map_fit$summary(
+  variables = subset(names(hfa5_map_fit_vars),
+                     hfa5_map_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(estimate = round(estimate, 4))
+print(hfa5_map_sum, n = Inf)
+
+hfa5_map_team_strength <- hfa5_map_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_map",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5_map_league_hfa <- hfa5_map_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_map",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5_map_team_hfa <- hfa5_map_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_map",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_map_team_total_hfa <- hfa5_map_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_map",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_map_team_estimates <- hfa5_map_team_strength |>
+  left_join(week_tbl_hfa5) |>
+  left_join(hfa5_map_league_hfa) |>
+  left_join(hfa5_map_team_hfa_dev) |>
+  left_join(hfa5_map_team_total_hfa) |>
+  relocate(contains("map"), .after = last_col())
+
+
+## 6.6 Variational ----
+hfa5_vi_fit <- hfa5_mod$variational(
+  data = hfa5_stan_data,
+  #init = 0,
+  iter = 20000,
+  draws = hfa5_iters*hfa5_chains,
+  seed = hfa5_seed
+)
+
+hfa5_vi_fit_vars <- hfa5_vi_fit$metadata()$stan_variable_sizes
+hfa5_vi_fit_vars
+hfa5_vi_fit$output()
+hfa5_vi_sum <- hfa5_vi_fit$summary(
+  variables = subset(names(hfa5_vi_fit_vars),
+                     hfa5_vi_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5_vi_sum, n = Inf)
+
+hfa5_vi_team_strength <- hfa5_vi_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_vi",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5_vi_league_hfa <- hfa5_vi_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_vi",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5_vi_team_hfa <- hfa5_vi_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = season[season]
+  )
+
+hfa5_vi_team_total_hfa <- hfa5_vi_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_vi_team_estimates <- hfa5_vi_team_strength |>
+  left_join(week_tbl_hfa5) |>
+  left_join(hfa5_vi_league_hfa) |>
+  left_join(hfa5_vi_team_hfa_dev) |>
+  left_join(hfa5_vi_team_total_hfa) |>
+  relocate(contains("vi"), .after = last_col())
+
+## 6.7 Laplace ----
+hfa5_lap_fit <- hfa5_mod$laplace(
+  data = hfa5_stan_data,
+  init = 0,
+  jacobian = TRUE,
+  draws = hfa5_iters,
+  seed = hfa5_seed
+)
+
+hfa5_lap_fit_vars <- hfa5_lap_fit$metadata()$stan_variable_sizes
+hfa5_lap_fit_vars
+hfa5_lap_fit$output()
+hfa5_lap_sum <- hfa5_lap_fit$summary(
+  variables = subset(names(hfa5_lap_fit_vars),
+                     hfa5_lap_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5_lap_sum, n = Inf)
+
+hfa5_lap_team_strength <- hfa5_lap_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_lap",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5_lap_league_hfa <- hfa5_lap_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_lap",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5_lap_team_hfa_dev <- hfa5_lap_fit$draws(
+  variables = c("team_hfa_dev"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "team_hfa_lap",
+    names_transform = list(team = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team]
+  )
+
+hfa5_lap_team_total_hfa <- hfa5_lap_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_lap",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5_lap_team_estimates <- hfa5_lap_team_strength |>
+  left_join(week_tbl_hfa5) |>
+  left_join(hfa5_lap_league_hfa) |>
+  left_join(hfa5_lap_team_hfa_dev) |>
+  left_join(hfa5_lap_team_total_hfa) |>
+  relocate(contains("lap"), .after = last_col())
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+# 7. MODEL hfa5A ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+
+first_train_week <- 
+  game_fit_data_all |> filter(season == 2006, week == 1)  |> pull(week_idx) |> unique()
+last_train_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
+first_oos_week <- 
+  game_fit_data_all |> filter(season == 2007, week == 1)  |> pull(week_idx) |> unique()
+last_oos_week <- 
+  game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
+
+train_data <- game_fit_data_all |> 
+  filter(!is.na(result)) |>
+  filter(between(week_idx, first_train_week, last_train_week))
+train_data
+
+
+## 7.1 Compile Model ----
+hfa5A_mod <- cmdstan_model(
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa5A.stan"
+)
+hfa5A_mod_variables <- hfa5A_mod$variables()
+
+## 7.2 Stan Data ----
+
+# Master lookup objects
+teams   <- sort(unique(c(train_data$home_team, train_data$away_team)))
+seasons <- sort(unique(train_data$season))
+weeks   <- sort(unique(train_data$week_idx))
+
+# 1. week_season: length N_weeks, maps each week (in 'weeks') to a season index (1-based)
+# For each week_idx in 'weeks', find season_idx in week_tbl, then remap to 1:N_seasons
+week_tbl_season_map <- setNames(seq_along(seasons), seasons)
+
+week_tbl_hfa5A <- week_tbl |>
+  mutate(season_id = week_tbl_season_map[as.character(season)]) |> # 1-based season index
+  filter(week_idx %in% weeks)
+
+week_season <- week_tbl_hfa5A$season_id[match(weeks, week_tbl_hfa5A$week_idx)] # length N_weeks, 1-based
+
+# 2. first/last week of each season (values are week_idx, NOT positions)
+first_week_of_season <- week_tbl_hfa5A |>
+  group_by(season_id) |>
+  summarise(first = min(week_idx), .groups = "drop") |>
+  pull(first) |>
+  match(weeks)  # Get position in weeks
+
+last_week_of_season <- week_tbl_hfa5A |>
+  group_by(season_id) |>
+  summarise(last = max(week_idx), .groups = "drop") |>
+  pull(last) |>
+  match(weeks)  # Get position in weeks
+
+# 7. Stan data
+hfa5A_stan_data <- list(
+  N_games    = nrow(train_data),
+  N_teams    = length(teams),
+  N_seasons  = length(seasons),
+  N_weeks    = length(weeks),
+  home_id    = as.integer(factor(train_data$home_team, levels = teams)),
+  away_id    = as.integer(factor(train_data$away_team, levels = teams)),
+  week_id    = as.integer(factor(train_data$week_idx, levels = weeks)),
+  season_id  = as.integer(factor(train_data$season, levels = seasons)),
+  week_season = week_season,  # length N_weeks, value in 1:N_seasons
+  first_week_of_season = first_week_of_season, # N_seasons, value is week_idx
+  last_week_of_season  = last_week_of_season,  # N_seasons, value is week_idx
+  hfa        = as.integer(train_data$hfa), # 1 = home, 0 = neutral
+  result     = as.numeric(train_data$result) # home - away margin
+)
+
+
+
+#mod_output_dir <- "Model Fitting/stan_models"
+
+hfa5A_iters <- 2000
+hfa5A_warmup <- 1000
+hfa5A_chains <- 4
+hfa5A_thin <- 1
+hfa5A_sims <- ((hfa5A_iters)/hfa5A_thin)*hfa5A_chains
+hfa5A_parallel_chains <- parallel::detectCores()
+hfa5A_adapt_delta <- 0.95
+hfa5A_max_treedeepth <- 10
+hfa5A_seed <- 52
+
+## 7.3 MCMC ----
+### 7.3.1 Fit Model ----
+system.time(
+  hfa5A_mcmc_fit <- hfa5A_mod$sample(
+    data = hfa5A_stan_data,
+    #output_dir = hfa5A_output_dir,
+    chains = hfa5A_chains,
+    parallel_chains = hfa5A_parallel_chains,
+    iter_sampling = hfa5A_iters, 
+    iter_warmup = hfa5A_warmup,
+    thin = hfa5A_thin,
+    adapt_delta = hfa5A_adapt_delta, 
+    max_treedepth = hfa5A_max_treedeepth,
+    seed = hfa5A_seed
+  )
+)
+
+### Save
+hfa5A_mcmc_fit$save_object(file = "Model Fitting/stan_models/hfa5A_mcmc_fit_all.rds")
+
+### 7.3.2 Diagnostics ----
+hfa5A_mod_variables
+hfa5A_mcmc_fit$sampler_diagnostics(format = "df")
+hfa5A_mcmc_fit$cmdstan_diagnose()
+hfa5A_mcmc_fit$diagnostic_summary()
+
+hfa5A_mcmc_fit_vars <- hfa5A_mcmc_fit$metadata()$stan_variable_sizes
+hfa5A_mcmc_fit_vars
+hfa5A_mcmc_fit$output()
+hfa5A_mcmc_sum <- hfa5A_mcmc_fit$summary(
+  variables = subset(names(hfa5A_mcmc_fit_vars),
+                     hfa5A_mcmc_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5A_mcmc_sum, n = Inf)
+
+### 6.3.3 Posterior ----
+# hfa5A_mcmc_team_strength2 <- hfa5A_mcmc_fit |>
+#   spread_draws(team_strength[team, week_idx]) |>
+#   mutate(
+#     team = teams[team],
+#     week_idx = weeks[week_idx]
+#   ) |>
+#   summarise_draws()
+
+hfa5A_mcmc_team_strength <- hfa5A_mcmc_fit$summary(
+ variables = "team_strength"
+)
+
+hfa5A_mcmc_team_strength <- hfa5A_mcmc_team_strength |>
+  mutate(
+    variable = "team_strength",
+    team = rep(teams, times = length(weeks)),
+    week_idx = rep(weeks, each = length(teams)),
+    .before = 1
+  )
+
+# hfa5A_mcmc_team_hfa <- hfa5A_mcmc_fit |>
+#   spread_draws(team_hfa[team, season], ndraws = 1000) |>
+#   mutate(
+#     team = teams[team],
+#     season = seasons[season]
+#   ) |>
+#   summarise_draws()
+# hfa5A_mcmc_team_hfa
+
+hfa5A_mcmc_team_hfa <- hfa5A_mcmc_fit$summary(
+  variables = "team_hfa"
+) |>
+  mutate(
+    variable = "team_hfa",
+    team = rep(teams, times = length(seasons)),
+    season = rep(seasons, each = length(teams)),
+    .before = 1
+  )
+
+# hfa5A_mcmc_league_hfa <- hfa5A_mcmc_fit |>
+#   spread_draws(league_hfa[season]) |>
+#   mutate(
+#     season = seasons[season]
+#   ) |>
+#   summarise_draws()
+# hfa5A_mcmc_league_hfa
+
+hfa5A_mcmc_league_hfa <- hfa5A_mcmc_fit$summary(
+  variables = "league_hfa"
+) |>
+  mutate(
+    variable = "league_hfa",
+    season = seasons,
+    .before = 1
+  )
+
+hfa5A_team_hfa_total <- hfa5A_mcmc_fit |>
+  spread_draws(league_hfa[season], 
+               team_hfa_dev[team],
+               team_total_hfa[team, season]) |>
+  #mutate(team_hfa_total2 = team_hfa_dev + league_hfa) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  ) |>
+  rename(team_hfa_total = team_total_hfa) |>
+  summarise_draws()
+hfa5A_team_hfa_total
+
+
+
+# hfa5A_team_strength_end <- week_tbl |>
+#   right_join(hfa5A_team_strength) |>
+#   slice_tail(n = 1, by = team)
+
+hfa5A_team_strength_end <- hfa5A_team_strength |>
+  ungroup() |>
+  arrange(week_idx, team) |>
+  slice_tail(n = 1, by = c(team, variable))
+
+hfa5A_team_hfa_end <- hfa5A_team_hfa_total |>
+  ungroup() |>
+  arrange(season, team) |>
+  slice_tail(n = 1, by = c(team, variable))
+
+hfa5A_team_total <- bind_rows(
+  hfa5A_team_hfa_end,
+  hfa5A_team_strength_end
+) |>
+  fill(season, week_idx, .direction = "downup") |>
+  select(season, week_idx, team, everything()) |>
+  arrange(team) |>
+  filter(variable %in% c("team_hfa_total", "team_strength")) |>
+  mutate(
+    variable = case_when(
+      variable == "team_hfa_total" ~ "sp_hfa",
+      variable == "team_strength" ~ "sp_strength"
+    )
+  ) |>
+  pivot_wider(
+    id_cols = team,
+    names_from = variable,
+    values_from = c(mean, median),
+    names_glue = "{variable}_{.value}"
+  )
+
+### 6.3.4 Plots ----
+p <- hfa5A_mcmc_team_strength |>
+  left_join(week_tbl) |>
+  ggplot(
+    aes(x = week_idx, y = mean, color = team, group = team,
+        text = paste0(
+          "team: ", team, "\n",
+          sprintf("strength: %.2f", mean), "\n",
+          "season: ", season, "\n",
+          "week: ", week, "\n",
+          "week_idx: ", week_idx
+        )
+    )
+  ) +
+  geom_line() +
+  #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
+  #facet_wrap(~team) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = first_week_of_season,  # Show season boundaries on x-axis
+    labels = seasons
+    # sec.axis = dup_axis(
+    #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
+    #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
+    #   name = "Week Number"
+    # )
+  ) +
+  scale_color_nfl(guide = guide_legend()) +
+  labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength (SRS)") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  ) +
+  guides(
+    color = guide_legend(
+      nrow = 3,  # Use 2, 4, or 8 depending on what fits
+      byrow = TRUE,
+      title.position = "top"
+    )
+  )
+p
+ggplotly(p, tooltip = "text")
+
+p <- hfa5A_mcmc_team_hfa |>
+  #left_join(week_tbl) |>
+  ggplot(
+    aes(x = season, y = mean, color = team, group = team,
+        text = paste0(
+          "team: ", team, "\n",
+          sprintf("strength: %.2f", mean), "\n",
+          "season: ", season, "\n"
+          #"week: ", week, "\n",
+          #"week_idx: ", week_idx
+        )
+    )
+  ) +
+  geom_line() +
+  #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
+  #facet_wrap(~team) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = first_week_of_season,  # Show season boundaries on x-axis
+    labels = seasons
+    # sec.axis = dup_axis(
+    #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
+    #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
+    #   name = "Week Number"
+    # )
+  ) +
+  scale_color_nfl(guide = guide_legend()) +
+  labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength (SRS)") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  ) +
+  guides(
+    color = guide_legend(
+      nrow = 3,  # Use 2, 4, or 8 depending on what fits
+      byrow = TRUE,
+      title.position = "top"
+    )
+  )
+p
+ggplotly(p, tooltip = "text")
+
+## 7.4 MLE ----
+hfa5A_mle_fit <- hfa5A_mod$optimize(
+  data = hfa5A_stan_data,
+  #output_dir = hfa5A_output_dir,
+  iter = 20000, 
+  jacobian = FALSE,
+  seed = hfa5A_seed
+)
+
+hfa5A_mle_fit_vars <- hfa5A_mle_fit$metadata()$stan_variable_sizes
+hfa5A_mle_fit_vars
+hfa5A_mle_fit$output()
+hfa5A_mle_sum <- hfa5A_mle_fit$summary(
+  variables = subset(names(hfa5A_mle_fit_vars),
+                     hfa5A_mle_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(estimate = round(estimate, 4))
+print(hfa5A_mle_sum, n = Inf)
+
+hfa5A_mle_team_strength <- hfa5A_mle_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_mle",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5A_mle_league_hfa <- hfa5A_mle_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_mle",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5A_mle_team_hfa <- hfa5A_mle_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_mle",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_mle_team_total_hfa <- hfa5A_mle_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_mle",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_mle_team_estimates <- hfa5A_mle_team_strength |>
+  left_join(week_tbl_hfa5A) |>
+  left_join(hfa5A_mle_league_hfa) |>
+  left_join(hfa5A_mle_team_hfa_dev) |>
+  left_join(hfa5A_mle_team_total_hfa) |>
+  relocate(contains("mle"), .after = last_col())
+
+## 7.5 MAP ----
+hfa5A_map_fit <- hfa5A_mod$optimize(
+  data = hfa5A_stan_data,
+  #output_dir = hfa5A_output_dir,
+  iter = 20000, 
+  jacobian = TRUE,
+  seed = hfa5A_seed
+)
+hfa5A_map_fit_vars <- hfa5A_map_fit$metadata()$stan_variable_sizes
+hfa5A_map_fit_vars
+hfa5A_map_fit$output()
+hfa5A_map_sum <- hfa5A_map_fit$summary(
+  variables = subset(names(hfa5A_map_fit_vars),
+                     hfa5A_map_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(estimate = round(estimate, 4))
+print(hfa5A_map_sum, n = Inf)
+
+hfa5A_map_team_strength <- hfa5A_map_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_map",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5A_map_league_hfa <- hfa5A_map_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_map",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5A_map_team_hfa <- hfa5A_map_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_map",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_map_team_total_hfa <- hfa5A_map_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_map",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_map_team_estimates <- hfa5A_map_team_strength |>
+  left_join(week_tbl_hfa5A) |>
+  left_join(hfa5A_map_league_hfa) |>
+  left_join(hfa5A_map_team_hfa_dev) |>
+  left_join(hfa5A_map_team_total_hfa) |>
+  relocate(contains("map"), .after = last_col())
+
+
+## 7.6 Variational ----
+hfa5A_vi_fit <- hfa5A_mod$variational(
+  data = hfa5A_stan_data,
+  #init = 0,
+  iter = 20000,
+  draws = hfa5A_iters*hfa5A_chains,
+  seed = hfa5A_seed
+)
+
+hfa5A_vi_fit_vars <- hfa5A_vi_fit$metadata()$stan_variable_sizes
+hfa5A_vi_fit_vars
+hfa5A_vi_fit$output()
+hfa5A_vi_sum <- hfa5A_vi_fit$summary(
+  variables = subset(names(hfa5A_vi_fit_vars),
+                     hfa5A_vi_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5A_vi_sum, n = Inf)
+
+hfa5A_vi_team_strength <- hfa5A_vi_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_vi",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5A_vi_league_hfa <- hfa5A_vi_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_vi",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5A_vi_team_hfa <- hfa5A_vi_fit$draws(
+  variables = c("team_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = season[season]
+  )
+
+hfa5A_vi_team_total_hfa <- hfa5A_vi_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_vi",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_vi_team_estimates <- hfa5A_vi_team_strength |>
+  left_join(week_tbl_hfa5A) |>
+  left_join(hfa5A_vi_league_hfa) |>
+  left_join(hfa5A_vi_team_hfa_dev) |>
+  left_join(hfa5A_vi_team_total_hfa) |>
+  relocate(contains("vi"), .after = last_col())
+
+## 7.7 Laplace ----
+hfa5A_lap_fit <- hfa5A_mod$laplace(
+  data = hfa5A_stan_data,
+  init = 0,
+  jacobian = TRUE,
+  draws = hfa5A_iters,
+  seed = hfa5A_seed
+)
+
+hfa5A_lap_fit_vars <- hfa5A_lap_fit$metadata()$stan_variable_sizes
+hfa5A_lap_fit_vars
+hfa5A_lap_fit$output()
+hfa5A_lap_sum <- hfa5A_lap_fit$summary(
+  variables = subset(names(hfa5A_lap_fit_vars),
+                     hfa5A_lap_fit_vars |> map_vec(\(x) length(x)==1))
+) |>
+  mutate(across(-variable,
+                ~round(.x, 4)))
+print(hfa5A_lap_sum, n = Inf)
+
+hfa5A_lap_team_strength <- hfa5A_lap_fit$draws(
+  variables = c("team_strength"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "week_idx"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_strength_lap",
+    names_transform = list(team = as.integer,
+                           week_idx = as.integer)
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    week_idx = weeks[week_idx]
+  )
+
+hfa5A_lap_league_hfa <- hfa5A_lap_fit$draws(
+  variables = c("league_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "season"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "league_hfa_lap",
+    names_transform = list(season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    season = seasons[season]
+  )
+
+hfa5A_lap_team_hfa_dev <- hfa5A_lap_fit$draws(
+  variables = c("team_hfa_dev"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team"),
+    names_pattern = "(.*)\\[(\\d+)\\]",
+    values_to = "team_hfa_lap",
+    names_transform = list(team = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team]
+  )
+
+hfa5A_lap_team_total_hfa <- hfa5A_lap_fit$draws(
+  variables = c("team_total_hfa"),
+  format = "df"
+) |>
+  pivot_longer(
+    everything(),
+    names_to = c("param", "team", "season"),
+    names_pattern = "(.*)\\[(\\d+),(\\d+)\\]",
+    values_to = "team_total_hfa_lap",
+    names_transform = list(team = as.integer,
+                           season = as.integer),
+    values_drop_na = TRUE
+  ) |>
+  filter(!is.na(param)) |>
+  select(-param) |>
+  mutate(
+    team = teams[team],
+    season = seasons[season]
+  )
+
+hfa5A_lap_team_estimates <- hfa5A_lap_team_strength |>
+  left_join(week_tbl_hfa5A) |>
+  left_join(hfa5A_lap_league_hfa) |>
+  left_join(hfa5A_lap_team_hfa_dev) |>
+  left_join(hfa5A_lap_team_total_hfa) |>
+  relocate(contains("lap"), .after = last_col())
