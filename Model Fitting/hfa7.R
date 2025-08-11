@@ -366,10 +366,13 @@ team_hfa_last <- c()
 league_hfa_last <- c()
 prev_fit <- fit0  # warm-start source; may be NULL on very first run
 
+future_weeks2 <- future_weeks[future_weeks > 218]
+
 {tic(msg = "🎉 Total Backtest Time")
-for (i in seq_along(future_weeks)) {
-  W   <- future_weeks[i]
-  Wm1 <- if (i == 1) end_2006 else future_weeks[i - 1]
+#for (i in seq_along(future_weeks)) {
+for (i in seq_along(future_weeks2)) {
+  W   <- future_weeks2[i]
+  Wm1 <- if (i == 1) end_2006 else future_weeks2[i - 1]
   
   cutoff_season <- unique(game_fit_data_all$season[game_fit_data_all$week_idx == W])
   cutoff_week   <- unique(game_fit_data_all$week[game_fit_data_all$week_idx == W])
@@ -437,7 +440,7 @@ for (i in seq_along(future_weeks)) {
     iter_warmup = 200, 
     iter_sampling = 500,
     adapt_delta = 0.95, 
-    max_treedepth = 10, 
+    max_treedepth = 15, 
     init = function() inits_list,
     refresh = 0,
     show_messages = FALSE,
@@ -495,6 +498,31 @@ for (i in seq_along(future_weeks)) {
   prev_fit <- fit_W
 }
 toc()}
+
+total_weeks <- nrow(team_strength_last)/32
+team_strength_last2 <- team_strength_last |>
+  mutate(
+    team = rep(teams, times = total_weeks),
+    week_idx = rep(1:total_weeks, each = 32),
+    .after = variable
+  )
+team_hfa_last2 <- team_hfa_last |>
+  mutate(
+    team = rep(teams, times = total_weeks),
+    week_idx = rep(1:total_weeks, each = 32),
+    .after = variable
+  )
+league_hfa_last2 <- league_hfa_last |>
+  mutate(
+    #team = rep(teams, times = total_weeks),
+    week_idx = 1:total_weeks,
+    .after = variable
+  )
+
+oos_draws2 <- bind_cols(
+  oos_draws
+)
+oos_draws2_names <- paste0("y_oos[", 1:ncol(oos_draws2), "]")
 
 ### 2.4.1 OOS Inference ----
 backtest_preds <- bind_rows(results) |>

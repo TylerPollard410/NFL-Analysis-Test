@@ -770,9 +770,7 @@ last_oos_week <-
 train_data_brms <- game_fit_data_all |> 
   filter(!is.na(result)) |>
   filter(between(week_idx, first_train_week, last_train_week)) |>
-  mutate(homeWeight = 1, awayWeight = -1) |>
-  mutate(hfa_away = ifelse(hfa == 1, 0, 0), .after = hfa) |>
-  mutate(team = cbind(home_id, away_id))
+  mutate(homeWeight = 1, awayWeight = -1)
 train_data_brms
 
 srs_formula <- bf(

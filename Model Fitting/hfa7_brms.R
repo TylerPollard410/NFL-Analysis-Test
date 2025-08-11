@@ -520,6 +520,7 @@ print(backtest_metrics)
 # 3. MODEL brms ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
+## 3.1 Data ----
 first_train_week <- 
   game_fit_data_all |> filter(season == 2006, week == 1)  |> pull(week_idx) |> unique()
 last_train_week <- 
@@ -529,7 +530,180 @@ last_train_week <-
 # last_oos_week <- 
 #   game_fit_data_all |> filter(season == 2024, week == 22) |> pull(week_idx) |> unique()
 
-train_data <- game_fit_data_all |> 
+train_data_brms <- game_fit_data_all |> 
   filter(!is.na(result)) |>
-  filter(between(week_idx, first_train_week, last_train_week))
+  filter(between(week_idx, first_train_week, last_train_week)) |>
+  mutate(homeWeight = 1, awayWeight = -1)
+
+## 3.2 Formula and Fit params ----
+hfa7_brms_formula <- bf(
+  result ~ 0 + #Intercept +
+    hfa +
+    (0 + hfa|gr(home_team)) +
+    (1 + s(week_idx)|mm(home_team, away_team,
+          weights = cbind(homeWeight, awayWeight),
+          scale = FALSE, cor = FALSE))
+)
+
+## 3.3 Fit ----
+system.time(
+  hfa7_brms_fit <- brm(
+    hfa7_brms_formula,
+    data = train_data_brms,
+    #prior = priors,
+    drop_unused_levels = FALSE,
+    #stanvars = srs_stanvars,
+    save_pars = save_pars(all = TRUE), 
+    chains = 4,
+    iter = 2000,
+    warmup = 1000,
+    cores = parallel::detectCores(),
+    #init = 0,
+    #normalize = T,
+    control = list(adapt_delta = 0.95, max_treedepth = 10),
+    backend = "cmdstanr",
+    seed = 52
+  )
+)
+
+
+
+# --- data prep (same idea you used before) ---
+dat <- game_fit_data_all |>
+  filter(!is.na(result)) |>
+  mutate(
+    home_team = factor(home_team),
+    away_team = factor(away_team),
+    home_team_season = factor(paste0(home_team, ":", season)),
+    away_team_season = factor(paste0(away_team, ":", season)),
+    homeWeight = 1,
+    awayWeight = -1
+  )
+
+# --- nonlinear formula: mu = str + (hleague + hteam)*hfa ---
+nl_form <- bf(
+  result ~ str + (hleague + hteam) * hfa,  # mean structure (no intercept)
+  str ~ 0 + (1 | mm(home_team_season, away_team_season,
+                    weights = cbind(homeWeight, awayWeight),
+                    scale = FALSE, cor = FALSE)),
+  hleague ~ 0 + (1 | season),
+  hteam ~ 0 + (1 | gr(home_team_season)),
+  nl = TRUE
+)
+
+# --- priors ---
+# We only have group-level terms for the nl-parameters, so set sd priors per nlpar.
+# Tweak scales to your historical score-diff ranges.
+pri <- c(
+  prior(student_t(3, 0, 10), class = "sd", nlpar = "str"),
+  prior(student_t(3, 0, 5),  class = "sd", nlpar = "hleague"),
+  prior(student_t(3, 0, 5),  class = "sd", nlpar = "hteam"),
+  prior(student_t(3, 0, 10), class = "sigma")
+  # If using student(), you can also set a prior on nu:
+  # prior(gamma(2, 0.1), class = "nu")
+)
+
+fit_brms_nl <- brm(
+  formula = nl_form,
+  data = dat,
+  family = student(),             # or gaussian()
+  prior = pri,
+  drop_unused_levels = FALSE,
+  save_pars = save_pars(all = TRUE),
+  backend = "cmdstanr",
+  chains = 4, iter = 2000, warmup = 1000,
+  control = list(adapt_delta = 0.95, max_treedepth = 10),
+  seed = 52
+)
+
+# --- predictions (includes all RE by default) ---
+# one-week-ahead newdata example:
+# newdata <- game_fit_data_all |> dplyr::filter(week_idx == some_oos_week)
+pred_draws <- posterior_predict(
+  fit_brms_nl,
+  newdata = dat,              # replace with your OOS set
+  re_formula = NULL,
+  allow_new_levels = TRUE
+)
+
+
+
+
+
+
+
+
+library(splines)  # for bs()
+
+# --- Data prep (one row per game) ---
+dat <- game_fit_data_all |>
+  filter(!is.na(result)) |>
+  mutate(
+    home_team        = factor(home_team),
+    away_team        = factor(away_team),
+    home_team_season = factor(paste0(home_team, ":", season)),
+    away_team_season = factor(paste0(away_team, ":", season)),
+    homeWeight = 1,
+    awayWeight = -1,
+    hfa              = as.integer(hfa)  # 1 = true home, 0 otherwise
+  )
+
+# --- Build a compact spline basis for in-season week (use your 'week' 1..22) ---
+K <- 6
+B <- bs(dat$week, df = K, intercept = TRUE)  # includes a constant column
+colnames(B) <- paste0("B", seq_len(ncol(B)) - 1)  # B0..B5
+dat <- bind_cols(dat, as.data.frame(B))
+
+# --- Programmatically build the mm random-slope term over all basis columns ---
+basis_vars <- colnames(B)                         # "B0","B1",...
+mm_slopes   <- paste(basis_vars, collapse = " + ")
+mm_term     <- paste0("(0 + ", mm_slopes,
+                      " | mm(home_team_season, away_team_season, ",
+                      "weights = cbind(homeWeight, awayWeight), scale = FALSE, cor = FALSE))")
+
+# --- Full formula: ONE team-season function, reused as + (home) and − (away) ---
+# Mean: result = team_function(home, week) - team_function(away, week) + HFA terms
+form_signed <- bf(
+  as.formula(
+    paste(
+      "result ~ 0 +",
+      "(0 + hfa | season) +",                   # league-season HFA
+      "(0 + hfa | gr(home_team_season)) +",     # team-season HFA (only when hfa==1)
+      mm_term                                   # time-varying team strength (single function)
+    )
+  )
+) #+ ar(time = week_idx, gr = season, p = 1)      # optional residual AR(1)
+
+# --- Priors (adjust scales to your historical score diffs) ---
+pri <- c(
+  prior(student_t(3, 0, 5),  class = "sd", group = "season",           coef = "hfa"),
+  prior(student_t(3, 0, 5),  class = "sd", group = "home_team_season", coef = "hfa"),
+  prior(student_t(3, 0, 10), class = "sd"),   # defaults for the basis slope sds
+  prior(student_t(3, 0, 10), class = "sigma")
+  # (Optional) put slightly tighter priors on higher-order basis sds for extra smoothness:
+  # prior(student_t(3, 0, 6), class="sd", coef="B4"),
+  # prior(student_t(3, 0, 4), class="sd", coef="B5")
+)
+
+fit_signed <- brm(
+  formula  = form_signed,
+  data     = dat,
+  family   = student(),              # or gaussian()
+  prior    = pri,
+  backend  = "cmdstanr",
+  save_pars = save_pars(all = TRUE),
+  drop_unused_levels = FALSE,
+  chains = 4, iter = 2000, warmup = 1000,
+  control = list(adapt_delta = 0.95, max_treedepth = 12),
+  seed = 52
+)
+
+print(fit_signed, digits = 4)
+ranef(fit_signed)
+
+pp_check(fit_signed, ndraws = 200)
+conds_eff <- conditional_effects(fit_signed, re_formula = NULL)
+
+
+
 
