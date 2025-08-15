@@ -172,6 +172,12 @@ design_row_strength <- function(i, j, P) {
   P[i, ] - P[j, ]
 }
 
+# Map from (N-1)-vector to full N with the reference team fixed at 0
+hfa_reference_map <- function(N, ref_team_id = N) {
+  stopifnot(ref_team_id >= 1, ref_team_id <= N)
+  diag(N)[, -ref_team_id, drop = FALSE]   # [N x (N-1)]
+}
+
 # ---------- Parameter transforms ----------
 .ensure_theta_names <- function(theta) {
   expected <- c("beta_w","log_sigma_w","beta_s","log_sigma_s",
@@ -197,6 +203,175 @@ theta_to_params <- function(theta) {
     sigma_team_hfa = as.numeric(exp(theta["log_sigma_team_hfa"]))
   )
 }
+
+# # ---------- Core builder (uses week_idx/season_idx)
+# # Expects 'games' with columns: home_id, away_id, week_idx, season_idx, hfa, result
+# build_ssm <- function(games,
+#                       N_teams,
+#                       theta) {
+#   
+#   par <- theta_to_params(theta)
+#   stopifnot(!anyNA(unlist(par)))
+#   
+#   # Unique weeks in order (these are your original week_idx labels)
+#   week_levels   <- sort(unique(games$week_idx))
+#   season_levels <- sort(unique(games$season_idx))
+#   N_weeks       <- length(week_levels)
+#   N_seasons     <- length(season_levels)
+#   
+#   # Internal 1..n time index (t) and 1..S season index (s) derived from week_idx/season_idx
+#   wk_map <- setNames(seq_len(N_weeks), week_levels)
+#   ss_map <- setNames(seq_len(N_seasons), season_levels)
+#   g_int  <- games |>
+#     mutate(
+#       t = wk_map[as.character(week_idx)],
+#       s = ss_map[as.character(season_idx)]
+#     )
+#   
+#   # Robust season-of-week mapping (every modeled week gets exactly one season)
+#   wk_season <- g_int |> distinct(t, s) |> arrange(t)
+#   stopifnot(setequal(wk_season$t, seq_len(N_weeks)))
+#   season_of_week <- wk_season$s
+#   
+#   # First/last week (in internal t) per season
+#   first_week_t <- wk_season |> 
+#     group_by(s) |> 
+#     summarise(first = min(t), .groups="drop") |> 
+#     arrange(s) |> pull(first)
+#   last_week_t  <- wk_season |> 
+#     group_by(s) |> 
+#     summarise(last  = max(t), .groups="drop") |>
+#     arrange(s) |> 
+#     pull(last)
+#   
+#   # ----- Bases and state layout ---
+#   # Use the same sum-to-zero basis P for both strengths and team-HFA deviations
+#   P <- orthonormal_sumzero_basis(N_teams)   # [N_teams x (N_teams-1)]
+#   
+#   ds <- N_teams - 1   # strength subspace dim
+#   dh <- N_teams - 1   # team-HFA dev subspace dim
+#   dl <- 1             # league scalar
+#   m  <- ds + dh + dl  # total states
+#   
+#   # ----- Observation layout ---
+#   # Time = week (t = 1..N_weeks). p = max games in any week.
+#   by_week <- split(seq_len(nrow(g_int)), g_int$t)
+#   dims_y  <- sapply(by_week, function(idx) if (length(idx)) length(idx) else 0L)
+#   p       <- max(dims_y)
+#   stopifnot(p > 0L)
+#   
+#   # y must be n x p (time rows)
+#   Y <- matrix(NA_real_, nrow = N_weeks, ncol = p)
+#   for (t in seq_len(N_weeks)) {
+#     if (dims_y[t] == 0L) next
+#     idx <- by_week[[t]]
+#     Y[t, seq_len(dims_y[t])] <- g_int$result[idx]
+#   }
+#   
+#   # H: constant p x p diagonal
+#   H <- diag(par$sigma_y^2, p)
+#   
+#   # Z: p x m x n
+#   Z <- array(0, dim = c(p, m, N_weeks))
+#   for (t in seq_len(N_weeks)) {
+#     if (dims_y[t] == 0L) next
+#     idx <- by_week[[t]]
+#     for (k in seq_len(dims_y[t])) {
+#       gk <- g_int[idx[k], ]
+#       i  <- gk$home_id
+#       j  <- gk$away_id
+#       h  <- gk$hfa
+#       
+#       # Strength block (sum-to-zero subspace)
+#       Z[k, 1:ds, t] <- design_row_strength(i, j, P)
+#       
+#       # Team-HFA dev block (sum-to-zero subspace) & league scalar
+#       off <- ds
+#       if (h == 1L) {
+#         # contribution is dev_full_i = (e_i^T P) * dev_sub  -> row = P[i, ]
+#         Z[k, (off + 1):(off + dh), t] <- P[i, ]
+#         # league scalar
+#         Z[k, m, t] <- 1
+#       }
+#     }
+#   }
+#   
+#   # ----- State evolution (T, R, Q): m x m x n ---
+#   T_arr <- array(0, dim = c(m, m, N_weeks))
+#   R_arr <- array(0, dim = c(m, m, N_weeks))
+#   Q_arr <- array(0, dim = c(m, m, N_weeks))
+#   
+#   I_s <- diag(ds)
+#   I_h <- diag(dh)
+#   
+#   for (t in seq_len(N_weeks)) {
+#     s  <- season_of_week[t]
+#     fw <- first_week_t[s]
+#     
+#     # Strengths: carryover at season start, AR(1) within season
+#     if (t == fw) {
+#       T_arr[1:ds, 1:ds, t] <- par$beta_s * I_s
+#       Q_arr[1:ds, 1:ds, t] <- (par$sigma_s^2) * I_s
+#     } else {
+#       T_arr[1:ds, 1:ds, t] <- par$beta_w * I_s
+#       Q_arr[1:ds, 1:ds, t] <- (par$sigma_w^2) * I_s
+#     }
+#     
+#     # Team HFA deviations: restart at season start, static within season
+#     off <- ds
+#     if (t == fw) {
+#       Q_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- (par$sigma_team_hfa^2) * I_h
+#     } else {
+#       T_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- I_h
+#     }
+#     
+#     # League HFA: AR(1) at season start, identity within season
+#     if (t == fw) {
+#       T_arr[m, m, t] <- par$beta_hfa
+#       Q_arr[m, m, t] <- par$sigma_hfa^2
+#     } else {
+#       T_arr[m, m, t] <- 1
+#     }
+#     
+#     # Shock loading
+#     R_arr[,,t] <- diag(m)
+#   }
+#   
+#   # ----- Initial state ---
+#   a1 <- rep(0, m)
+#   P1 <- diag(m) * 1e6
+#   a1[m]   <- par$league_init
+#   P1[m,m] <- 2^2
+#   # proper prior for team-HFA dev at first time
+#   off <- ds
+#   P1[(off+1):(off+dh), (off+1):(off+dh)] <- (par$sigma_team_hfa^2) * I_h
+#   
+#   # Assertions
+#   stopifnot(
+#     is.matrix(Y), nrow(Y) == N_weeks, ncol(Y) == p,
+#     is.array(Z), all(dim(Z) == c(p, m, N_weeks)),
+#     is.array(T_arr), all(dim(T_arr) == c(m, m, N_weeks)),
+#     is.array(R_arr), all(dim(R_arr) == c(m, m, N_weeks)),
+#     is.array(Q_arr), all(dim(Q_arr) == c(m, m, N_weeks)),
+#     is.matrix(H), all(dim(H) == c(p, p))
+#   )
+#   
+#   model <- SSModel(
+#     Y ~ -1 + SSMcustom(Z = Z, T = T_arr, R = R_arr, Q = Q_arr, a1 = a1, P1 = P1),
+#     H = H
+#   )
+#   
+#   # Keep attributes for downstream use
+#   attr(model, "games_df")        <- g_int
+#   attr(model, "week_levels")     <- week_levels     # map t -> original week_idx
+#   attr(model, "season_levels")   <- season_levels   # map s -> original season_idx
+#   attr(model, "P_basis_strength")<- P
+#   attr(model, "P_basis_hfa_dev") <- P
+#   attr(model, "dim_strength")    <- ds
+#   attr(model, "dim_teamhfa_sub") <- dh
+#   
+#   model
+# }
 
 # ---------- Core builder (uses week_idx/season_idx) ----------
 # Expects 'games' with columns: home_id, away_id, week_idx, season_idx, hfa, result
@@ -228,12 +403,22 @@ build_ssm <- function(games,
   season_of_week <- wk_season$s
   
   # First/last week (in internal t) per season
-  first_week_t <- wk_season |> group_by(s) |> summarise(first = min(t), .groups="drop") |> arrange(s) |> pull(first)
-  last_week_t  <- wk_season |> group_by(s) |> summarise(last  = max(t), .groups="drop") |> arrange(s) |> pull(last)
+  first_week_t <- wk_season |> 
+    group_by(s) |> 
+    summarise(first = min(t), .groups="drop") |> 
+    arrange(s) |> pull(first)
+  last_week_t  <- wk_season |> 
+    group_by(s) |> 
+    summarise(last  = max(t), .groups="drop") |>
+    arrange(s) |> 
+    pull(last)
   
   # ----- Bases and state layout -----
   # Use the same sum-to-zero basis P for both strengths and team-HFA deviations
-  P <- orthonormal_sumzero_basis(N_teams)   # [N_teams x (N_teams-1)]
+  #P <- orthonormal_sumzero_basis(N_teams)   # [N_teams x (N_teams-1)]
+  
+  P_strength <- orthonormal_sumzero_basis(N_teams)  # strengths (sum-to-zero)
+  J_hfa      <- hfa_reference_map(N_teams, ref_team_id = N_teams)  # HFA (no constraint)
   
   ds <- N_teams - 1   # strength subspace dim
   dh <- N_teams - 1   # team-HFA dev subspace dim
@@ -270,13 +455,13 @@ build_ssm <- function(games,
       h  <- gk$hfa
       
       # Strength block (sum-to-zero subspace)
-      Z[k, 1:ds, t] <- design_row_strength(i, j, P)
+      Z[k, 1:ds, t] <- design_row_strength(i, j, P_strength)
       
       # Team-HFA dev block (sum-to-zero subspace) & league scalar
       off <- ds
       if (h == 1L) {
         # contribution is dev_full_i = (e_i^T P) * dev_sub  -> row = P[i, ]
-        Z[k, (off + 1):(off + dh), t] <- P[i, ]
+        Z[k, (off + 1):(off + dh), t] <- J_hfa[i, ] #P[i, ]
         # league scalar
         Z[k, m, t] <- 1
       }
@@ -292,32 +477,37 @@ build_ssm <- function(games,
   I_h <- diag(dh)
   
   for (t in seq_len(N_weeks)) {
-    s  <- season_of_week[t]
-    fw <- first_week_t[s]
+    s_now  <- season_of_week[t]
+    s_next <- if (t < N_weeks) season_of_week[t + 1] else s_now
+    boundary_after_t <- (s_next != s_now)  # season boundary is between t and t+1
+    off <- ds
     
-    # Strengths: carryover at season start, AR(1) within season
-    if (t == fw) {
+    if (boundary_after_t) {
+      # Transition FROM last week of season s_now TO week 1 of season s_next
+      # Strengths: season-start carry
       T_arr[1:ds, 1:ds, t] <- par$beta_s * I_s
       Q_arr[1:ds, 1:ds, t] <- (par$sigma_s^2) * I_s
-    } else {
-      T_arr[1:ds, 1:ds, t] <- par$beta_w * I_s
-      Q_arr[1:ds, 1:ds, t] <- (par$sigma_w^2) * I_s
-    }
-    
-    # Team HFA deviations: restart at season start, static within season
-    off <- ds
-    if (t == fw) {
+      
+      # Team HFA deviations: redraw at season start (reset)
+      T_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- I_h #0
       Q_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- (par$sigma_team_hfa^2) * I_h
-    } else {
-      T_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- I_h
-    }
-    
-    # League HFA: AR(1) at season start, identity within season
-    if (t == fw) {
+      
+      # League HFA: AR(1) at boundary
       T_arr[m, m, t] <- par$beta_hfa
       Q_arr[m, m, t] <- par$sigma_hfa^2
     } else {
+      # Within-season step
+      # Strengths: within-season AR(1)
+      T_arr[1:ds, 1:ds, t] <- par$beta_w * I_s
+      Q_arr[1:ds, 1:ds, t] <- (par$sigma_w^2) * I_s
+      
+      # Team HFA deviations: constant within season
+      T_arr[(off+1):(off+dh), (off+1):(off+dh), t] <- I_h
+      # Q stays zero for team-HFA dev within season
+      
+      # League HFA: identity within season
       T_arr[m, m, t] <- 1
+      # Q stays zero for league HFA within season
     }
     
     # Shock loading
@@ -352,13 +542,16 @@ build_ssm <- function(games,
   attr(model, "games_df")        <- g_int
   attr(model, "week_levels")     <- week_levels     # map t -> original week_idx
   attr(model, "season_levels")   <- season_levels   # map s -> original season_idx
-  attr(model, "P_basis_strength")<- P
-  attr(model, "P_basis_hfa_dev") <- P
+  # attr(model, "P_basis_strength")<- P
+  # attr(model, "P_basis_hfa_dev") <- P
+  attr(model, "P_basis_strength") <- P_strength
+  attr(model, "P_basis_hfa_dev")  <- J_hfa
   attr(model, "dim_strength")    <- ds
   attr(model, "dim_teamhfa_sub") <- dh
   
   model
 }
+
 
 # ---------- Progress-aware updatefn ----------
 updatefn_progress <- function(report_every = 10L) {
@@ -432,8 +625,12 @@ fit_nfl_kfas <- function(
   if (is.null(X)) stop("State matrix is NULL.")
   if (nrow(X) == n && ncol(X) == m) return(X)
   if (nrow(X) == m && ncol(X) == n) return(t(X))
-  if (take_first_n_cols && nrow(X) == m && ncol(X) == n + 1) return(t(X[, 1:n, drop = FALSE]))
-  if (take_first_n_cols && nrow(X) == n + 1 && ncol(X) == m) return(X[1:n, , drop = FALSE])
+  if (take_first_n_cols && nrow(X) == m && ncol(X) == n + 1) {
+    return(t(X[, 1:n, drop = FALSE]))
+  }
+  if (take_first_n_cols && nrow(X) == n + 1 && ncol(X) == m) {
+    return(X[1:n, , drop = FALSE])
+  }
   stop("Unexpected state dims: ", paste(dim(X), collapse = "x"))
 }
 
@@ -744,11 +941,16 @@ fit_kfa <- fit_nfl_kfas(
   trace = TRUE, 
   report_every = 10
 )
+fit_kfa4 <- fit_kfa
 
 ## 6.3 Estimates ----
 ### 6.3.1 Game Means ----
 mu_fit <- fitted_game_means(fit_kfa, train_data) # In-sample
 mu_osa <- osa_game_means(fit_kfa, train_data) # One-step-ahead means
+
+theta_params <- theta_to_params(fit_kfa$optim$par)
+bind_cols(theta_params)
+tidy_params(params_hat)
 
 #### filtered
 #### smoothed
@@ -898,84 +1100,99 @@ games_pred |>
 plot_team_strength_time <- function(team_strength_df, 
                                     week_tbl) {
   team_strength_df |>
-  left_join(week_tbl) |>
-  ggplot(
-    aes(x = week_idx, y = estimate, color = team, group = team,
-        text = paste0(
-          "team: ", team, "\n",
-          sprintf("strength: %.2f", estimate), "\n",
-          "season: ", season, "\n",
-          "week: ", week, "\n",
-          "week_idx: ", week_idx
-        )
+    left_join(week_tbl) |>
+    ggplot(
+      aes(x = week_idx, y = estimate, color = team, group = team,
+          text = paste0(
+            "team: ", team, "\n",
+            sprintf("strength: %.2f", estimate), "\n",
+            "season: ", season, "\n",
+            "week: ", week, "\n",
+            "week_idx: ", week_idx
+          )
+      )
+    ) +
+    geom_line() +
+    scale_x_continuous(
+      name = "Season",
+      breaks = first_week_of_season,  # Show season boundaries on x-axis
+      labels = seasons
+    ) +
+    scale_color_nfl(guide = guide_legend()) +
+    labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength") +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom"
+    ) +
+    guides(
+      color = guide_legend(
+        nrow = 3,  # Use 2, 4, or 8 depending on what fits
+        byrow = TRUE,
+        title.position = "top"
+      )
     )
-  ) +
-  geom_line() +
-  scale_x_continuous(
-    name = "Season",
-    breaks = first_week_of_season,  # Show season boundaries on x-axis
-    labels = seasons
-  ) +
-  scale_color_nfl(guide = guide_legend()) +
-  labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength") +
-  theme_minimal() +
+}
+p1 <- plot_team_strength_time(team_strength_ft, week_tbl) +
+  labs(subtitle = "Filtered") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p1
+ggplotly(p1, tooltip = "text")
+
+p2 <- plot_team_strength_time(team_strength_sm, week_tbl) +
+  labs(subtitle = "Smoothed") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p2
+ggplotly(p2, tooltip = "text")
+
+p3 <- plot_team_strength_time(team_strength_pred, week_tbl) +
+  labs(subtitle = "Predicted") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p3
+ggplotly(p3, tooltip = "text")
+
+p1+p2/p3 +
+  plot_layout(guides = "collect") &
   theme(
     legend.position = "bottom"
-  ) +
-  guides(
-    color = guide_legend(
-      nrow = 3,  # Use 2, 4, or 8 depending on what fits
-      byrow = TRUE,
-      title.position = "top"
-    )
   )
-}
-p <- plot_team_strength_time(team_strength_ft, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_team_strength_time(team_strength_sm, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_team_strength_time(team_strength_pred, week_tbl)
-p
-ggplotly(p, tooltip = "text")
 
 #### 6.5.2 League HFA ----
 plot_league_hfa_time <- function(league_hfa_df, 
-                                    week_tbl) {
+                                 week_tbl) {
   league_hfa_df |>
-  left_join(week_tbl |> select(season, week, week_idx)) |>
-  ggplot(
-    aes(x = week_idx, y = league_hfa, group = season,
-        text = paste0(
-          #"team: ", team, "\n",
-          sprintf("strength: %.2f", league_hfa), "\n",
-          "season: ", season, "\n",
-          "week: ", week, "\n",
-          "week_idx: ", week_idx
-        )
-    )
-  ) +
-  geom_line() +
-  #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
-  #facet_wrap(~team) +
-  scale_x_continuous(
-    name = "Season",
-    breaks = first_week_of_season,  # Show season boundaries on x-axis
-    labels = seasons
-    # sec.axis = dup_axis(
-    #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
-    #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
-    #   name = "Week Number"
-    # )
-  ) +
-  #scale_color_nfl(guide = guide_legend()) +
-  labs(title = "Team Strength Over Time",
-       x = "Week", y = "League HFA") +
-  theme_minimal() +
-  theme(
-    legend.position = "bottom"
-  ) 
+    left_join(week_tbl |> select(season, week, week_idx)) |>
+    ggplot(
+      aes(x = week_idx, y = league_hfa, group = 1,
+          text = paste0(
+            #"team: ", team, "\n",
+            sprintf("strength: %.2f", league_hfa), "\n",
+            "season: ", season, "\n",
+            "week: ", week, "\n",
+            "week_idx: ", week_idx
+          )
+      )
+    ) +
+    geom_line() +
+    #geom_line(aes(color = estimate)) +
+    #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
+    #facet_wrap(~team) +
+    scale_x_continuous(
+      name = "Season",
+      breaks = first_week_of_season,  # Show season boundaries on x-axis
+      labels = seasons
+      # sec.axis = dup_axis(
+      #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
+      #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
+      #   name = "Week Number"
+      # )
+    ) +
+    #scale_color_nfl(guide = guide_legend()) +
+    labs(title = "League HFA Over Time",
+         x = "Week", y = "League HFA") +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom"
+    ) 
   # guides(
   #   color = guide_legend(
   #     nrow = 3,  # Use 2, 4, or 8 depending on what fits
@@ -984,20 +1201,65 @@ plot_league_hfa_time <- function(league_hfa_df,
   #   )
   # )
 }
-p <- plot_league_hfa_time(league_hfa_ft, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_league_hfa_time(league_hfa_sm, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_league_hfa_time(league_hfa_pred, week_tbl)
-p
-ggplotly(p, tooltip = "text")
+p1 <- plot_league_hfa_time(league_hfa_ft, week_tbl) +
+  labs(subtitle = "Filtered") 
+p1
+ggplotly(p1, tooltip = "text")
+
+p2 <- plot_league_hfa_time(league_hfa_sm, week_tbl) +
+  labs(subtitle = "Smoothed")
+p2
+ggplotly(p2, tooltip = "text")
+
+p3 <- plot_league_hfa_time(league_hfa_pred, week_tbl) +
+  labs(subtitle = "Predicted")
+p3
+ggplotly(p3, tooltip = "text")
+
+league_hfa_all <- bind_rows(
+  league_hfa_ft |> mutate(estimate = "Filtered"),
+  league_hfa_sm |> mutate(estimate = "Smoothed"),
+  league_hfa_pred |> mutate(estimate = "Predicted")
+) |>
+  left_join(week_tbl |> select(season, week, week_idx))
+league_hfa_all2 <- league_hfa_all |>
+  filter(week %in% c(1,2,21,22)) |>
+  mutate(league_hfa = round(league_hfa, 4))
+p4 <- league_hfa_all |>
+  #filter(season %in% 2020:2024) |>
+  ggplot(
+    aes(x = week_idx, y = league_hfa, group = estimate,
+        text = paste0(
+          sprintf("strength: %.2f", league_hfa), "\n",
+          "season: ", season, "\n",
+          "week: ", week, "\n",
+          "week_idx: ", week_idx))
+  ) +
+  geom_line(aes(color = estimate)) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = first_week_of_season,  # Show season boundaries on x-axis
+    labels = seasons
+  ) +
+  labs(title = "League HFA Over Time",
+       x = "Week", y = "League HFA") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  ) 
+p4 
+ggplotly(p4, tooltip = "text")
+
+p1/p2/p3 +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom"
+  )
 
 
-#### 6.5.2 Team HFA ----
+#### 6.5.3 Team HFA ----
 plot_team_hfa_time <- function(team_hfa_df, 
-                                 week_tbl) {
+                               week_tbl) {
   team_hfa_df |>
     left_join(week_tbl) |>
     ggplot(
@@ -1031,15 +1293,29 @@ plot_team_hfa_time <- function(team_hfa_df,
       )
     )
 }
-p <- plot_team_hfa_time(team_hfa_ft, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_team_hfa_time(team_hfa_sm, week_tbl)
-p
-ggplotly(p, tooltip = "text")
-p <- plot_team_hfa_time(team_hfa_pred, week_tbl)
-p
-ggplotly(p, tooltip = "text")
+p1 <- plot_team_hfa_time(team_hfa_ft, week_tbl) +
+  labs(subtitle = "Filtered") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p1
+ggplotly(p1, tooltip = "text")
+
+p2 <- plot_team_hfa_time(team_hfa_sm, week_tbl) +
+  labs(subtitle = "Smoothed") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p2
+ggplotly(p2, tooltip = "text")
+
+p3 <- plot_team_hfa_time(team_hfa_pred, week_tbl) +
+  labs(subtitle = "Predicted") +
+  coord_cartesian(xlim = c(295,403), expand = FALSE)
+p3
+ggplotly(p3, tooltip = "text")
+
+p1+p2/p3 +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom"
+  )
 
 
 games_osa |>

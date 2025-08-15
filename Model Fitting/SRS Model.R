@@ -2,9 +2,11 @@
 # 0. Libraries ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
+library(tictoc)
 # library(tidytext)
 # library(MASS)
 library(plotly)
+library(smplot2)
 library(patchwork)
 # library(doParallel)
 # library(rBayesianOptimization)
@@ -38,7 +40,7 @@ set.seed(52)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
 ## Global Variables ----
-all_seasons <- 2006:get_current_season()
+all_seasons <- 2002:get_current_season()
 base_repo_url <- "https://github.com/TylerPollard410/nflendzoneData/releases/download/"
 github_data_repo <- "TylerPollard410/nflendzoneData"
 
@@ -47,7 +49,7 @@ teams_data <- load_teams(current = TRUE)
 teams <- teams_data$team_abbr
 
 ### games ----
-game_data <- load_game_data()
+game_data <- load_game_data(seasons = all_seasons)
 game_data_long <- game_data |> clean_homeaway(invert = c("result", "spread_line"))
 
 game_id_keys <- game_data |> select(
@@ -70,19 +72,19 @@ team_features_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 tag <- "team_model"
 team_model_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 
-tag <- "nfl_stats_week_team_regpost"
-nfl_stats_week_team_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
-
-tag <- "nfl_stats_week_player_regpost"
-nfl_stats_week_player_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
-
-tag <- "srs"
-srs_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+# tag <- "nfl_stats_week_team_regpost"
+# nfl_stats_week_team_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+# 
+# tag <- "nfl_stats_week_player_regpost"
+# nfl_stats_week_player_regpost <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
+# 
+# tag <- "srs"
+# srs_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 
 ## Set up modeling data ----
 #   - Use seasons 2007–2023 for training/validation
 #   - Hold out seasons 2024 for out of sample weekly forecats
-game_model_data <- game_model_data |>
+game_model_data <- game_data |> #game_model_data |>
   mutate(
     hfa = ifelse(location == "Home", 1, 0)
   )
@@ -109,7 +111,8 @@ game_fit_data_all <- game_model_data |>
     .after = season
   ) |>
   select(
-    game_id, season, season_idx, week, week_idx = week_seq, game_type, season_type,
+    game_id, season, season_idx, week, week_idx = week_seq, 
+    game_type, season_type,
     home_team, away_team, home_id, away_id,
     location, hfa,
     home_score, away_score, 
@@ -129,7 +132,6 @@ team_fit_data_all <- game_fit_data_all |>
 
 game_fit_data <- game_fit_data_all |>
   filter(!is.na(result))
-
 
 # Unique week table
 week_tbl <- game_fit_data_all |>
@@ -1055,5 +1057,164 @@ srs_roll_comp |>
   ) +
   #facet_wrap(~ season) +
   theme_bw()
+
+
+# 3. OSRS/SRS brms -----
+## 3.1 Data ----
+first_train_week <- 
+  game_fit_data_all |> filter(season == 2002, week == 1)  |> pull(week_idx) |> unique()
+last_train_week <- 
+  game_fit_data_all |> filter(season == 2022, week == 22) |> pull(week_idx) |> unique()
+first_oos_week <- 
+  game_fit_data_all |> filter(season == 2023, week == 1)  |> pull(week_idx) |> unique()
+last_oos_week <- 
+  game_fit_data_all |> filter(season == 2023, week == 22) |> pull(week_idx) |> unique()
+
+train_data_brms <- game_fit_data_all |> 
+  filter(!is.na(result)) |>
+  filter(between(week_idx, first_train_week, last_train_week)) |>
+  mutate(homeWeight = 1, awayWeight = -1)
+train_data_brms
+
+srs_formula <- bf(
+  result ~ 0 + #Intercept +
+    hfa +
+    (0 + hfa|gr(home_team)) +
+    (1|mm(home_team, away_team,
+          weights = cbind(homeWeight, awayWeight),
+          scale = FALSE, cor = FALSE))
+)
+
+
+default_prior(srs_formula, train_data_brms)
+
+# Define priors.
+priors <- c(
+  prior(normal(2, 3), coef = "hfa", class = "b"),
+  prior(student_t(3, 0, 5), class = "sd",group = "home_team", lb = 0),
+  prior(student_t(3, 0, 10), class = "sd", group = "mmhome_teamaway_team", lb = 0),
+  prior(student_t(3, 0, 10), class = "sigma", lb = 0)
+)
+
+iters <- 1500
+burn <- 500
+chains <- 2
+sims <- (iters-burn)*chains
+
+## Stancode
+srs_stanvars <- stanvar(
+  scode = 
+    "vector[N_1] team_hfa = rep_vector(b[1], N_1) + r_1_1;",
+  block = "tparameters",
+  position = "end"
+)
+
+srs_stancode <- stancode(
+  srs_formula,
+  data = train_data_brms,
+  #prior = priors,
+  drop_unused_levels = FALSE,
+  save_pars = save_pars(all = TRUE), 
+  #stanvars = srs_stanvars,
+  chains = chains,
+  iter = iters,
+  warmup = burn,
+  cores = parallel::detectCores(),
+  #init = 0,
+  normalize = T,
+  control = list(adapt_delta = 0.95),
+  backend = "cmdstanr",
+  seed = 52
+)
+srs_stancode
+
+srs_standata <- standata(
+  srs_formula,
+  data = train_data_brms,
+  #prior = priors,
+  drop_unused_levels = FALSE,
+  #stanvars = srs_stanvars,
+  save_pars = save_pars(all = TRUE), 
+  chains = chains,
+  iter = iters,
+  warmup = burn,
+  cores = parallel::detectCores(),
+  #init = 0,
+  normalize = FALSE,
+  control = list(adapt_delta = 0.95),
+  backend = "cmdstanr",
+  seed = 52
+)
+srs_standata
+
+### 2.2.1 Fit ----
+system.time(
+  srs_fit <- brm(
+    srs_formula,
+    data = train_data_brms,
+    #prior = priors,
+    drop_unused_levels = FALSE,
+    #stanvars = srs_stanvars,
+    save_pars = save_pars(all = TRUE), 
+    chains = chains,
+    iter = iters,
+    warmup = burn,
+    cores = parallel::detectCores(),
+    #init = 0,
+    normalize = T,
+    control = list(adapt_delta = 0.95, max_treedepth = 10),
+    backend = "cmdstanr",
+    seed = 52
+  )
+)
+
+### Check Fit ----
+print(srs_fit, digits = 4)
+srs_ranef <- ranef(srs_fit)
+srs_ranef
+
+variables(srs_fit)
+
+# brms_hfa_mod_list <- list()
+# fixef_list <- list()
+# ranef_list <- list()
+# 
+# fit <- 1
+fit <- fit + 1
+
+brms_hfa_mod_list[[paste0("fit", fit)]] <- srs_fit
+
+srs_fixef <- fixef(srs_fit)
+srs_fixef
+fixef_list[[paste0("fit", fit)]] <- srs_fixef
+
+srs_ranef <- ranef(srs_fit)
+srs_ranef
+ranef_list[[paste0("fit", fit)]] <- srs_ranef
+
+
+loo_list <- list()
+loo(srs_fit)
+loo_list[[paste0("fit", fit)]] <- loo(brms_hfa_mod_list[[paste0("fit", fit)]])
+loo_compare(loo_list)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
