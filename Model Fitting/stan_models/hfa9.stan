@@ -54,23 +54,23 @@ parameters {
 
 transformed parameters {
   // Team-specific HFA level = league_hfa + deviation
-  vector[N_teams] team_hfa = league_hfa + team_hfa_dev;
+  array[N_seasons] vector[N_teams] team_hfa = league_hfa + team_hfa_dev;
 }
 
 model {
   // PRIORS
   // Result noise: weakly-informative around NFL scoring variability
-  sigma_game     ~ normal(14, 7) T[0, ];        // ~14 points sd is a common ballpark
-  sigma_week     ~ normal(2.5, 2) T[0, ];       // small week-to-week drift
-  sigma_season   ~ normal(6, 4) T[0, ];         // bigger off-season drift
-  sigma_init     ~ normal(10, 7) T[0, ];
+  sigma_game     ~ normal(14, 7);        // ~14 points sd is a common ballpark
+  sigma_week     ~ normal(2.5, 2);       // small week-to-week drift
+  sigma_season   ~ normal(6, 4);         // bigger off-season drift
+  sigma_init     ~ normal(10, 7);
 
-  beta_week      ~ normal(1.0, 0.10) T[0, 1.5]; // near-random walk in-season
-  beta_season    ~ normal(0.98, 0.10) T[0, 1.2];// shrink across seasons
+  beta_week      ~ normal(0.9, 0.10); // near-random walk in-season
+  beta_season    ~ normal(0.98, 0.10) ;// shrink across seasons
 
   // HFA: league mean around a few points; team deviations centered and shrunk
   league_hfa     ~ normal(3, 3);                // prior mean ~3 points, weakly-informative
-  sigma_team_hfa ~ normal(2, 2) T[0, ];
+  sigma_team_hfa ~ normal(2, 2);
   team_hfa_dev   ~ normal(0, sigma_team_hfa);
 
   // EVOLUTION OF TEAM STRENGTHS

@@ -392,6 +392,14 @@ hfa8_mod <- cmdstan_model(
   "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa8.stan"
 )
 
+hfa8B_mod <- cmdstan_model(
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa8B.stan"
+)
+
+hfa8C_mod <- cmdstan_model(
+  "~/Desktop/NFLAnalysisTest/Model Fitting/stan_models/hfa8C.stan"
+)
+
 ## 2.2
 ## 2.2 Stan Data ----
 first_train_week <- 
@@ -452,11 +460,11 @@ tic()
 fit_mcmc_A <- hfa8_mod$sample(
   data = stan_dataA,
   chains = 4, 
-  parallel_chains = parallel::detectCores(),
+  parallel_chains = min(4, parallel::detectCores()),
   iter_warmup = 1000, 
   iter_sampling = 2000,
-  adapt_delta = 0.95, 
-  max_treedepth = 12, 
+  adapt_delta = 0.9, 
+  max_treedepth = 10, 
   init = 0,
   # refresh = 0,
   # show_messages = FALSE,
@@ -464,6 +472,126 @@ fit_mcmc_A <- hfa8_mod$sample(
   seed = 52
 )
 toc()
+
+tic()
+fit_mcmc_AB <- hfa8B_mod$sample(
+  data = stan_dataA,
+  chains = 4, 
+  parallel_chains = min(4, parallel::detectCores()),
+  iter_warmup = 1000, 
+  iter_sampling = 2000,
+  adapt_delta = 0.9, 
+  max_treedepth = 10, 
+  init = 0,
+  # refresh = 0,
+  # show_messages = FALSE,
+  # show_exceptions = FALSE,
+  seed = 52
+)
+toc()
+
+tic()
+fit_mcmc_AC <- hfa8C_mod$sample(
+  data = stan_dataA,
+  chains = 4, 
+  parallel_chains = min(4, parallel::detectCores()),
+  iter_warmup = 1000, 
+  iter_sampling = 2000,
+  adapt_delta = 0.9, 
+  max_treedepth = 10, 
+  init = 0,
+  # refresh = 0,
+  # show_messages = FALSE,
+  # show_exceptions = FALSE,
+  seed = 52
+)
+toc()
+
+fit_mcmc_A$time()
+fit_mcmc_AB$time()
+fit_mcmc_AC$time()
+
+fit_mcmc_vars <- names(fit_mcmc_A$metadata()$stan_variable_sizes)
+fit_mcmc_vars <- hfa8_mod$variables()
+fit_mcmc_params <- names(fit_mcmc_vars$parameters)
+
+fit_mcmc_A_param_draws <- fit_mcmc_A$draws()
+fit_mcmc_A_param_draws |>
+  spread_draws(
+    c(lp__,
+      beta_hfa, sigma_hfa, sigma_team_hfa,
+      beta_w, sigma_w,
+      beta_s, sigma_s, sigma_y,
+      league_hfa_init, league_hfa,
+      league_hfa_last, team_hfa_last, team_strength_last
+    ),
+    regex = TRUE
+  ) |>
+  summarise_draws(
+    #"lp__"
+    # "beta_hfa", "sigma_hfa", "sigma_team_hfa",
+    # "beta_w", "sigma_w",
+    # "beta_s", "sigma_s", "sigma_y",
+    # "league_hfa_init", "league_hfa",
+    # "league_hfa_last", "team_hfa_last", "team_strength_last"
+    #)
+  )
+
+variables(fit_mcmc_A_param_draws)
+
+rename_variables(
+  fit_mcmc_A_param_draws,
+  set_names(
+    sprintf("league_hfa_z[%s]", seq_along(seasons)),
+    sprintf("league_hfa_z[%s]", seasons)
+  )
+)
+
+fit_mcmc_A_param_sum <- fit_mcmc_A_param_draws |>
+  summarise_draws()
+fit_mcmc_A_param_sum <- fit_mcmc_A$summary(
+  variables = c("lp__", 
+                "beta_hfa", "sigma_hfa", "sigma_team_hfa",
+                "beta_w", "sigma_w",
+                "beta_s", "sigma_s", "sigma_y",
+                "league_hfa_init", "league_hfa",
+                "league_hfa_last", "team_hfa_last", "team_strength_last"
+  )
+)
+fit_mcmc_AB_param_sum <- fit_mcmc_AB$summary(
+  variables = c("lp__", 
+                "beta_hfa", "sigma_hfa", "sigma_team_hfa",
+                "beta_w", "sigma_w",
+                "beta_s", "sigma_s", "sigma_y",
+                "league_hfa_init", "league_hfa",
+                "league_hfa_last", "team_hfa_last", "team_strength_last"
+  )
+)
+fit_mcmc_AC_param_sum <- fit_mcmc_AC$summary(
+  variables = c("lp__", 
+                "beta_hfa", "sigma_hfa", "sigma_team_hfa",
+                "beta_w", "sigma_w",
+                "beta_s", "sigma_s", "sigma_y",
+                "league_hfa_init", "league_hfa",
+                "league_hfa_last", "team_hfa_last", "team_strength_last"
+  )
+)
+print(fit_mcmc_A_param_sum, n = Inf)
+print(fit_mcmc_AB_param_sum, n = Inf)
+print(fit_mcmc_AC_param_sum, n = Inf)
+
+comb_sum <- bind_rows(
+  fit_mcmc_A_param_sum |> mutate(order = row_number(), fit = "A", .before = 1),
+  fit_mcmc_AB_param_sum |> mutate(order = row_number(), fit = "AB", .before = 1),
+  fit_mcmc_AC_param_sum |> mutate(order = row_number(), fit = "AC", .before = 1)
+) |>
+  arrange(order)
+print(comb_sum, n = Inf, digits = 4)
+
+
+fit_mcmc_AB_param_sum <- fit_mcmc_AB$summary()
+
+post <- posterior_predict(fit_mcmc_A)
 
 #### 2.3.2 MLE ----
 hfaA_mle_fit <- hfa8_mod$optimize(
@@ -588,13 +716,15 @@ end_weekB <- week_tbl |>
   pull(max_week)
 
 builtB <- build_stan_data_upto(last_train_weekB,
-                               game_fit_data_all |> filter(week_idx >= first_train_week), 
+                               game_fit_data_all |> 
+                                 #filter(!is.na(result)) |>
+                                 filter(week_idx >= first_train_week), 
                                teams,
                                week_tbl)
 stan_dataB <- builtB$data
 stan_dataB$N_obs <- nrow(builtB$index$dfW) 
-# stan_dataB$N_oos   <- sum(builtB$index$dfW$week_idx >= start_weekB)
-# stan_dataB$oos_idx <- as.integer(which(builtB$index$dfW$week_idx >= start_weekB))
+stan_dataB$N_oos   <- sum(builtB$index$dfW$week_idx > end_week)
+stan_dataB$oos_idx <- as.integer(which(builtB$index$dfW$week_idx > end_week))
 stan_dataB$N_obs <- nrow(builtB$index$dfW) 
 stan_dataB$N_oos <- 0L
 stan_dataB$oos_idx <- integer(0)
@@ -605,11 +735,11 @@ fit_mcmc_vars <- hfa8_mod$variables()
 fit_mcmc_params <- names(fit_mcmc_vars$parameters)
 
 fit_mcmc_A_param_draws <- fit_mcmc_A$draws(
-  variables = fit_mcmc_params#, format = "draws_list"
+  #variables = fit_mcmc_params#, format = "draws_list"
 )
 
 fit_mcmc_A_vars <- 
-fit_mcmc_B_inits <- fit_mcmc_A_param_draws |> as_draws_list()
+  fit_mcmc_B_inits <- fit_mcmc_A_param_draws |> as_draws_list()
 
 tic()
 fit_mcmc_B <- hfa8_mod$sample(
@@ -644,6 +774,11 @@ fit_mcmc_params <- names(fit_mcmc_vars$parameters)
 fit_mcmc_A_list <- fit_mcmc_A$draws(
   variables = fit_mcmc_A_vars, 
   format = "draws_list"
+)
+
+fit_mcmc_A_aray <- fit_mcmc_A$draws(
+  variables = fit_mcmc_A_vars, 
+  format = "draws_array"
 )
 
 fit_mcmc_A
