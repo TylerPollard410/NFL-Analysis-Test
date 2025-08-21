@@ -403,9 +403,9 @@ hfa8C_mod <- cmdstan_model(
 ## 2.2
 ## 2.2 Stan Data ----
 first_train_week <- 
-  game_fit_data_all |> filter(season == 2020, week == 1)  |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2002, week == 1)  |> pull(week_idx) |> unique()
 last_train_week <- 
-  game_fit_data_all |> filter(season == 2024, week == 10) |> pull(week_idx) |> unique()
+  game_fit_data_all |> filter(season == 2023, week == 10) |> pull(week_idx) |> unique()
 
 train_data <- game_fit_data_all |> 
   filter(!is.na(result)) |>
@@ -495,9 +495,9 @@ fit_mcmc_AC <- hfa8C_mod$sample(
   data = stan_dataA,
   chains = 4, 
   parallel_chains = min(4, parallel::detectCores()),
-  iter_warmup = 1000, 
-  iter_sampling = 2000,
-  adapt_delta = 0.9, 
+  iter_warmup = 500, 
+  iter_sampling = 1000,
+  adapt_delta = 0.8, 
   max_treedepth = 10, 
   init = 0,
   # refresh = 0,
