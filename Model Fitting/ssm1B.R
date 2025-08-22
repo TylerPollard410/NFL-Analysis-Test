@@ -743,3 +743,61 @@ fit2 <- mod$sample(
   adapt_delta = adapt_delta,
   max_treedepth = max_treedepth
 )
+
+mle <- mod_ssm1$optimize(
+  data = stan_data, seed = 52, iter = 10000, jacobian = FALSE
+)
+
+mle_sum <- mle$summary(variables = pars)
+
+map <- mod_ssm1$optimize(
+  data = stan_data, seed = 52, iter = 10000, jacobian = TRUE
+)
+map_sum <- map$summary(variables = pars)
+
+vi <- mod_ssm1$variational(
+  data = stan_data, seed = 52, iter = 10000, draws = 1000
+)
+vi_sum <- vi$summary(variables = pars)
+
+lap_mle <- mod_ssm1$laplace(
+  data = stan_data, seed = 52, jacobian = FALSE, draws = 1000
+)
+lap_mle_sum <- lap_mle$summary(variables = pars)
+
+lap_map <- mod_ssm1$laplace(
+  data = stan_data, seed = 52, jacobian = FALSE, draws = 1000
+)
+lap_map_sum <- lap_map$summary(variables = pars)
+
+path <- mod_ssm1$pathfinder(
+  data = stan_data, seed = 52
+)
+path_sum <- path$summary(variables = pars)
+
+
+print(mle_sum, n = Inf)
+print(map_sum, n = Inf)
+print(vi_sum, n = Inf)
+print(path_sum, n = Inf)
+print(lap_mle_sum, n = Inf)
+print(lap_map_sum, n = Inf)
+
+mcmc_sum <- last_fit$summary(variables = pars)
+
+comb_sum <- mcmc_sum |> rename_with(~paste0("mcmc_", .x), -variable) |>
+  left_join(mle_sum |> rename_with(~paste0("mle_", .x), -variable)) |>
+  left_join(map_sum |> rename_with(~paste0("map_", .x), -variable)) |>
+  left_join(vi_sum |> rename_with(~paste0("vi_", .x), -variable)) |>
+  left_join(path_sum |> rename_with(~paste0("path_", .x), -variable)) |>
+  relocate(contains("estimate"), contains("mean"), .after = variable) |>
+  mutate(across(-variable, ~round(.x, 4)))
+  bind_cols(
+  mle_sum |> rename_with(~paste0("mle_", .x), -variable),
+  map_sum |> rename_with(~paste0("map_", .x), -variable),
+  vi_sum |> rename_with(~paste0("vi_", .x), -variable),
+  path_sum |> rename_with(~paste0("path_", .x), -variable)
+)
+
+
+
