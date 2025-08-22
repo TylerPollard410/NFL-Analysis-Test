@@ -292,7 +292,7 @@ final_forecast = list(season = 2025, week = 1)
 
 stan_data <- make_stan_data(df, start_train$season, start_train$week,
                             end_train$season, end_train$week)
-fit <- fit_ssm1(mod, stan_data)
+fit <- fit_ssm1(mod_ssm1, stan_data)
 fit2 <- fit_ssm1(mod, stan_data, inits = fit_inits)
 snapshot <- extract_snapshot(fit)
 
@@ -308,8 +308,63 @@ test_results <- list(fit = fit, snapshot = snapshot, forecast = forecast)
 print(test_results$fit)
 bayesplot::mcmc_trace(test_results$fit$draws(c("sigma_y", "beta_w")))
 str(test_results$snapshot, max.level = 1)
-test_results$forecast$draws("y_pred")
+fore_sum_y <- test_results$forecast$draws("y_pred", format = "df") |>
+  spread_draws(y_pred[draw, game]) 
+fore_sum_y2 <- fore_sum_y |>
+  group_by(game) |>
+  mean_hdci(y_pred) |>
+  mutate(game_id = game_fit_data_all |> filter(week_idx == 454) |> pull(game_id)) |>
+  left_join(game_fit_data_all)
 
+p <- fore_sum_y2 |>
+  #left_join(week_tbl) |>
+  ggplot(
+    aes(x = game_id, y = y_pred #color = team, group = team,
+        # text = paste0(
+        #   "team: ", team, "\n",
+        #   sprintf("strength: %.2f", mean), "\n",
+        #   "season: ", season, "\n",
+        #   "week: ", week, "\n",
+        #   "week_idx: ", week_idx
+        # )
+    )
+  ) +
+  geom_errorbar(aes(ymin = .lower, ymax = .upper)) +
+  geom_point(aes(color = "Predictiion")) +
+  geom_point(aes(y = result, color = "Result")) +
+  geom_point(aes(y = spread_line, color = "Spread")) +
+  scale_color_brewer(palette = 1, type = "qual")
+p
+  geom_line() +
+  #geom_ribbon(aes(ymin = .lower, ymax = .upper, fill = team), alpha = 0.2, color = NA) +
+  #facet_wrap(~team) +
+  scale_x_continuous(
+    name = "Season",
+    breaks = first_week_of_season,  # Show season boundaries on x-axis
+    labels = seasons
+    # sec.axis = dup_axis(
+    #   breaks = seq(1, n_weeks, by = 17),  # Show week number at regular intervals (every season start)
+    #   labels = rep(1, length(unique(season_ticks$season))), # always week 1 at start
+    #   name = "Week Number"
+    # )
+  ) +
+  scale_color_nfl(guide = guide_legend()) +
+  labs(title = "Team Strength Over Time", x = "Week", y = "Estimated Strength (SRS)") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  ) +
+  guides(
+    color = guide_legend(
+      nrow = 3,  # Use 2, 4, or 8 depending on what fits
+      byrow = TRUE,
+      title.position = "top"
+    )
+  )
+p
+ggplotly(p, tooltip = "text")
+
+fore_sum_y <- fore_sum |> slice()
 fit_inits <- make_inits(snapshot)
 
 

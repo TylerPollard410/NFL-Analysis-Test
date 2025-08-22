@@ -32,18 +32,18 @@ transformed data {
 
 parameters {
   // League HFA AR(1), non-centered
-  vector[N_seasons] league_hfa_z;
+  vector[N_seasons_obs] league_hfa_z;
   real              league_hfa_init;
   real<lower=0, upper=1> beta_hfa;
   real<lower=0>          sigma_hfa;
 
   // Team HFA deviations about league mean (sum-to-zero per season)
-  array[N_seasons] sum_to_zero_vector[N_teams] team_hfa_z;
+  array[N_seasons_obs] sum_to_zero_vector[N_teams] team_hfa_z;
   real<lower=0>                                sigma_team_hfa;
 
   // Team strength state-space innovations (sum-to-zero)
-  array[N_seasons] sum_to_zero_vector[N_teams] z_start; // season-start shocks
-  array[N_weeks]   sum_to_zero_vector[N_teams] z_w;     // weekly shocks
+  array[N_seasons_obs] sum_to_zero_vector[N_teams] z_start; // season-start shocks
+  array[N_weeks_obs]   sum_to_zero_vector[N_teams] z_w;     // weekly shocks
 
   real<lower=0, upper=1> beta_w;        // within-season AR(1)
   real<lower=0>          sigma_w;       // within-season shock sd
@@ -56,25 +56,25 @@ parameters {
 
 transformed parameters {
   // League HFA series
-  vector[N_seasons] league_hfa;
+  vector[N_seasons_obs] league_hfa;
   league_hfa[1] = league_hfa_init + 2 * league_hfa_z[1];  // diffuse start (sd ≈ 2)
-  for (s in 2:N_seasons) {
+  for (s in 2:N_seasons_obs) {
     league_hfa[s] = beta_hfa * league_hfa[s - 1] + sigma_hfa * league_hfa_z[s];
   }
 
   // Team HFA = league mean + scaled, sum-to-zero deviations
-  array[N_seasons] vector[N_teams] team_hfa;
-  for (s in 1:N_seasons) {
+  array[N_seasons_obs] vector[N_teams] team_hfa;
+  for (s in 1:N_seasons_obs) {
     team_hfa[s] = league_hfa[s] + sigma_team_hfa * team_hfa_z[s];
   }
 
   // Team strength states (zero-sum preserved by construction)
-  array[N_weeks] vector[N_teams] team_strength_raw
-    = rep_array(rep_vector(0.0, N_teams), N_weeks);
-  array[N_weeks] vector[N_teams] team_strength;
+  array[N_weeks_obs] vector[N_teams] team_strength_raw
+    = rep_array(rep_vector(0.0, N_teams), N_weeks_obs);
+  array[N_weeks_obs] vector[N_teams] team_strength;
 
   // Build each season
-  for (s in 1:N_seasons) {
+  for (s in 1:N_seasons_obs) {
     int fw = first_week_of_season[s];
     int lw = last_week_of_season[s];
 
@@ -97,16 +97,16 @@ transformed parameters {
   }
 
   // No weekly mean-subtraction needed; already zero-sum
-  for (w in 1:N_weeks)
+  for (w in 1:N_weeks_obs)
     team_strength[w] = team_strength_raw[w];
 }
 
 model {
   // Priors (non-centered std normals for innovations)
   league_hfa_z ~ std_normal();
-  for (s in 1:N_seasons) team_hfa_z[s] ~ std_normal();
-  for (s in 1:N_seasons) z_start[s]    ~ std_normal();
-  for (w in 1:N_weeks)   z_w[w]        ~ std_normal();
+  for (s in 1:N_seasons_obs) team_hfa_z[s] ~ std_normal();
+  for (s in 1:N_seasons_obs) z_start[s]    ~ std_normal();
+  for (w in 1:N_weeks_obs)   z_w[w]        ~ std_normal();
 
   beta_hfa        ~ beta(8, 2);
   sigma_hfa       ~ student_t(3, 0, 2);
