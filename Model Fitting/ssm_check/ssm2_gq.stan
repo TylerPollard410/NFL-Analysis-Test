@@ -1,16 +1,3 @@
-// ssm1_gq.stan
-// Stand-alone generated-quantities forecaster (use algorithm=fixed_param)
-//
-// DATA CONTRACT (per draw):
-//  - Scalars: beta_w, sigma_w, beta_s, sigma_s, beta_hfa, sigma_hfa, sigma_team_hfa, sigma_y,
-//             league_hfa_cur (season S_T current league HFA)
-//  - Final states: team_strength_T[J], team_hfa_cur[J] (for current season S_T)
-//  - Bookkeeping: current_season (S_T), current_week (W_T), first/last week per season
-//  - Forecast schedule: home/away ids, week_id, season_id, hfa for N_oos games
-//
-// OUTPUT:
-//  - mu[d, g], y_pred[d, g] for each draw d=1..N_draws and game g=1..N_oos
-//  (shaped as array[N_draws] vector[N_oos] in Stan)
 
 data {
   int<lower=1> N_games;
@@ -34,7 +21,7 @@ data {
   int<lower=0> N_oos;
   array[N_oos] int<lower=1, upper=N_games> oos_idx;
 }
-
+ 
 parameters {
   // League HFA AR(1), non-centered
   vector[N_seasons] league_hfa_z;
@@ -58,7 +45,7 @@ parameters {
 
   real<lower=0> sigma_y;                // observation noise
 }
-
+ 
 transformed parameters {
   // League HFA series
   vector[N_seasons] league_hfa;
@@ -105,7 +92,7 @@ transformed parameters {
   for (w in 1:N_weeks)
     team_strength[w] = team_strength_raw[w];
 }
-
+ 
 generated quantities {
   vector[N_oos] mu_pred;
   vector[N_oos] y_pred;
@@ -116,7 +103,8 @@ generated quantities {
     int j = away_id[g];
     int w = week_id[g];
     int s = season_id[g];
-    mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[g];
+    mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[k];
     y_pred[k] = normal_rng(mu_pred[k], sigma_y);
   }
 }
+

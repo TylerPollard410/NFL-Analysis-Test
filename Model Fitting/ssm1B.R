@@ -238,94 +238,183 @@ extract_snapshot <- function(fit, last_season_idx, last_week_idx) {
   )
 }
 
-# Inits builder (seed key scalars with previous posterior means)
-make_inits <- function(fit, snapshot) {
+# # Inits builder (seed key scalars with previous posterior means)
+# make_inits <- function(fit, snapshot) {
+#   var_sizes <- fit$metadata()$stan_variable_sizes
+#   last_s <- snapshot[["last_season_idx"]]
+#   last_w <- snapshot[["last_week_idx"]]
+#   
+#   param_vars <-c(
+#     "league_hfa_z",
+#     "league_hfa_init",
+#     "team_hfa_z",
+#     "z_start",
+#     "z_w"
+#   )
+#   draws <- fit$draws(
+#     format = "df",
+#     variables = param_vars
+#   )
+#   
+#   league_hfa_z <- draws |> select(contains("league_hfa_z")) |>
+#     colMeans() |> 
+#     unname() #|> 
+#     # head(n = last_s) <--- removed this
+#   league_hfa_init <- draws |> select(contains("league_hfa_init")) |>
+#     colMeans() |> 
+#     unname()
+#   
+#   team_hfa_z <- draws |> select(contains("team_hfa_z")) |> 
+#     colMeans() |>
+#     matrix(nrow = var_sizes[["team_hfa_z"]][1], 
+#            ncol = var_sizes[["team_hfa_z"]][2], 
+#            byrow = FALSE) |>
+#     t() |> scale(scale = FALSE) |> t() #|> 
+#   # head(n = last_s) <--- removed this
+#   
+#   z_start <- draws |> select(contains("z_start")) |> 
+#     colMeans() |>
+#     matrix(nrow = var_sizes[["z_start"]][1],
+#            ncol = var_sizes[["z_start"]][2],
+#            byrow = FALSE) |>
+#     t() |> scale(scale = FALSE) |> t() #|> 
+#   # head(n = last_s) <--- removed this
+#   
+#   z_w <- draws |>
+#     select(contains("z_w")) |>
+#     colMeans() |>
+#     matrix(nrow = var_sizes[["z_w"]][1],
+#            ncol = var_sizes[["z_w"]][2],
+#            byrow = FALSE) |>
+#     t() |> scale(scale = FALSE) |> t() #|> 
+#   # head(n = last_w) <--- removed this
+#   
+#   list(
+#     league_hfa_z = league_hfa_z,
+#     league_hfa_init = league_hfa_init,
+#     
+#     beta_hfa = mean(snapshot$beta_hfa),
+#     sigma_hfa = abs(mean(snapshot$sigma_hfa)),
+#     
+#     team_hfa_z = team_hfa_z,
+#     sigma_team_hfa = abs(mean(snapshot$sigma_team_hfa)),
+#     
+#     z_start = z_start,
+#     z_w = z_w,
+#     
+#     beta_w = mean(snapshot$beta_w),
+#     sigma_w = mean(snapshot$sigma_w),
+#     
+#     beta_s = mean(snapshot$beta_s),
+#     sigma_s = mean(snapshot$sigma_s),
+#     
+#     sigma_y = mean(snapshot$sigma_y)
+#   )
+# }
+
+make_rolling_inits <- function(fit, snapshot, stan_data_next) {
   var_sizes <- fit$metadata()$stan_variable_sizes
-  last_s <- snapshot[["last_season_idx"]]
-  last_w <- snapshot[["last_week_idx"]]
   
-  param_vars <-c(
-    "league_hfa_z",
-    "league_hfa_init",
-    "team_hfa_z",
-    "z_start",
-    "z_w"
+  # Get fitted dimensions from snapshot
+  last_s <- snapshot[["last_season_idx"]]  # Number of previously-fitted seasons
+  last_w <- snapshot[["last_week_idx"]]    # Number of previously-fitted weeks
+  
+  # New dimensions from next fit (from stan_data)
+  N_seasons <- stan_data_next$N_seasons
+  N_weeks   <- stan_data_next$N_weeks
+  N_teams   <- stan_data_next$N_teams
+  
+  # Helper for sum-to-zero normal
+  rnorm_sumzero <- function(n) {
+    x <- rnorm(n)
+    x - mean(x)
+  }
+  
+  # Get previous draws
+  param_vars <- c("league_hfa_z", "league_hfa_init", "team_hfa_z", "z_start", "z_w")
+  draws <- fit$draws(format = "df", variables = param_vars)
+  
+  # league_hfa_z: [N_seasons]
+  league_hfa_z_prev <- suppressWarnings(
+    draws |> dplyr::select(contains("league_hfa_z")) |> 
+      colMeans() |> 
+      unname()
   )
-  draws <- fit$draws(
-    format = "df",
-    variables = param_vars
+  league_hfa_z <- c(
+    league_hfa_z_prev[1:last_s],
+    if (N_seasons > last_s) rnorm(N_seasons - last_s) else NULL
   )
   
+  # league_hfa_init: [scalar]
+  league_hfa_init <- suppressWarnings(
+    draws |> dplyr::select(contains("league_hfa_init")) |>
+      colMeans() |>
+      unname()
+  )
+  
+  # team_hfa_z: [N_seasons, N_teams]
+  team_hfa_z_prev <- suppressWarnings(
+    draws |> select(contains("team_hfa_z")) |> 
+      colMeans() |>
+      matrix(nrow = var_sizes[["team_hfa_z"]][1], 
+             ncol = var_sizes[["team_hfa_z"]][2], 
+             byrow = FALSE) |>
+      t() |> scale(scale = FALSE) |> t()
+  )
+  team_hfa_z <- matrix(NA, nrow = N_seasons, ncol = N_teams)
+  if (last_s > 0) team_hfa_z[1:last_s, ] <- team_hfa_z_prev[1:last_s, , drop = FALSE]
+  if (N_seasons > last_s) {
+    for (s in (last_s+1):N_seasons) team_hfa_z[s, ] <- rnorm_sumzero(N_teams)
+  }
+  
+  # z_start: [N_seasons, N_teams]
+  z_start_prev <- suppressWarnings(
+    draws |> select(contains("z_start")) |> 
+      colMeans() |>
+      matrix(nrow = var_sizes[["z_start"]][1], 
+             ncol = var_sizes[["z_start"]][2], 
+             byrow = FALSE) |>
+      t() |> scale(scale = FALSE) |> t()
+  )
+  z_start <- matrix(NA, nrow = N_seasons, ncol = N_teams)
+  if (last_s > 0) z_start[1:last_s, ] <- z_start_prev[1:last_s, , drop = FALSE]
+  if (N_seasons > last_s) {
+    for (s in (last_s+1):N_seasons) z_start[s, ] <- rnorm_sumzero(N_teams)
+  }
+  
+  # z_w: [N_weeks, N_teams]
+  z_w_prev <- suppressWarnings(
+    draws |> select(contains("z_w")) |> 
+      colMeans() |>
+      matrix(nrow = var_sizes[["z_w"]][1], 
+             ncol = var_sizes[["z_w"]][2], 
+             byrow = FALSE) |>
+      t() |> scale(scale = FALSE) |> t()
+  )
+  z_w <- matrix(NA, nrow = N_weeks, ncol = N_teams)
+  if (last_w > 0) z_w[1:last_w, ] <- z_w_prev[1:last_w, , drop = FALSE]
+  if (N_weeks > last_w) {
+    for (w in (last_w+1):N_weeks) z_w[w, ] <- rnorm_sumzero(N_teams)
+  }
+  
+  # Scalar params as before
   list(
-    # beta_w = mean(snapshot$beta_w),
-    # sigma_w = mean(snapshot$sigma_w),
-    # beta_s = mean(snapshot$beta_s),
-    # sigma_s = mean(snapshot$sigma_s),
-    # beta_hfa = mean(snapshot$beta_hfa),
-    # sigma_hfa = mean(snapshot$sigma_hfa),
-    # sigma_team_hfa = mean(snapshot$sigma_team_hfa),
-    # sigma_y = mean(snapshot$sigma_y),
-    
-    league_hfa_z = draws |>
-      select(contains("league_hfa_z")) |>
-      colMeans() |>
-      unname() |> 
-      head(n = last_s),
-    #league_hfa_z = rep(0, var_sizes[["league_hfa_z"]][1]),
-    league_hfa_init = draws |>
-      select(contains("league_hfa_init")) |>
-      colMeans() |>
-      unname(),
-    #league_hfa_init = rep(0, var_sizes[["league_hfa_init"]][1]),
-    
+    league_hfa_z = league_hfa_z,
+    league_hfa_init = league_hfa_init,
     beta_hfa = mean(snapshot$beta_hfa),
-    sigma_hfa = mean(snapshot$sigma_hfa),
-    
-    team_hfa_z = draws |>
-      select(contains("team_hfa_z")) |>
-      colMeans() |>
-      matrix(nrow = var_sizes[["team_hfa_z"]][1],
-             ncol = var_sizes[["team_hfa_z"]][2],
-             byrow = FALSE) |>
-      t() |> scale(scale = FALSE) |> t() |> 
-      head(n = last_s),
-    # team_hfa_z = matrix(0.0, nrow = var_sizes[["team_hfa_z"]][1], 
-    #                     ncol = var_sizes[["team_hfa_z"]][2],
-    #                     byrow = FALSE),
-    sigma_team_hfa = mean(snapshot$sigma_team_hfa),
-    
-    z_start = draws |>
-      select(contains("z_start")) |>
-      colMeans() |>
-      matrix(nrow = var_sizes[["z_start"]][1],
-             ncol = var_sizes[["z_start"]][2],
-             byrow = FALSE) |>
-      t() |> scale(scale = FALSE) |> t() |> 
-      head(n = last_s),
-    # z_start = matrix(0.0, nrow = var_sizes[["z_start"]][1],
-    #                  ncol = var_sizes[["z_start"]][2],
-    #                  byrow = FALSE),
-    z_w = draws |>
-      select(contains("z_w")) |>
-      colMeans() |>
-      matrix(nrow = var_sizes[["z_w"]][1],
-             ncol = var_sizes[["z_w"]][2],
-             byrow = FALSE) |>
-      t() |> scale(scale = FALSE) |> t() |> 
-      head(n = last_w),
-    # z_w = matrix(0.0, nrow = var_sizes[["z_w"]][1], 
-    #              ncol = var_sizes[["z_w"]][2],
-    #              byrow = FALSE),
-    
+    sigma_hfa = abs(mean(snapshot$sigma_hfa)),
+    team_hfa_z = team_hfa_z,
+    sigma_team_hfa = abs(mean(snapshot$sigma_team_hfa)),
+    z_start = z_start,
+    z_w = z_w,
     beta_w = mean(snapshot$beta_w),
-    sigma_w = mean(snapshot$sigma_w),
-    
+    sigma_w = abs(mean(snapshot$sigma_w)),
     beta_s = mean(snapshot$beta_s),
-    sigma_s = mean(snapshot$sigma_s),
-    
-    sigma_y = mean(snapshot$sigma_y)
+    sigma_s = abs(mean(snapshot$sigma_s)),
+    sigma_y = abs(mean(snapshot$sigma_y))
   )
 }
+
 
 # Forecast with ssm1_gq (now passes correct season/week bookkeeping)
 forecast_ssm1 <- function(mod_gq, snapshot, schedule, n_draws,
@@ -582,7 +671,398 @@ sequential_run <- function(df, mod, mod_gq,
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
-# 3. TEST RUN ----
+# 3. STEP-BY-STEP TEST: Sequential State-Space Model Fitting ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+
+## 3.1 Compile Stan Models ----
+
+save_root <- "Model Fitting/stan_models"  # update if needed
+
+mod_ssm1    <- cmdstan_model(file.path(save_root, "ssm1.stan"))
+mod_ssm1_gq <- cmdstan_model(file.path(save_root, "ssm1_gq.stan"))
+
+## 3.2 Set initial fit window ----
+
+start_train <- list(season = 2002, week = 1)
+end_train   <- list(season = 2023, week = 10)
+
+# Build week table for pointer logic (useful later)
+week_tbl <- build_week_table(game_fit_data_all)
+glimpse(week_tbl)
+tail.matrix(week_tbl)
+
+## 3.3 Prepare Stan Data for Initial Fit ----
+
+stan_data_init <- make_stan_data(
+  df = game_fit_data_all,
+  start_season = start_train$season,
+  start_week   = start_train$week,
+  end_season   = end_train$season,
+  end_week     = end_train$week
+)
+glimpse(stan_data_init)
+
+## 3.4 Fit Initial Model ----
+
+fit_init <- mod_ssm1$sample(
+  data = stan_data_init,
+  iter_warmup = 500,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = min(4, parallel::detectCores()),
+  seed = 52,
+  adapt_delta = 0.9,
+  max_treedepth = 10,
+  init = 0  # Let Stan initialize the first fit!
+)
+fit_init$time()
+
+scalar_params <- mod_ssm1$variables()$parameters |>
+  bind_rows(.id = "parameter") |>
+  filter(dimensions == 0) |>
+  pull(parameter)
+print(scalar_params)
+
+fit_init$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init$draws(variables = scalar_params))
+
+
+### 3.4.1 Alternate Algorithms ----
+# Fit same data using other cmdstanr model to help diagnose ssm1.stan
+
+#### MLE 
+fit_init_mle <- mod_ssm1$optimize(
+  data = stan_data_init, seed = 52, init = 0,
+  jacobian = FALSE
+)
+
+fit_init_mle$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_mle$draws(variables = scalar_params))
+
+#### MAP 
+fit_init_map <- mod_ssm1$optimize(
+  data = stan_data_init, seed = 52, init = 0,
+  jacobian = TRUE
+)
+
+fit_init_map$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_map$draws(variables = scalar_params))
+
+#### Laplace MLE
+fit_init_laplace_mle <- mod_ssm1$laplace(
+  data = stan_data_init, seed = 52, init = 0,
+  #mode = fit_init_mle, 
+  jacobian = FALSE,
+  draws = 4000
+)
+
+fit_init_laplace_mle$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_laplace_mle$draws(variables = scalar_params))
+
+#### Laplace MAP
+fit_init_laplace_map <- mod_ssm1$laplace(
+  data = stan_data_init, seed = 52, init = 0,
+  #mode = fit_init_map,
+  jacobian = TRUE,
+  draws = 4000
+)
+
+fit_init_laplace_map$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_laplace_map$draws(variables = scalar_params))
+
+#### Automatic Differentiation Variational Inference (ADVI)
+fit_init_variational <- mod_ssm1$variational(
+  data = stan_data_init, seed = 52, init = 0,
+  draws = 4000
+)
+
+fit_init_variational$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_variational$draws(variables = scalar_params))
+
+#### Variational (Pathfinder)
+fit_init_pathfinder <- mod_ssm1$pathfinder(
+  data = stan_data_init, seed = 52, init = 0,
+  draws = 4000
+)
+
+fit_init_pathfinder$summary(variables = scalar_params, .cores = 4)
+mcmc_trace(fit_init_pathfinder$draws(variables = scalar_params))
+
+# Save fit for future use
+fit_init$save_object(file = file.path(save_root, "ssm1_initial_fit.rds"))
+
+# Remove fit from environment to mimic real-life restart
+rm(fit_init); gc()
+
+## 3.5 Load Previous Fit ----
+
+fit_prev <- readRDS(file.path(save_root, "ssm1_initial_fit.rds"))
+
+## 3.6 Extract Final Snapshot From Fit ----
+
+# Get the index of the last fitted season/week (matches end_train above)
+end_row <- week_tbl |>
+  filter(season == end_train$season, week == end_train$week)
+
+last_season_idx <- end_row$season_idx[[1]]
+last_week_idx   <- end_row$week_idx[[1]]
+print(last_season_idx)
+print(last_week_idx)
+
+
+snapshot_prev <- extract_snapshot(
+  fit = fit_prev,
+  last_season_idx = last_season_idx,
+  last_week_idx = last_week_idx
+)
+glimpse(snapshot_prev)
+
+## 3.7 Build Inits For Next Fit Step (OLD) ---- 
+# 
+# # If running multi-chain, replicate the list for each chain!
+# inits_next <- make_inits(fit_prev, snapshot_prev)
+# glimpse(inits_next)
+# inits_next_list <- rep(list(inits_next), 4)
+# glimpse(inits_next_list)
+# 
+# # Should be TRUE:
+# all(abs(rowSums(inits_next$team_hfa_z)) < 1e-8)
+# all(abs(rowSums(inits_next$z_start)) < 1e-8)
+# all(abs(rowSums(inits_next$z_w)) < 1e-8)
+# 
+# any(is.na(unlist(inits_next)))
+# any(is.nan(unlist(inits_next)))
+# any(is.infinite(unlist(inits_next)))
+
+## 3.8 Identify Next Week To Fit ----
+
+next_pointer <- next_week_after(
+  week_tbl,
+  end_train$season,
+  end_train$week
+)
+print(next_pointer)
+# (Check: if NULL, you’re at the very end of your data!)
+
+# Build new training window
+start_train_next <- start_train  # For rolling fits, may change; here keep same
+end_train_next   <- list(season = next_pointer$season, week = next_pointer$week)
+print(start_train_next)
+print(end_train_next)
+
+## 3.9 Forecast OOS for Next Week BEFORE Refitting ----
+
+# You already have: next_pointer (week 11 after week 10), snapshot_prev from fit up through week 10.
+
+# Get schedule for week 11 (OOS forecast)
+sched_oos <- schedule_for(
+  game_fit_data_all,
+  season = next_pointer$season,
+  week = next_pointer$week
+)
+print(sched_oos, n = Inf)
+
+# Build first/last week arrays and model sizes
+fl <- get_first_last_week(game_fit_data_all)
+N_teams   <- length(unique(game_fit_data_all$home_id))
+N_seasons <- max(game_fit_data_all$season_idx)
+N_weeks   <- max(game_fit_data_all$week_idx)
+
+print(fl, n = Inf)
+print(N_teams)
+print(N_seasons)
+print(N_weeks)
+
+stan_data_gq <- list(
+  N_draws   = 200,
+  N_teams   = N_teams,
+  N_seasons = N_seasons,
+  N_weeks   = N_weeks,
+  current_season = snapshot_prev$last_season_idx,
+  current_week   = snapshot_prev$last_week_idx,
+  first_week_of_season = fl$fw,
+  last_week_of_season  = fl$lw,
+  beta_w   = snapshot_prev$beta_w[1:200],
+  sigma_w  = snapshot_prev$sigma_w[1:200],
+  beta_s   = snapshot_prev$beta_s[1:200],
+  sigma_s  = snapshot_prev$sigma_s[1:200],
+  beta_hfa = snapshot_prev$beta_hfa[1:200],
+  sigma_hfa = snapshot_prev$sigma_hfa[1:200],
+  sigma_team_hfa = snapshot_prev$sigma_team_hfa[1:200],
+  sigma_y  = snapshot_prev$sigma_y[1:200],
+  team_strength_T = as.matrix(snapshot_prev$team_strength_last)[1:200, , drop = FALSE],
+  team_hfa_cur    = as.matrix(snapshot_prev$team_hfa_last)[1:200, , drop = FALSE],
+  league_hfa_cur  = snapshot_prev$league_hfa_last[1:200],
+  N_oos   = nrow(sched_oos),
+  home_id = sched_oos$home_id,
+  away_id = sched_oos$away_id,
+  week_id = sched_oos$week_id,
+  season_id = sched_oos$season_id,
+  hfa     = sched_oos$hfa
+)
+glimpse(stan_data_gq)
+
+# Run GQ forecast for week 11
+if (nrow(sched_oos) > 0) {
+  fit_gq <- mod_ssm1_gq$sample(
+    data = stan_data_gq,
+    fixed_param = TRUE,
+    iter_sampling = 1,
+    chains = 1,
+    seed = 123
+  )
+  forecast_oos_tbl <- tidy_gq_output(fit_gq, sched_oos, add_cols = TRUE)
+  print(head(forecast_oos_tbl))
+} else {
+  forecast_oos_tbl <- tibble()
+  print("No games to forecast for week 11.")
+}
+
+## 3.10 Build Stan Data For Next Fit ----
+
+stan_data_next <- make_stan_data(
+  df = game_fit_data_all,
+  start_season = start_train_next$season,
+  start_week   = start_train_next$week,
+  end_season   = end_train_next$season,
+  end_week     = end_train_next$week
+)
+glimpse(stan_data_next)
+
+## Build Inits For Next Fit Step (from snapshot) ---- #
+
+# If running multi-chain, replicate the list for each chain!
+inits_next <- make_rolling_inits(fit_prev, snapshot_prev, stan_data_next)
+glimpse(inits_next)
+inits_next_list <- rep(list(inits_next), 4)
+
+# Should be TRUE:
+all(abs(rowSums(inits_next$team_hfa_z)) < 1e-8)
+all(abs(rowSums(inits_next$z_start)) < 1e-8)
+all(abs(rowSums(inits_next$z_w)) < 1e-8)
+
+any(is.na(unlist(inits_next)))
+any(is.nan(unlist(inits_next)))
+any(is.infinite(unlist(inits_next)))
+init_fn <- function() make_rolling_inits(fit_prev, snapshot_prev, stan_data_next)
+## 3.11 Fit Model For Next Window Using Custom Inits ----
+
+fit_next <- mod_ssm1$sample(
+  data = stan_data_next,
+  iter_warmup = 500,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = min(4, parallel::detectCores()),
+  seed = 52,
+  adapt_delta = 0.9,
+  max_treedepth = 10,
+  init = init_fn
+  #init = 0
+  #init = inits_next_list
+)
+fit_next$time()
+fit_next_inits <- fit_next$init()
+fit_next$cmdstan_summary()
+fit_next_inits_method <- fit_next$init_model_methods()
+fit_next$save_object(file = file.path(save_root, "ssm1_next_fit.rds"))
+
+## 3.12 Extract New Snapshot and Prepare for Next Step ----
+
+# Indices for the new fit
+end_row_next <- week_tbl |>
+  filter(season == end_train_next$season, week == end_train_next$week)
+last_season_idx_next <- end_row_next$season_idx[[1]]
+last_week_idx_next   <- end_row_next$week_idx[[1]]
+
+snapshot_next_init_list <- extract_snapshot(
+  fit = fit_next,
+  last_season_idx = last_season_idx_next,
+  last_week_idx = last_week_idx_next
+)
+
+
+# What is the following week to forecast?
+next_forecast_pointer <- next_week_after(
+  week_tbl,
+  end_train_next$season,
+  end_train_next$week
+)
+if (!is.null(next_forecast_pointer)) {
+  sched_next <- schedule_for(
+    game_fit_data_all,
+    season = next_forecast_pointer$season,
+    week = next_forecast_pointer$week
+  )
+  if (nrow(sched_next) > 0) {
+    # Build first/last week arrays
+    fl <- get_first_last_week(game_fit_data_all)
+    N_teams   <- length(unique(game_fit_data_all$home_id))
+    N_seasons <- max(game_fit_data_all$season_idx)
+    N_weeks   <- max(game_fit_data_all$week_idx)
+    
+    stan_data_gq <- list(
+      N_draws   = 200,
+      N_teams   = N_teams,
+      N_seasons = N_seasons,
+      N_weeks   = N_weeks,
+      current_season = snapshot_next$last_season_idx,
+      current_week   = snapshot_next$last_week_idx,
+      first_week_of_season = fl$fw,
+      last_week_of_season  = fl$lw,
+      beta_w   = snapshot_next$beta_w[1:200],
+      sigma_w  = snapshot_next$sigma_w[1:200],
+      beta_s   = snapshot_next$beta_s[1:200],
+      sigma_s  = snapshot_next$sigma_s[1:200],
+      beta_hfa = snapshot_next$beta_hfa[1:200],
+      sigma_hfa = snapshot_next$sigma_hfa[1:200],
+      sigma_team_hfa = snapshot_next$sigma_team_hfa[1:200],
+      sigma_y  = snapshot_next$sigma_y[1:200],
+      team_strength_T = as.matrix(snapshot_next$team_strength_last)[1:200, , drop = FALSE],
+      team_hfa_cur    = as.matrix(snapshot_next$team_hfa_last)[1:200, , drop = FALSE],
+      league_hfa_cur  = snapshot_next$league_hfa_last[1:200],
+      N_oos   = nrow(sched_next),
+      home_id = sched_next$home_id,
+      away_id = sched_next$away_id,
+      week_id = sched_next$week_id,
+      season_id = sched_next$season_id,
+      hfa     = sched_next$hfa
+    )
+    
+    # Run generated quantities forecast
+    fit_gq <- mod_ssm1_gq$sample(
+      data = stan_data_gq,
+      fixed_param = TRUE,
+      iter_sampling = 1,
+      chains = 1,
+      seed = 123
+    )
+    
+    # Tidy GQ output for downstream evaluation
+    forecast_tbl <- tidy_gq_output(fit_gq, sched_next, add_cols = TRUE)
+  } else {
+    forecast_tbl <- tibble()
+  }
+} else {
+  forecast_tbl <- tibble()
+}
+
+## 3.13 (Optional) Inspect/Print Results ----
+
+# View posterior summaries from new fit
+print(fit_next$summary())
+
+# View first few rows of forecast table
+print(head(forecast_tbl))
+
+# Inspect objects: check shapes, types, any warnings, etc.
+
+# At this point you have manually run the entire sequential step as would be handled
+# by `sequential_step()`, with **all helper function logic unwrapped**.
+
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+# 4. TEST RUN w FUNCTIONS ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
 # Define save directory for sequential artifacts
@@ -599,9 +1079,9 @@ last_snapshot <- extract_snapshot(
 )
 
 # Extract dimensions from full data for complete inits
-N_teams <- length(unique(game_fit_data_all$home_id))
-N_seasons <- max(game_fit_data_all$season_idx)
-N_weeks <- max(game_fit_data_all$week_idx)
+# N_teams <- length(unique(game_fit_data_all$home_id))
+# N_seasons <- max(game_fit_data_all$season_idx)
+# N_weeks <- max(game_fit_data_all$week_idx)
 
 # Create inits object for next fit step
 last_inits <- make_inits(last_fit, last_snapshot)

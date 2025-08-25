@@ -18,16 +18,17 @@ data {
   array[N_seasons] int<lower=1, upper=N_weeks> last_week_of_season;
 
   array[N_games] int<lower=0, upper=1> hfa;
-  vector[N_games] result;
+  vector[N_obs] result;
 
   // Optional: games to predict without contributing to likelihood
   int<lower=0> N_oos;
-  array[N_oos] int<lower=1, upper=N_games> oos_idx;
+  array[N_oos] int<lower=1, upper=N_oos> oos_idx;
 }
 
 transformed data {
-  int N_weeks_obs = week_id[N_obs];
-  int N_seasons_obs = season_id[N_obs];
+  // int N_weeks_obs = week_id[N_obs];
+  // int N_seasons_obs = season_id[N_obs];
+  real sum_to_zero_scale = sqrt(N_teams * inv(N_teams - 1));
 }
 
 parameters {
@@ -104,9 +105,9 @@ transformed parameters {
 model {
   // Priors (non-centered std normals for innovations)
   league_hfa_z ~ std_normal();
-  for (s in 1:N_seasons) team_hfa_z[s] ~ std_normal();
-  for (s in 1:N_seasons) z_start[s]    ~ std_normal();
-  for (w in 1:N_weeks)   z_w[w]        ~ std_normal();
+  for (s in 1:N_seasons) team_hfa_z[s] ~ normal(0, sum_to_zero_scale); //std_normal();
+  for (s in 1:N_seasons) z_start[s]    ~ normal(0, sum_to_zero_scale); //std_normal();
+  for (w in 1:N_weeks)   z_w[w]        ~ normal(0, sum_to_zero_scale); //std_normal();
 
   beta_hfa        ~ beta(8, 2);
   sigma_hfa       ~ student_t(3, 0, 2);
@@ -123,19 +124,20 @@ model {
   sigma_y ~ student_t(3, 0, 10);
 
   // Likelihood over the first N_obs games
-  {
-    vector[N_obs] mu_obs;
-    for (g in 1:N_obs) {
-      int i = home_id[g];
-      int j = away_id[g];
-      int w = week_id[g];
-      int s = season_id[g];
+  //{
+  vector[N_obs] mu_obs;
+  for (g in 1:N_obs) {
+    int i = home_id[g];
+    int j = away_id[g];
+    int w = week_id[g];
+    int s = season_id[g];
 
-      mu_obs[g] = (team_strength[w][i] - team_strength[w][j])
-                  + team_hfa[s][i] * hfa[g];
-    }
-    target += normal_lpdf(result[1:N_obs] | mu_obs, sigma_y);
+    mu_obs[g] = (team_strength[w][i] - team_strength[w][j])
+                + team_hfa[s][i] * hfa[g];
   }
+  // target += normal_lpdf(result[1:N_obs] | mu_obs, sigma_y);
+  result ~ normal(mu_obs, sigma_y);
+  //}
 }
 
 generated quantities {
