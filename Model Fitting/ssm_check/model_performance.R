@@ -332,6 +332,9 @@ transformed parameters {
 #### generated quantities ----
 block_generated_quantities_gq <- "
 generated quantities {
+  vector[N_oos] team_strength_home_pred;
+  vector[N_oos] team_strength_away_pred;
+  vector[N_oos] team_hfa_pred;
   vector[N_oos] mu_pred;
   vector[N_oos] y_pred;
   
@@ -341,7 +344,14 @@ generated quantities {
     int j = away_id[g];
     int w = week_id[g];
     int s = season_id[g];
-    mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[k];
+    
+    team_strength_home_pred[k] = team_strength[w][i];
+    team_strength_away_pred[k] = team_strength[w][j];
+    team_hfa_pred[k] = team_hfa[s][i];
+    
+    // mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[k];
+    mu_pred[k] = (team_strength_home_pred[k] - team_strength_away_pred[k]) + 
+                  team_hfa_pred[k] * hfa[k];
     y_pred[k] = normal_rng(mu_pred[k], sigma_y);
   }
 }
@@ -395,6 +405,9 @@ generated quantities {
   }
 }
 "
+
+## 2.4 ssm3 ----
+# f
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 # 3. Write Stan Files ----
@@ -472,9 +485,9 @@ loc_ssm2_gq <- write_stan_file(code_ssm2_gq, dir = save_root, basename = "ssm2_g
 
 ## Global Inputs ----
 df              <- game_fit_data_all
-start_train     <- list(season = 2023, week = 1)
-end_train_init  <- list(season = 2024, week = 16)
-end_train_final <- list(season = 2024, week = 22)
+start_train     <- list(season = 2002, week = 1)
+end_train_init  <- list(season = 2024, week = 22)
+end_train_final <- list(season = 2025, week = 1)
 n_draws_gq      <- 100
 save_root       <- "Model Fitting/ssm_check"
 iter_warmup     <- 250
@@ -482,7 +495,7 @@ iter_sampling   <- 500
 chains          <- 4
 adapt_delta     <- 0.9
 max_treedepth   <- 10
-sig_figs        <- 16
+sig_figs        <- 10
 
 ## week_tbl ----
 week_tbl <- build_week_table(df)
@@ -558,32 +571,86 @@ fit_ssm1 <- fit_state_space(
 fit_ssm1$time()
 fit_ssm1$code()
 fit_ssm1$init_model_methods()
+fit_ssm1$init()
 
 fit_ssm1_meta <- fit_ssm1$metadata()
-fit_ssm1_params <-names(mod_ssm1$variables()$parameters)
+fit_ssm1_params <- names(mod_ssm1$variables()$parameters)
 fit_ssm1_draws <- fit_ssm1$draws()
+fit_ssm1_draws_df <- fit_ssm1_draws |> as_draws_df()
+fit_ssm1_sum <- fit_ssm1_draws_df |> colMeans() |> enframe(name = "variable", value = "mean")
+
+fit_ssm1_draws_uncon <- fit_ssm1$unconstrain_draws(draws = fit_ssm1_draws)
+fit_ssm1_draws_uncon_df <- fit_ssm1_draws_uncon |> as_draws_df()
+fit_ssm1_draws_con <- fit_ssm1$constrain_variables(fit_ssm1_draws_uncon)
+
 
 zero_list <- setNames(rep(list(0), length(fit_ssm1_params)), fit_ssm1_params)
-fit_ssm1$unconstrain_draws(draws = fit_ssm1_draws)
-
 
 fit_ssm1$save_output_files(dir = save_root, basename = "ssm1", 
-                               random = FALSE, timestamp = FALSE)
+                           random = FALSE, timestamp = FALSE)
 fit_ssm1_csv <- read_cmdstan_csv(fit_ssm1$output_files())
 fit_ssm1_draws_csv <- fit_ssm1_csv$post_warmup_draws
 
+### 4.2.2 gq ----
 gq_ssm1 <- mod_ssm1_gq$generate_quantities(
   fit_ssm1$output_files(), data = stan_data_forecast, 
-  seed = 52, sig_figs = sig_figs
+  seed = 52, sig_figs = 4
 )
 gq_ssm1$time()
 gq_ssm1$code()
+
+gq_ssm1_meta <- gq_ssm1$metadata()
+gq_ssm1_params <- gq_ssm1_meta$stan_variables
+gq_ssm1_params_expr <- rlang::parse_exprs(paste0(gq_ssm1_params, "[N_oos]"))
+gq_ssm1$print(max_rows = stan_data_forecast$N_oos*length(gq_ssm1_params))
 gq_ssm1$init_model_methods()
 gq_ssm1$save_output_files(dir = save_root, basename = "ssm1_gq", 
-                              random = FALSE, timestamp = FALSE)
+                          random = FALSE, timestamp = FALSE)
 gq_ssm1_csv <- read_cmdstan_csv(gq_ssm1$output_files())
 gq_ssm1_draws_csv <- gq_ssm1_csv$post_warmup_draws |> as_draws_df()
 
+gq_ssm1_draws <- gq_ssm1$draws()
+gq_ssm1_draws_df <- gq_ssm1_draws |> as_draws_df()
+
+gq_ssm1_params <- gq_ssm1_meta$stan_variables
+gq_ssm1_params_expr <- rlang::parse_exprs(paste0(gq_ssm1_params, "[N_oos]"))
+gq_ssm1_draws_spread <- gq_ssm1_draws_df |>
+  spread_draws(!!!gq_ssm1_params_expr) 
+gq_ssm1_draws_gather <- gq_ssm1_draws_df |>
+  gather_draws(!!!gq_ssm1_params_expr) 
+
+gq_ssm1_sum1 <- gq_ssm1_draws_spread |>
+  summarise_draws() |>
+  mutate(game_idx = stan_data_forecast$oos_idx[N_oos],
+         .after = N_oos)
+glimpse(gq_ssm1_sum1)
+gq_ssm1_sum1
+
+gq_ssm1_sum2 <- gq_ssm1_draws_spread |>
+  point_interval(
+    .point = median,
+    .interval = hdci,
+    .width = 0.90 
+  ) |>
+  mutate(game_idx = as.numeric(stan_data_forecast$oos_idx[N_oos]),
+         .after = N_oos)
+glimpse(gq_ssm1_sum2)
+gq_ssm1_sum2
+
+
+gq_ssm1_sum3 <- df |>
+  mutate(
+    game_idx = row_number()
+  ) |>
+  inner_join(
+    bind_cols(
+      next_sched,
+      gq_ssm1_sum2
+    )
+  )
+next_sched |> add_draws(fit_ssm1)
+
+gq_ssm1_draws
 
 ## 4.3 ssm2 ----
 cat(code_ssm2)
@@ -592,7 +659,7 @@ cat(code_ssm2_gq)
 mod_ssm2_gq <- cmdstan_model(loc_ssm2_gq)
 
 fit_ssm2 <- fit_state_space(
-  mod_ssm2, stan_data_forecast, 
+  mod_ssm2, stan_data, 
   inits = 0,
   iter_warmup = iter_warmup, iter_sampling = iter_sampling, chains = chains,
   adapt_delta = adapt_delta, max_treedepth = max_treedepth, sig_figs = sig_figs
@@ -609,20 +676,22 @@ fit_ssm2_sum <- fit_ssm2_draws_df |> colMeans() |> enframe(name = "variable", va
 #fit_ssm2_sum2 <- fit_ssm2$summary()
 
 zero_list <- setNames(rep(list(0), length(fit_ssm2_params)), fit_ssm2_params)
-fit_ssm2$unconstrain_draws(draws = fit_ssm2_draws)
 
 
 fit_ssm2$save_output_files(dir = save_root, basename = "ssm2", 
                            random = FALSE, timestamp = FALSE)
+fit_ssm2$unconstrain_draws(files = fit_ssm2$output_files())
+
 fit_ssm2_csv <- read_cmdstan_csv(fit_ssm2$output_files())
 fit_ssm2_draws_csv <- fit_ssm2_csv$post_warmup_draws 
 fit_ssm2_draws_csv_df <- fit_ssm2_draws_csv |> as_draws_df()
 fit_ssm2_csv_sum <- fit_ssm2_draws_csv_df |> colMeans() |> enframe(name = "variable", value = "mean")
 
 ### 4.3.2 gq -----
+mod_ssm2_gq$code()
 gq_ssm2 <- mod_ssm2_gq$generate_quantities(
-  fit_ssm2$output_files(), data = stan_data_forecast, 
-  seed = 52, sig_figs = 4
+  fit_ssm2, data = stan_data_forecast, 
+  seed = 52, sig_figs = 8
 )
 gq_ssm2$print()
 gq_ssm2$time()
@@ -631,7 +700,8 @@ gq_ssm2$init_model_methods()
 gq_ssm2$save_output_files(dir = save_root, basename = "ssm2_gq", 
                           random = FALSE, timestamp = FALSE)
 gq_ssm2_csv <- read_cmdstan_csv(gq_ssm2$output_files())
-gq_ssm2_draws_csv <- gq_ssm2_csv$post_warmup_draws |> as_draws_df()
-gq_ssm2_sum <- gq_ssm2$summary()
+gq_ssm2_csv_meta <- gq_ssm2_csv$
+  gq_ssm2_sum <- gq_ssm2_csv$generated_quantities
+
 
 

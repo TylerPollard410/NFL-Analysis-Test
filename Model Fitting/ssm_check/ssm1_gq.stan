@@ -94,6 +94,9 @@ transformed parameters {
 }
  
 generated quantities {
+  vector[N_oos] team_strength_home_pred;
+  vector[N_oos] team_strength_away_pred;
+  vector[N_oos] team_hfa_pred;
   vector[N_oos] mu_pred;
   vector[N_oos] y_pred;
   
@@ -103,7 +106,14 @@ generated quantities {
     int j = away_id[g];
     int w = week_id[g];
     int s = season_id[g];
-    mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[g];
+    
+    team_strength_home_pred[k] = team_strength[w][i];
+    team_strength_away_pred[k] = team_strength[w][j];
+    team_hfa_pred[k] = team_hfa[s][i];
+    
+    // mu_pred[k] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[k];
+    mu_pred[k] = (team_strength_home_pred[k] - team_strength_away_pred[k]) + 
+                  team_hfa_pred[k] * hfa[k];
     y_pred[k] = normal_rng(mu_pred[k], sigma_y);
   }
 }
