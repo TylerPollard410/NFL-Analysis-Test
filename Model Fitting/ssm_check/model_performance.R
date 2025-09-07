@@ -30,11 +30,14 @@ library(tidybayes)
 library(nflverse)
 library(tidyverse)
 
+# detach("package:nflendzonePipeline",unload = TRUE, force = TRUE)
+# install.packages(".", repos = NULL, type = "source")
+# pak::pak("TylerPollard410/nflendzone")
 library(nflendzonePipeline)
 library(nflendzone)
 
 set.seed(52)
-options(scipen = 9)
+options(scipen = 10)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 # 1. Source Files ----
@@ -169,19 +172,34 @@ model {
   for (s in 1:N_seasons) z_start[s]    ~ normal(0, sum_to_zero_scale); //std_normal();
   for (w in 1:N_weeks)   z_w[w]        ~ normal(0, sum_to_zero_scale); //std_normal();
 
-  beta_hfa        ~ beta(8, 2);
-  sigma_hfa       ~ student_t(3, 0, 2);
-  league_hfa_init ~ normal(2, 2);
-
-  sigma_team_hfa  ~ normal(0, 2);
-
-  beta_w ~ beta(6, 2);
-  sigma_w ~ student_t(3, 0, 5);
-
-  beta_s ~ beta(2, 2);
-  sigma_s ~ student_t(3, 0, 5);
-
-  sigma_y ~ student_t(3, 0, 10);
+  // beta_hfa        ~ beta(8, 2);
+  // sigma_hfa       ~ student_t(3, 0, 2);
+  // league_hfa_init ~ normal(2, 2);
+  // 
+  // sigma_team_hfa  ~ normal(0, 2);
+  // 
+  // beta_w ~ beta(6, 2);
+  // sigma_w ~ student_t(3, 0, 5);
+  // 
+  // beta_s ~ beta(2, 2);
+  // sigma_s ~ student_t(3, 0, 5);
+  // 
+  // sigma_y ~ student_t(3, 0, 10);
+  
+  // Data-informed priors for AR(1) coefficients (constrained [0,1])
+  beta_hfa ~ normal(0.90, 1);   // league HFA AR(1)
+  beta_w   ~ normal(0.95, 1);   // within-season AR(1)
+  beta_s   ~ normal(0.5, 1);   // between-season AR(1)
+  
+  // Priors for scale parameters
+  sigma_hfa       ~ normal(0.5, 2);
+  league_hfa_init ~ normal(2.5, 1.5);  // wide, informed by posteriors
+  sigma_team_hfa  ~ normal(2.5, 2);
+  
+  sigma_w ~ normal(2, 5);
+  sigma_s ~ normal(3.5, 5);
+  
+  sigma_y ~ normal(12.5, 7);
 
   // Likelihood over the first N_obs games
   //{
@@ -211,17 +229,17 @@ generated quantities {
   vector[N_teams] team_hfa_last      = team_hfa[last_s];
   
   // Fitted means & posterior predictive for observed games
-  vector[N_obs] mu_obs;
-  vector[N_obs] y_rep;
-
-  for (g in 1:N_obs) {
-    int i = home_id[g];
-    int j = away_id[g];
-    int w = week_id[g];
-    int s = season_id[g];
-    mu_obs[g] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[g];
-    y_rep[g]  = normal_rng(mu_obs[g], sigma_y);
-  }
+  // vector[N_obs] mu_obs;
+  // vector[N_obs] y_rep;
+  // 
+  // for (g in 1:N_obs) {
+  //   int i = home_id[g];
+  //   int j = away_id[g];
+  //   int w = week_id[g];
+  //   int s = season_id[g];
+  //   mu_obs[g] = (team_strength[w][i] - team_strength[w][j]) + team_hfa[s][i] * hfa[g];
+  //   y_rep[g]  = normal_rng(mu_obs[g], sigma_y);
+  // }
 }
 "
 
@@ -480,7 +498,7 @@ cat(code_ssm2_gq)
 loc_ssm2_gq <- write_stan_file(code_ssm2_gq, dir = save_root, basename = "ssm2_gq")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
-# 3. Make Stan Data ----
+# 4. Make Stan Data ----
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
 ## Global Inputs ----
@@ -490,8 +508,8 @@ end_train_init  <- list(season = 2024, week = 22)
 end_train_final <- list(season = 2025, week = 1)
 n_draws_gq      <- 100
 save_root       <- "Model Fitting/ssm_check"
-iter_warmup     <- 250
-iter_sampling   <- 500
+iter_warmup     <- 500
+iter_sampling   <- 1000
 chains          <- 4
 adapt_delta     <- 0.9
 max_treedepth   <- 10
@@ -560,8 +578,17 @@ gq_baseline_draws_csv <- gq_baseline_csv$post_warmup_draws |> as_draws_df()
 
 
 ## 4.2 ssm1 ----
-mod_ssm1 <- cmdstan_model(loc_ssm1, compile_model_methods = TRUE)
-mod_ssm1_gq <- cmdstan_model(loc_ssm1_gq)
+mod_ssm1 <- cmdstan_model(loc_ssm1,
+                          compile_model_methods = TRUE,
+                          force_recompile = FALSE, # toggle as needed
+                          pedantic = TRUE)
+mod_ssm1_vars <- mod_ssm1$variables()
+
+mod_ssm1_gq <- cmdstan_model(loc_ssm1_gq, 
+                             compile_model_methods = TRUE,
+                             force_recompile = FALSE,
+                             pedantic = TRUE)
+mod_ssm1_gq_vars <- mod_ssm1_gq$variables()
 
 fit_ssm1 <- fit_state_space(
   mod_ssm1, stan_data, inits = 0,
@@ -584,6 +611,27 @@ fit_ssm1_draws_uncon_df <- fit_ssm1_draws_uncon |> as_draws_df()
 fit_ssm1_draws_con <- fit_ssm1$constrain_variables(fit_ssm1_draws_uncon)
 
 
+
+fit_ssm1_var_index <- list(
+  league_hfa    = "league_hfa[season_idx]",
+  team_hfa      = "team_hfa[season_idx, team_idx]",
+  team_strength = "team_strength[week_idx, team_idx]",
+  mu_obs        = "mu_obs[game_idx]",
+  y_rep         = "y_rep[game_idx]"
+)
+
+# Iterate and save as .rds files (much faster than csv for large objects)
+iwalk(fit_ssm1_var_index, ~{
+  obj_name <- paste0(.y, "_draws")
+  message("Extracting: ", obj_name)
+  obj <- fit_ssm1 |>
+    spread_draws(!!rlang::parse_expr(.x), ndraws = n_draws_gq)
+  assign(obj_name, obj, envir = .GlobalEnv)
+  rm(obj); gc()
+})
+
+
+
 zero_list <- setNames(rep(list(0), length(fit_ssm1_params)), fit_ssm1_params)
 
 fit_ssm1$save_output_files(dir = save_root, basename = "ssm1", 
@@ -594,7 +642,8 @@ fit_ssm1_draws_csv <- fit_ssm1_csv$post_warmup_draws
 ### 4.2.2 gq ----
 gq_ssm1 <- mod_ssm1_gq$generate_quantities(
   fit_ssm1$output_files(), data = stan_data_forecast, 
-  seed = 52, sig_figs = 4
+  seed = 52, sig_figs = 4,
+  parallel_chains = min(4, parallel::detectCores())
 )
 gq_ssm1$time()
 gq_ssm1$code()
@@ -648,9 +697,6 @@ gq_ssm1_sum3 <- df |>
       gq_ssm1_sum2
     )
   )
-next_sched |> add_draws(fit_ssm1)
-
-gq_ssm1_draws
 
 ## 4.3 ssm2 ----
 cat(code_ssm2)

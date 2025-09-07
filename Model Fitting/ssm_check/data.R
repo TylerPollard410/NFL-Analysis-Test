@@ -46,9 +46,7 @@ team_model_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 # srs_data <- rds_from_url(paste0(base_repo_url, tag, "/", tag, ".rds"))
 
 ## Set up modeling data ----
-#   - Use seasons 2007–2023 for training/validation
-#   - Hold out seasons 2024 for out of sample weekly forecats
-game_model_data <- game_data |> #game_model_data |>
+game_model_data <- game_data |> 
   mutate(
     hfa = ifelse(location == "Home", 1, 0)
   )
