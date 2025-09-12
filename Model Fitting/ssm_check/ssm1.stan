@@ -71,7 +71,7 @@ transformed parameters {
     
     // Season start: zero-sum carries over, z_s is zero-sum
     if (s == 1) {
-      team_strength[fw] = 5 * z_s[s];
+      team_strength[fw] = sigma_s * z_s[s];
     } else {
       team_strength[fw] = beta_s * team_strength[lw_season[s - 1]] + sigma_s * z_s[s];
     }
@@ -89,11 +89,11 @@ model {
   
   // Flatten arrays and vectorize
   for (s in 1:N_seasons) {
-    z_team_hfa[s] ~ normal(0, sum_to_zero_scale); //std_normal();
-    z_s[s] ~ normal(0, sum_to_zero_scale); //std_normal();
+    z_team_hfa[s][] ~ std_normal(); //normal(0, sum_to_zero_scale); //std_normal();
+    z_s[s][] ~ std_normal(); //normal(0, sum_to_zero_scale); //std_normal();
   } 
   for (w in 1:N_weeks) {
-   z_w[w] ~ normal(0, sum_to_zero_scale); //std_normal(); 
+   z_w[w][] ~ std_normal(); //normal(0, sum_to_zero_scale); //std_normal(); 
   }
   
   // Data-informed priors for AR(1) coefficients (constrained [0,1])

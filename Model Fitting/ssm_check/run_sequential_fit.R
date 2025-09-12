@@ -489,7 +489,56 @@ save_forecast_summary <- function(
   apply(mat, 1, function(x) abs(sum(x)) < tol) %>% all()
 }
 
+# make_summary_inits_OLD <- function(
+#     prev_fit,
+#     snapshot_summary,
+#     debug_fun = TRUE,
+#     debug_time = TRUE,
+#     debug_glimpse = TRUE
+# ) {
+#   .print_function(enabled = debug_fun)
+#   timer <- .print_time(start = TRUE, enabled = debug_time)
+#
+#   get_means <- function(var_prefix, dim = NULL) {
+#     vals <- snapshot_summary |>
+#       filter(str_starts(variable, var_prefix)) |>
+#       pull(mean)
+#     if (!is.null(dim)) {
+#       matrix(vals, nrow = dim[1], ncol = dim[2], byrow = TRUE)
+#     } else {
+#       vals
+#     }
+#   }
+#
+#   result <- list(
+#     league_hfa_raw = get_means("league_hfa_raw"),
+#     #league_hfa_init = get_means("league_hfa_init"),
+#     beta_league_hfa = get_means("beta_league_hfa"),
+#     sigma_league_hfa = abs(get_means("sigma_league_hfa")),
+#     z_team_hfa = get_means("z_team_hfa"),
+#     sigma_team_hfa = abs(get_means("sigma_team_hfa")),
+#     z_s = get_means("z_s"),
+#     z_w = get_means("z_w"),
+#     beta_w = get_means("beta_w"),
+#     sigma_w = abs(get_means("sigma_w")),
+#     beta_s = get_means("beta_s"),
+#     sigma_s = abs(get_means("sigma_s")),
+#     sigma_y = abs(get_means("sigma_y"))
+#   )
+#
+#   # Sum-to-zero check
+#   for (nm in c("z_team_hfa", "z_s", "z_w")) {
+#     if (!.check_sum_to_zero(result[[nm]])) {
+#       warning(paste("Init for", nm, "does not sum to zero!"))
+#     }
+#   }
+#
+#   .print_time(start = FALSE, timer, enabled = debug_time)
+#   return(.glimpse_return(result, enabled = debug_glimpse))
+# }
+
 make_summary_inits <- function(
+  prev_fit,
   snapshot_summary,
   debug_fun = TRUE,
   debug_time = TRUE,
@@ -498,32 +547,36 @@ make_summary_inits <- function(
   .print_function(enabled = debug_fun)
   timer <- .print_time(start = TRUE, enabled = debug_time)
 
-  get_means <- function(var_prefix, dim = NULL) {
-    vals <- snapshot_summary |>
-      filter(str_starts(variable, var_prefix)) |>
-      pull(mean)
-    if (!is.null(dim)) {
-      matrix(vals, nrow = dim[1], ncol = dim[2], byrow = TRUE)
-    } else {
-      vals
+  var_skel <- prev_fit$variable_skeleton(
+    transformed_parameters = FALSE,
+    generated_quantities = FALSE
+  )
+
+  # Get the list of variable names
+  param_names <- names(var_skel)
+
+  # Function to get posterior mean and reshape to match skeleton
+  get_mean_param <- function(var, skel, fit) {
+    # Get draws for this var in df format
+    df <- fit$draws(variables = var, format = "df")
+    # Remove .draw, .chain, .iteration cols
+    draws <- suppressWarnings(
+      df[, setdiff(names(df), c(".draw", ".chain", ".iteration")), drop = FALSE]
+    )
+    # Get posterior means
+    means <- colMeans(draws)
+    # If scalar, just return it as is
+    dims <- dim(skel)
+    if (length(dims) < 2) {
+      return(as.numeric(means))
     }
+    # Otherwise, reshape into array with dims matching skel
+    array(as.numeric(means), dim = dims)
   }
 
-  result <- list(
-    league_hfa_raw = get_means("league_hfa_raw"),
-    #league_hfa_init = get_means("league_hfa_init"),
-    beta_league_hfa = get_means("beta_league_hfa"),
-    sigma_league_hfa = abs(get_means("sigma_league_hfa")),
-    z_team_hfa = get_means("z_team_hfa"),
-    sigma_team_hfa = abs(get_means("sigma_team_hfa")),
-    z_s = get_means("z_s"),
-    z_w = get_means("z_w"),
-    beta_w = get_means("beta_w"),
-    sigma_w = abs(get_means("sigma_w")),
-    beta_s = get_means("beta_s"),
-    sigma_s = abs(get_means("sigma_s")),
-    sigma_y = abs(get_means("sigma_y"))
-  )
+  # Now apply this to all vars in var_skel
+  result <- map2(param_names, var_skel, ~ get_mean_param(.x, .y, prev_fit)) |>
+    set_names(names(var_skel))
 
   # Sum-to-zero check
   for (nm in c("z_team_hfa", "z_s", "z_w")) {
@@ -659,7 +712,7 @@ fit_state_space <- function(
     chains = chains,
     parallel_chains = min(chains, parallel::detectCores()),
     seed = 52,
-    init = if (!is.null(inits) && !is.list(inits[[1]]) && inits != 0) {
+    init = if (!is.null(inits)) {
       inits <- replicate(chains, inits, simplify = FALSE)
     } else {
       0
@@ -708,12 +761,12 @@ tidy_gq_output <- function(
   .print_function(enabled = debug_fun)
   timer <- .print_time(start = TRUE, enabled = debug_time)
 
-  raw <- gq_fit$draws(variables = c("mu_oos", "y_pred"), format = "df")
+  raw <- gq_fit$draws(variables = c("mu_pred", "y_pred"), format = "df")
   long <- raw |>
     pivot_longer(
-      cols = matches("^(mu_oos|y_pred)\\["),
+      cols = matches("^(mu_pred|y_pred)\\["),
       names_to = c("var", "draw", "game"),
-      names_pattern = "^(mu_oos|y_pred)\\[(\\d+),(\\d+)\\]$",
+      names_pattern = "^(mu_pred|y_pred)\\[(\\d+),(\\d+)\\]$",
       values_to = "value"
     ) |>
     mutate(
@@ -742,6 +795,7 @@ sequential_step <- function(
   mod_gq,
   start_train,
   end_train,
+  prev_fit,
   prev_snapshot_summary = NULL,
   n_draws_gq = 200,
   save_root = NULL,
@@ -765,7 +819,7 @@ sequential_step <- function(
     end_train$week
   )
   inits <- if (!is.null(prev_snapshot_summary)) {
-    make_summary_inits(prev_snapshot_summary)
+    make_summary_inits(prev_fit)
   } else {
     0
   }
@@ -1075,6 +1129,7 @@ snapshot_summary0$week <- end_train_init$week
 rolling_snapshot_summaries <- list()
 rolling_forecast_summaries <- list()
 last_snapshot_summary <- snapshot_summary0
+prev_fit <- fit0
 
 ## ---- Sequential weekly rolling fits ----
 for (step in seq_len(n_steps)) {
@@ -1088,6 +1143,7 @@ for (step in seq_len(n_steps)) {
     mod_ssm1_gq,
     start_train = start_train,
     end_train = list(season = endr$season, week = endr$week),
+    prev_fit = prev_fit,
     prev_snapshot_summary = last_snapshot_summary,
     n_draws_gq = 100, # Number of GQ draws per week
     save_root = save_root,
@@ -1101,6 +1157,7 @@ for (step in seq_len(n_steps)) {
   rolling_snapshot_summaries[[step]] <- out$snapshot_summary
   rolling_forecast_summaries[[step]] <- out$forecast_summary
   last_snapshot_summary <- out$snapshot_summary
+  prev_fit <- out$fit
 }
 
 ## ---- Save final snapshot and forecast summaries as .rds ----
@@ -1114,3 +1171,269 @@ saveRDS(
 )
 
 cat("\n==== Sequential Fitting Complete ====\n")
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+# 4. SINGLE FITTING AND FORECASTING ----
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+
+## ---- Set file locations for Stan models ----
+save_root <- "Model Fitting/ssm_check"
+loc_ssm1 <- "Model Fitting/ssm_check/ssm1.stan"
+loc_ssm1_gq <- "Model Fitting/ssm_check/ssm1_gq.stan"
+dir.create(save_root, showWarnings = FALSE, recursive = TRUE)
+
+## ---- Compile Stan models (do this ONCE; force_recompile only if Stan code changes) ----
+mod_ssm1 <- cmdstan_model(
+  loc_ssm1,
+  compile_model_methods = TRUE,
+  force_recompile = TRUE,
+  #dry_run = TRUE,
+  #stanc_options = list("Oexperimental"),
+  pedantic = TRUE
+)
+mod_ssm1$code()
+
+mod_ssm1_gq <- cmdstan_model(
+  loc_ssm1_gq,
+  compile_model_methods = TRUE,
+  force_recompile = TRUE,
+  #dry_run = TRUE,
+  #stanc_options = list("Oexperimental"),
+  pedantic = TRUE
+)
+mod_ssm1_gq$code()
+
+## ---- Set up training schedule ----
+df <- game_fit_data_all
+
+## week_tbl ----
+week_tbl <- build_week_table(df)
+
+## idx ----
+teams <- sort(unique(c(df$home_team, df$away_team)))
+seasons <- sort(unique(df$season))
+weeks <- sort(unique(df$week_idx))
+
+team_idx <- setNames(1:32, teams)
+season_idx <- setNames(unique(week_tbl$season_idx), unique(week_tbl$season))
+week_idx <- setNames(
+  week_tbl$week_idx,
+  paste0("[", week_tbl$season_idx, ",", week_tbl$week, "]")
+)
+
+N_teams <- length(unique(df$home_id))
+N_seasons <- max(df$season_idx)
+N_weeks <- max(df$week_idx)
+
+# Initial train: 2002 wk1 to 2005 wk21
+start_train <- list(season = 2002, week = 1)
+end_train_init <- list(season = 2024, week = 22)
+
+# Find starting index for sequential run (first week to forecast: 2006 wk1)
+week_tbl <- build_week_table(df)
+n_steps <- 25
+
+# Sequential endpoints: Fit through 2006 wk1, then 2006 wk2, ..., 25 total steps
+initial_idx <- which(week_tbl$season == 2006 & week_tbl$week == 1)
+endpoints <- week_tbl[initial_idx:(initial_idx + n_steps - 1), ]
+
+stan_data <- make_stan_data(
+  df,
+  start_train$season,
+  start_train$week,
+  end_train_init$season,
+  end_train_init$week
+)
+
+
+## ---- Warmup fit (init = 0) ----
+iter_warm = 250
+iter_samp = 500
+chains = 4
+adapt_delta = 0.9
+max_treedepth = 10
+sig_figs = 10
+debug_fun = TRUE
+debug_time = TRUE
+debug_glimpse = FALSE
+
+cat("\n--- WARMUP FIT: 2002 wk1 to 2005 wk21 ---\n")
+fit0 <- fit_state_space(
+  mod_ssm1,
+  stan_data = stan_data,
+  inits = NULL,
+  iter_warmup = iter_warm, # Larger for first fit
+  iter_sampling = iter_samp,
+  chains = chains,
+  adapt_delta = adapt_delta,
+  max_treedepth = max_treedepth,
+  sig_figs = sig_figs
+)
+
+fit0_vars <- mod_ssm1$variables()
+snap_vars <- names(fit0_vars$generated_quantities)
+
+snapshot_draws2 <- fit0 |>
+  spread_draws(
+    c(team_strength_last, team_hfa_last)[team]
+  ) |>
+  mutate(
+    team = teams[team]
+  )
+snapshot_sum2 <- snapshot_draws2 |>
+  summarise_draws()
+
+next_week <- next_week_after(
+  week_tbl,
+  end_train_init$season,
+  end_train_init$week
+)
+next_sched <- schedule_for(df, next_week$season, next_week$week)
+stan_data_forecast <- append_sched_to_stan_data(stan_data, next_sched)
+
+gq0 <- mod_ssm1_gq$generate_quantities(
+  fit0,
+  data = stan_data_forecast,
+  seed = 52,
+  sig_figs = 4,
+  parallel_chains = min(4, parallel::detectCores())
+)
+
+forecast_draws2 <- gq0 |>
+  spread_draws(
+    c(
+      team_strength_home_pred,
+      team_strength_away_pred,
+      team_hfa_pred,
+      mu_pred,
+      y_pred
+    )[oos_idx]
+  ) |>
+  select(
+    oos_idx,
+    team_strength_home_pred,
+    team_strength_away_pred,
+    team_hfa_pred,
+    mu_pred,
+    y_pred,
+    everything()
+  )
+
+forecast_sum2 <- forecast_draws2 |>
+  summarise_draws()
+
+mu_preds_sum2 <- forecast_draws2 |>
+  point_interval(mu_pred)
+
+pred_df2 <- df |>
+  inner_join(
+    next_sched |> bind_cols(mu_preds_sum2),
+    by = c(
+      "season_idx" = "season_id",
+      "week_idx" = "week_id",
+      "home_id",
+      "away_id",
+      "hfa"
+    )
+  ) |>
+  relocate(mu_pred, .lower, .upper, .after = spread_line)
+
+save(
+  snapshot_sum,
+  forecast_sum,
+  pred_df,
+  file = file.path(save_root, "single_fit_results.RData")
+)
+
+
+inits0 <- make_summary_inits(fit0)
+
+start_train <- list(season = 2002, week = 1)
+end_train_init <- list(season = 2025, week = 1)
+
+stan_data <- make_stan_data(
+  df,
+  start_train$season,
+  start_train$week,
+  end_train_init$season,
+  end_train_init$week
+)
+
+fit1 <- mod_ssm1$sample(
+  data = stan_data,
+  iter_warmup = iter_warm,
+  iter_sampling = iter_samp,
+  chains = chains,
+  parallel_chains = min(chains, parallel::detectCores()),
+  seed = 52,
+  init = fit0,
+  adapt_delta = adapt_delta,
+  max_treedepth = max_treedepth,
+  sig_figs = sig_figs
+)
+
+snapshot_draws21 <- fit1 |>
+  spread_draws(
+    c(team_strength_last, team_hfa_last)[team]
+  ) |>
+  mutate(
+    team = teams[team]
+  )
+snapshot_sum21 <- snapshot_draws21 |>
+  summarise_draws()
+
+next_week <- next_week_after(
+  week_tbl,
+  end_train_init$season,
+  end_train_init$week
+)
+next_sched <- schedule_for(df, next_week$season, next_week$week)
+stan_data_forecast <- append_sched_to_stan_data(stan_data, next_sched)
+
+gq1 <- mod_ssm1_gq$generate_quantities(
+  fit1,
+  data = stan_data_forecast,
+  seed = 52,
+  sig_figs = 4,
+  parallel_chains = min(4, parallel::detectCores())
+)
+
+forecast_draws21 <- gq1 |>
+  spread_draws(
+    c(
+      team_strength_home_pred,
+      team_strength_away_pred,
+      team_hfa_pred,
+      mu_pred,
+      y_pred
+    )[oos_idx]
+  ) |>
+  select(
+    oos_idx,
+    team_strength_home_pred,
+    team_strength_away_pred,
+    team_hfa_pred,
+    mu_pred,
+    y_pred,
+    everything()
+  )
+
+forecast_sum21 <- forecast_draws21 |>
+  summarise_draws()
+
+mu_preds_sum21 <- forecast_draws21 |>
+  point_interval(mu_pred)
+
+pred_df21 <- df |>
+  inner_join(
+    next_sched |> bind_cols(mu_preds_sum21),
+    by = c(
+      "season_idx" = "season_id",
+      "week_idx" = "week_id",
+      "home_id",
+      "away_id",
+      "hfa"
+    )
+  ) |>
+  relocate(mu_pred, .lower, .upper, .after = spread_line)
