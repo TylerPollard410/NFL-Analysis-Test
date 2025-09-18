@@ -8,4 +8,6 @@ Model Fitting/stan_models/*.csv
 Model Fitting/stan_models/*.rds
 Model Fitting/ssm_check/*.csv
 Model Fitting/ssm_check/*.rds
-.DS_Store
+Model Fitting/**/*.csv
+Model Fitting/**/*.rds
+*.DS_Store

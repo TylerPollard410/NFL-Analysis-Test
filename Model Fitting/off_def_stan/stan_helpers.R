@@ -1118,6 +1118,7 @@ sequential_step <- function(
   refit_after = TRUE,
   refit_weeks = 1L,
   seed = 52,
+  sig_figs = 10,
   chains = 4,
   parallel_chains = min(4L, parallel::detectCores()),
   iter_warmup = 500,
@@ -1148,8 +1149,33 @@ sequential_step <- function(
       schedule_df,
       weeks_ahead = refit_weeks
     )
-    init_arg <- "random"
-    if (isTRUE(warm_start)) {
+    dims_match <- TRUE
+    if (!is.null(fit_stan_data$N_teams) && !is.null(fit_stan_data_new$N_teams)) {
+      dims_match <- dims_match && identical(
+        as.integer(fit_stan_data$N_teams),
+        as.integer(fit_stan_data_new$N_teams)
+      )
+    }
+    if (!is.null(fit_stan_data$N_seasons) && !is.null(fit_stan_data_new$N_seasons)) {
+      dims_match <- dims_match && identical(
+        as.integer(fit_stan_data$N_seasons),
+        as.integer(fit_stan_data_new$N_seasons)
+      )
+    }
+    if (!is.null(fit_stan_data$N_weeks) && !is.null(fit_stan_data_new$N_weeks)) {
+      dims_match <- dims_match && identical(
+        as.integer(fit_stan_data$N_weeks),
+        as.integer(fit_stan_data_new$N_weeks)
+      )
+    }
+
+    init_arg <- 0
+    if (isTRUE(warm_start) && !isTRUE(dims_match)) {
+      message(
+        "sequential_step: warm_start requested but skipped because data dimensions changed."
+      )
+    }
+    if (isTRUE(warm_start) && isTRUE(dims_match)) {
       init_try <- try(
         build_init_lists_from_fit(fit, fit_mod, n_chains = chains, seed = seed),
         silent = TRUE
@@ -1158,7 +1184,12 @@ sequential_step <- function(
     }
     metric_type <- NULL
     inv_metric <- NULL
-    if (isTRUE(reuse_metric)) {
+    if (isTRUE(reuse_metric) && !isTRUE(dims_match)) {
+      message(
+        "sequential_step: reuse_metric requested but skipped because data dimensions changed."
+      )
+    }
+    if (isTRUE(reuse_metric) && isTRUE(dims_match)) {
       met <- try(reuse_metric_from_fit(fit), silent = TRUE)
       if (!inherits(met, "try-error")) {
         metric_type <- met$metric
@@ -1170,6 +1201,7 @@ sequential_step <- function(
       seed = seed,
       chains = chains,
       parallel_chains = parallel_chains,
+      sig_figs = sig_figs,
       init = init_arg,
       metric = metric_type,
       inv_metric = inv_metric,
@@ -1248,7 +1280,12 @@ build_init_lists_from_fit <- function(
     idx_mat <- do.call(rbind, lapply(split_idx, function(v) as.integer(v)))
     ord <- do.call(order, as.data.frame(idx_mat))
     vals <- vals[ord]
-    array(vals, dim = dims)
+    dim_sizes <- if (is.null(dim(idx_mat))) {
+      as.integer(max(idx_mat))
+    } else {
+      as.integer(apply(idx_mat, 2, max))
+    }
+    array(vals, dim = dim_sizes)
   }
 
   inits <- vector("list", n_chains)
@@ -1267,9 +1304,19 @@ build_init_lists_from_fit <- function(
 #' Extract metric info for reuse from previous fit
 reuse_metric_from_fit <- function(fit) {
   stopifnot(inherits(fit, "CmdStanMCMC"))
+  fit_metric = fit$metadata()$metric
+  if (fit_metric == "diag_e") {
+    message("reuse_metric_from_fit: using diag_e metric")
+    fit_inv_metric = fit$inv_metric(matrix = FALSE)
+  } else if (fit_metric == "dense_e") {
+    message("reuse_metric_from_fit: using dense_e metric")
+    fit_inv_metric = fit$inv_metric(matrix = TRUE)
+  } else {
+    stop("reuse_metric_from_fit: unsupported metric type: ", fit_metric)
+  }
   list(
-    metric = fit$metadata()$metric,
-    inv_metric = fit$inv_metric()
+    metric = fit_metric,
+    inv_metric = fit_inv_metric
   )
 }
 
