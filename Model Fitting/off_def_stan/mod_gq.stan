@@ -47,28 +47,31 @@ transformed data {
     if (lw_season_idx[g] == 1) is_last_week[w] = 1;
   }
   is_first_week[1] = 1; // Ensure first week is marked as first
+
+  // for sum-to-zero transformation
+  real sum_to_zero_scale = sqrt(N_teams * inv(N_teams - 1)); 
 }
 
 parameters {
   // Match mod5.stan
   real league_hfa_init;
-  vector[N_seasons - 1] league_hfa_innovation;
+  vector[N_seasons - 1] z_league_hfa_innovation;
   real<lower=0> sigma_league_hfa_innovation;
   real<lower=0, upper=1> phi_league_hfa;
 
-  array[N_seasons] sum_to_zero_vector[N_teams] team_hfa_deviation;
+  array[N_seasons] sum_to_zero_vector[N_teams] z_team_hfa_deviation;
   real<lower=0> sigma_team_hfa;
 
-  sum_to_zero_vector[N_teams] team_strength_init;
-  real<lower=0> sigma_strength_init;
+  sum_to_zero_vector[N_teams] z_team_strength_init;
+  real<lower=0> sigma_team_strength_init;
 
-  array[N_weeks - 1] sum_to_zero_vector[N_teams] z_weekly_innovation;
-  real<lower=0> sigma_weekly_innovation;
-  real<lower=0, upper=1> phi_weekly;
+  array[N_weeks - 1] sum_to_zero_vector[N_teams] z_weekly_team_strength_innovation;
+  real<lower=0> sigma_weekly_team_strength_innovation;
+  real<lower=0, upper=1> phi_weekly_team_strength_innovation;
 
-  array[N_seasons - 1] sum_to_zero_vector[N_teams] z_season_carryover;
-  real<lower=0> sigma_season_carryover;
-  real<lower=0, upper=1> phi_season_carryover;
+  array[N_seasons - 1] sum_to_zero_vector[N_teams] z_season_team_strength_innovation;
+  real<lower=0> sigma_season_team_strength_innovation;
+  real<lower=0, upper=1> phi_season_team_strength_innovation;
 
   real<lower=0> sigma_obs;
 }
@@ -82,28 +85,27 @@ transformed parameters {
   league_hfa[1] = league_hfa_init;
   for (s in 2:N_seasons)
     league_hfa[s] = phi_league_hfa * league_hfa[s - 1]
-                    + league_hfa_innovation[s - 1] * sigma_league_hfa_innovation;
+                    + z_league_hfa_innovation[s - 1] * sigma_league_hfa_innovation;
   for (s in 1:N_seasons)
     team_hfa[s] = rep_vector(league_hfa[s], N_teams)
-                  + to_vector(team_hfa_deviation[s]) * sigma_team_hfa;
+                  + to_vector(z_team_hfa_deviation[s]) * sigma_team_hfa;
 
-  team_strength[1] = to_vector(team_strength_init) * sigma_strength_init;
+  team_strength[1] = to_vector(z_team_strength_init) * sigma_team_strength_init;
   for (w in 2:N_weeks) {
     if (is_first_week[w] == 1) {
       int s = week_to_season[w];
-      team_strength[w] = phi_season_carryover * team_strength[w - 1]
-                         + to_vector(z_season_carryover[s - 1]) * sigma_season_carryover;
+      team_strength[w] = phi_season_team_strength_innovation * team_strength[w - 1]
+                         + to_vector(z_season_team_strength_innovation[s - 1]) * sigma_season_team_strength_innovation;
     } else {
-      team_strength[w] = phi_weekly * team_strength[w - 1]
-                         + to_vector(z_weekly_innovation[w - 1]) * sigma_weekly_innovation;
+      team_strength[w] = phi_weekly_team_strength_innovation * team_strength[w - 1]
+                         + to_vector(z_weekly_team_strength_innovation[w - 1]) * sigma_weekly_team_strength_innovation;
     }
   }
 }
 
 generated quantities {
   // Last fitted week and season
-  int last_w = 1;
-  for (g in 1:N_games) if (week_idx[g] > last_w) last_w = week_idx[g];
+  int last_w = max(week_idx);
   int last_s = week_to_season[last_w];
 
   // Filtered (=smoothed at T) states
@@ -111,35 +113,61 @@ generated quantities {
   vector[N_teams] filtered_team_hfa_last = team_hfa[last_s];
   real filtered_league_hfa_last = league_hfa[last_s];
 
-  // Next-week state mean and draw
-  vector[N_teams] predicted_team_strength_next_mean;
-  vector[N_teams] predicted_team_strength_next_draw;
-  real predicted_league_hfa_next_mean;
-  //real predicted_league_hfa_next_draw;
-  //vector[N_teams] predicted_team_hfa_next_mean;
-  //vector[N_teams] predicted_team_hfa_next_draw;
-  {
-    int next_is_first = is_last_week[last_w];
-    if (next_is_first == 1) {
-      predicted_team_strength_next_mean = phi_season_carryover * team_strength[last_w];
-      predicted_league_hfa_next_mean = phi_league_hfa * league_hfa[last_s];
-    } else {
-      predicted_team_strength_next_mean = phi_weekly * team_strength[last_w];
-      predicted_league_hfa_next_mean = league_hfa[last_s];
-    }
+  // Store sampled latent states for each future week
+  array[N_future_weeks] vector[N_teams] predicted_team_strength;
+  array[N_future_weeks] vector[N_teams] predicted_team_hfa;
+  vector[N_future_weeks] predicted_league_hfa;
 
-    vector[N_teams - 1] z_raw;
-    for (t in 1:(N_teams - 1)) z_raw[t] = normal_rng(0, 1);
-    vector[N_teams] z0 = sum_to_zero_constrain(z_raw);
-    predicted_team_strength_next_draw = predicted_team_strength_next_mean
-                                       + z0 * (next_is_first == 1 ? sigma_season_carryover
-                                                                : sigma_weekly_innovation);
+  {
+    vector[N_teams] ts_cur = filtered_team_strength_last;
+    real league_hfa_cur = filtered_league_hfa_last;
+    vector[N_teams] team_hfa_cur = filtered_team_hfa_last;
+    int season_cur = last_s;
+
+    for (fw in 1:N_future_weeks) {
+      int is_first = future_is_first_week[fw];
+      int season_target = future_week_to_season[fw];
+      vector[N_teams - 1] z_raw;
+      for (t in 1:(N_teams - 1)) z_raw[t] = normal_rng(0, 1);
+      vector[N_teams] z0 = sum_to_zero_constrain(z_raw);
+
+      if (is_first == 1) {
+        ts_cur = phi_season_team_strength_innovation * ts_cur + z0 * sigma_season_team_strength_innovation;
+
+        if (season_target <= N_seasons) {
+          league_hfa_cur = league_hfa[season_target];
+          team_hfa_cur = team_hfa[season_target];
+        } else {
+          league_hfa_cur = phi_league_hfa * league_hfa_cur
+                            + normal_rng(0, 1) * sigma_league_hfa_innovation;
+          {
+            vector[N_teams - 1] zh_raw;
+            for (t in 1:(N_teams - 1)) zh_raw[t] = normal_rng(0, 1);
+            vector[N_teams] zh0 = sum_to_zero_constrain(zh_raw);
+            team_hfa_cur = rep_vector(league_hfa_cur, N_teams) + zh0 * sigma_team_hfa;
+          }
+        }
+        season_cur = season_target;
+      } else {
+        ts_cur = phi_weekly_team_strength_innovation * ts_cur + z0 * sigma_weekly_team_strength_innovation;
+
+        if (season_target != season_cur && season_target <= N_seasons) {
+          // Defensive guard in case season index advances without first-week flag
+          league_hfa_cur = league_hfa[season_target];
+          team_hfa_cur = team_hfa[season_target];
+          season_cur = season_target;
+        }
+      }
+
+      predicted_team_strength[fw] = ts_cur;
+      predicted_team_hfa[fw] = team_hfa_cur;
+      predicted_league_hfa[fw] = league_hfa_cur;
+    }
   }
 
   // OOS predictions
   vector[N_oos] mu_pred;
   vector[N_oos] y_pred;
-  vector[N_oos] y_pred_one_step;
   for (k in 1:N_oos) {
     int s = oos_season_idx[k];
     int w = oos_week_idx[k];
@@ -148,51 +176,30 @@ generated quantities {
     
     // Build state at target week (supports multi-step ahead by iterating from N_weeks)
     vector[N_teams] ts_target;
-    // Track HFA state across future seasons if needed
-    real league_hfa_cur = league_hfa[last_s];
-    vector[N_teams] team_hfa_cur = team_hfa[last_s];
+    real hfa_home;
+
     if (w <= N_weeks) {
       ts_target = team_strength[w];
+      hfa_home = (s <= N_seasons) ? team_hfa[s][i] : team_hfa[last_s][i];
+    } else if (N_future_weeks > 0) {
+      int ahead = w - N_weeks;
+      int idx = ahead <= N_future_weeks ? ahead : N_future_weeks;
+      ts_target = predicted_team_strength[idx];
+      hfa_home = predicted_team_hfa[idx][i];
     } else {
-      int steps = w - N_weeks;
-      vector[N_teams] ts_cur = team_strength[N_weeks];
-      int s_prev = last_s;
-      for (tstep in 1:steps) {
-        int is_first = (tstep <= N_future_weeks) ? future_is_first_week[tstep] : 0;
-        int s_future = (tstep <= N_future_weeks) ? future_week_to_season[tstep] : s_prev;
-        vector[N_teams - 1] z_raw;
-        for (tt in 1:(N_teams - 1)) z_raw[tt] = normal_rng(0, 1);
-        vector[N_teams] z0 = sum_to_zero_constrain(z_raw);
-        if (is_first == 1) {
-          ts_cur = phi_season_carryover * ts_cur + z0 * sigma_season_carryover;
-          // Update HFA state at season boundary
-          if (s_future <= N_seasons) {
-            league_hfa_cur = league_hfa[s_future];
-            team_hfa_cur   = team_hfa[s_future];
-          } else {
-            league_hfa_cur = phi_league_hfa * league_hfa_cur
-                              + normal_rng(0, 1) * sigma_league_hfa_innovation;
-            vector[N_teams - 1] zh_raw;
-            for (tt in 1:(N_teams - 1)) zh_raw[tt] = normal_rng(0, 1);
-            vector[N_teams] zh0 = sum_to_zero_constrain(zh_raw);
-            team_hfa_cur = rep_vector(league_hfa_cur, N_teams) + zh0 * sigma_team_hfa;
-          }
-          s_prev = s_future;
-        } else {
-          ts_cur = phi_weekly * ts_cur + z0 * sigma_weekly_innovation;
-        }
+      // Fallback: one-step conditional mean when no future simulation metadata provided
+      if (is_last_week[last_w] == 1) {
+        ts_target = phi_season_team_strength_innovation * filtered_team_strength_last;
+      } else {
+        ts_target = phi_weekly_team_strength_innovation * filtered_team_strength_last;
       }
-      ts_target = ts_cur;
+      hfa_home = filtered_team_hfa_last[i];
     }
 
-    // Predictions using state at target week
     {
-      real hfa_home = (w <= N_weeks && s <= N_seasons) ? team_hfa[s][i]
-                                                       : team_hfa_cur[i];
       real mu = ts_target[i] - ts_target[j] + oos_hfa[k] * hfa_home;
       mu_pred[k] = mu;
       y_pred[k] = normal_rng(mu, sigma_obs);
-      y_pred_one_step[k] = y_pred[k];
     }
   }
 }

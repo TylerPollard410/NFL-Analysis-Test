@@ -23,10 +23,11 @@ suppressPackageStartupMessages({
   library(nflendzone)
 })
 
+set.seed(52)
+
 source("Model Fitting/off_def_stan/stan_helpers.R")
 
 # 0) Globals
-set.seed(52)
 fit_seed = 52
 fit_init = 0
 fit_sig_figs = 10
@@ -48,14 +49,22 @@ file_root <- "Model Fitting/off_def_stan"
 fit_path <- file.path(file_root, "mod_fit.stan")
 gq_path <- file.path(file_root, "mod_gq.stan")
 
-fit_mod <- cmdstan_model(fit_path)
-gq_mod <- cmdstan_model(gq_path)
+fit_mod <- cmdstan_model(
+  fit_path,
+  compile_model_methods = TRUE,
+  force_recompile = FALSE,
+  pedantic = TRUE
+)
+gq_mod <- cmdstan_model(
+  gq_path,
+  compile_model_methods = TRUE,
+  force_recompile = FALSE,
+  pedantic = TRUE
+)
 
 # 3) Initial fit window: 2002..2005 weeks 1..21
 fit_stan_data <- create_stan_data(
-  specific_seasons = 2002:2005,
-  min_week = 1,
-  max_week = 21,
+  before_season = 2006,
   verbose = TRUE
 )
 str(fit_stan_data)
@@ -130,17 +139,4 @@ message("- Snapshot dir: snapshots")
 message("- GQ (first run): use gq0")
 message(
   "- After sequential step: fit -> step1$fit, gq -> step1$gq, targets -> step1$targets"
-)
-
-
-save_sequential_snapshot(
-  path = file.path(file_root, "snapshots"),
-  fit = step1$fit,
-  fit_mod = fit_mod,
-  gq = step1$gq,
-  fit_stan_data = step1$fit_stan_data,
-  oos_df = schedule_idx |> filter(week_idx %in% (step1$targets + 1)),
-  teams = teams,
-  n_init = chains,
-  seed = fit_seed
 )

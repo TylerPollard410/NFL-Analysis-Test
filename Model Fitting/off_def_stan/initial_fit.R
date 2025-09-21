@@ -85,7 +85,7 @@ game_data <- load_game_data(seasons = all_seasons) |>
 #     )
 
 fit_stan_data <- game_data |>
-    filter(season < 2006) |>
+    filter(!is.na(result)) |>
     select(
         season_idx,
         week_idx,

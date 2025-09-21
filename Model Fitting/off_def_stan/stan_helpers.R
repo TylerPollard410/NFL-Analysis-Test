@@ -828,6 +828,38 @@ prepare_schedule_indices <- function(seasons = all_seasons, teams) {
     )
 }
 
+#' Lookup global week_idx for a given season/week pair
+#'
+#' @param schedule_df Output of prepare_schedule_indices()
+#' @param season Numeric season (e.g. 2006)
+#' @param week Numeric week within season (e.g. 1)
+#' @return Integer global week_idx used in Stan data
+lookup_week_idx <- function(schedule_df, season, week) {
+  rows <- schedule_df[
+    schedule_df$season == season & schedule_df$week == week,
+    ,
+    drop = FALSE
+  ]
+  idxs <- unique(rows$week_idx)
+  if (!length(idxs)) {
+    stop(
+      "lookup_week_idx: no games found for season ",
+      season,
+      " week ",
+      week
+    )
+  }
+  idxs <- sort(as.integer(idxs))
+  if (length(idxs) > 1L) {
+    warning(
+      "lookup_week_idx: multiple week_idx values found; using ",
+      idxs[1],
+      "."
+    )
+  }
+  idxs[1]
+}
+
 #' Build OOS arrays from a schedule subset
 #'
 #' @param schedule_df Data frame with columns home_idx, away_idx, season_idx, week_idx, hfa
@@ -1150,23 +1182,32 @@ sequential_step <- function(
       weeks_ahead = refit_weeks
     )
     dims_match <- TRUE
-    if (!is.null(fit_stan_data$N_teams) && !is.null(fit_stan_data_new$N_teams)) {
-      dims_match <- dims_match && identical(
-        as.integer(fit_stan_data$N_teams),
-        as.integer(fit_stan_data_new$N_teams)
-      )
+    if (
+      !is.null(fit_stan_data$N_teams) && !is.null(fit_stan_data_new$N_teams)
+    ) {
+      dims_match <- dims_match &&
+        identical(
+          as.integer(fit_stan_data$N_teams),
+          as.integer(fit_stan_data_new$N_teams)
+        )
     }
-    if (!is.null(fit_stan_data$N_seasons) && !is.null(fit_stan_data_new$N_seasons)) {
-      dims_match <- dims_match && identical(
-        as.integer(fit_stan_data$N_seasons),
-        as.integer(fit_stan_data_new$N_seasons)
-      )
+    if (
+      !is.null(fit_stan_data$N_seasons) && !is.null(fit_stan_data_new$N_seasons)
+    ) {
+      dims_match <- dims_match &&
+        identical(
+          as.integer(fit_stan_data$N_seasons),
+          as.integer(fit_stan_data_new$N_seasons)
+        )
     }
-    if (!is.null(fit_stan_data$N_weeks) && !is.null(fit_stan_data_new$N_weeks)) {
-      dims_match <- dims_match && identical(
-        as.integer(fit_stan_data$N_weeks),
-        as.integer(fit_stan_data_new$N_weeks)
-      )
+    if (
+      !is.null(fit_stan_data$N_weeks) && !is.null(fit_stan_data_new$N_weeks)
+    ) {
+      dims_match <- dims_match &&
+        identical(
+          as.integer(fit_stan_data$N_weeks),
+          as.integer(fit_stan_data_new$N_weeks)
+        )
     }
 
     init_arg <- 0
@@ -1255,6 +1296,29 @@ build_init_lists_from_fit <- function(
   set.seed(seed)
   row_ids <- sample(seq_len(nrow(draws_df)), size = n_chains, replace = TRUE)
 
+  enforce_zero_sum <- function(x) {
+    if (is.null(x)) {
+      return(x)
+    }
+    if (!all(is.finite(x))) {
+      return(x)
+    }
+    dims <- dim(x)
+    if (is.null(dims) || length(dims) == 0L) {
+      return(x - mean(x))
+    }
+    if (length(dims) == 1L) {
+      return(x - mean(x))
+    }
+    last_dim <- length(dims)
+    margins <- seq_len(last_dim - 1L)
+    if (length(margins) == 0L) {
+      return(x - mean(x))
+    }
+    means <- apply(x, margins, mean)
+    sweep(x, margins, means, FUN = "-")
+  }
+
   # reconstruct arrays from flat columns like name[1], name[1,2]
   make_value <- function(base, dims, row) {
     # scalar
@@ -1265,7 +1329,7 @@ build_init_lists_from_fit <- function(
       }
       return(val)
     }
-    pat <- paste0('^', gsub("\\[", "\\[", base), "\\[")
+    pat <- paste0("^", base, "\\[")
     cols <- grep(pat, names(row), value = TRUE)
     if (length(cols) == 0L) {
       if (length(dims) == 1L && dims[1] == 1L && !is.null(row[[base]])) {
@@ -1274,19 +1338,27 @@ build_init_lists_from_fit <- function(
       stop("Could not find init columns for ", base)
     }
     vals <- as.numeric(unlist(row[cols], use.names = FALSE))
-    # order by multi-index lexicographically
-    idx_str <- sub(paste0('^', base, '\\['), '', sub(']$', '', cols))
+    idx_str <- sub(paste0("^", base, "\\["), "", sub("]$", "", cols))
     split_idx <- strsplit(idx_str, ",")
     idx_mat <- do.call(rbind, lapply(split_idx, function(v) as.integer(v)))
-    ord <- do.call(order, as.data.frame(idx_mat))
+    # reorder so that the last index varies fastest (column-major fill)
+    idx_df <- as.data.frame(idx_mat)
+    ord <- do.call(order, rev(idx_df))
     vals <- vals[ord]
-    dim_sizes <- if (is.null(dim(idx_mat))) {
-      as.integer(max(idx_mat))
-    } else {
-      as.integer(apply(idx_mat, 2, max))
-    }
+    dim_sizes <- as.integer(vapply(
+      seq_len(ncol(idx_mat)),
+      function(i) max(idx_mat[, i]),
+      integer(1)
+    ))
     array(vals, dim = dim_sizes)
   }
+
+  zero_sum_params <- c(
+    "team_hfa_deviation",
+    "team_strength_init",
+    "z_weekly_innovation",
+    "z_season_carryover"
+  )
 
   inits <- vector("list", n_chains)
   for (ch in seq_len(n_chains)) {
@@ -1294,7 +1366,11 @@ build_init_lists_from_fit <- function(
     lst <- list()
     for (p in param_names) {
       dims <- params_info[[p]]$dimensions
-      lst[[p]] <- make_value(p, dims, row)
+      val <- make_value(p, dims, row)
+      if (p %in% zero_sum_params) {
+        val <- enforce_zero_sum(val)
+      }
+      lst[[p]] <- val
     }
     inits[[ch]] <- lst
   }
@@ -1613,5 +1689,578 @@ resume_sequential_from_snapshot <- function(
     gq = gq_obj,
     targets = targets,
     snapshot = snap
+  )
+}
+
+#' Extract Latest State Summary from Fit/GQ
+#'
+#' Extracts filtered/predicted states and sigma_obs for the most recent week
+extract_latest_states <- function(fit_or_gq, teams, extract_type = "both") {
+  # Extract sigma_obs using posterior package directly
+  sigma_obs_draws <- fit_or_gq$draws("sigma_obs") |>
+    summarise_draws()
+
+  # Build variable lists based on extract_type
+  var_list <- c()
+
+  if (extract_type %in% c("filtered", "both")) {
+    var_list <- c(
+      var_list,
+      "filtered_team_strength",
+      "filtered_team_hfa",
+      "filtered_league_hfa"
+    )
+  }
+
+  if (extract_type %in% c("predicted", "both")) {
+    var_list <- c(
+      var_list,
+      "predicted_team_strength",
+      "predicted_team_hfa",
+      "predicted_league_hfa"
+    )
+  }
+
+  # Extract state draws using posterior directly if tidybayes fails
+  state_draws <- tryCatch(
+    {
+      # Try tidybayes approach first
+      if (extract_type %in% c("filtered", "both")) {
+        fit_or_gq |>
+          spread_draws(
+            filtered_team_strength_last[team],
+            filtered_team_hfa_last[team],
+            filtered_league_hfa_last
+          ) |>
+          mutate(team_name = teams[team]) |>
+          summarise_draws()
+      } else if (extract_type == "predicted") {
+        fit_or_gq |>
+          spread_draws(
+            predicted_team_strength[week_idx, team],
+            predicted_team_hfa[week_idx, team],
+            predicted_league_hfa[week_idx]
+          ) |>
+          mutate(team_name = teams[team]) |>
+          summarise_draws()
+      }
+    },
+    error = function(e) {
+      # Fallback: use posterior package directly
+      warning("Using posterior fallback for state extraction: ", e$message)
+
+      all_draws <- fit_or_gq$draws(variables = var_list)
+      summarise_draws(all_draws)
+    }
+  )
+
+  # Create rvars version
+  rvars_draws <- tryCatch(
+    {
+      if (extract_type %in% c("filtered", "both")) {
+        fit_or_gq |>
+          spread_rvars(
+            filtered_team_strength_last[team],
+            filtered_team_hfa_last[team],
+            filtered_league_hfa_last
+          ) |>
+          mutate(team_name = teams[team])
+      } else if (extract_type == "predicted") {
+        fit_or_gq |>
+          spread_rvars(
+            predicted_team_strength[week_idx, team],
+            predicted_team_hfa[week_idx, team],
+            predicted_league_hfa[week_idx]
+          ) |>
+          mutate(team_name = teams[team])
+      }
+    },
+    error = function(e) {
+      warning("Could not create rvars: ", e$message)
+      # Return draws as rvars
+      as_draws_rvars(fit_or_gq$draws(variables = var_list))
+    }
+  )
+
+  list(
+    draws_df = state_draws,
+    rvars_df = rvars_draws,
+    sigma_obs = sigma_obs_draws,
+    metadata = list(
+      extract_type = extract_type,
+      timestamp = Sys.time()
+    )
+  )
+}
+
+#' Alternative: Simple State Extraction Using Base Posterior
+#'
+#' Simpler version that uses only posterior package functions
+extract_latest_states_simple <- function(
+  fit_or_gq,
+  teams,
+  extract_type = "both"
+) {
+  # Get all variable names
+  all_vars <- fit_or_gq$metadata()$stan_variables
+
+  # Build variable patterns based on extract_type
+  var_patterns <- c()
+
+  if (extract_type %in% c("filtered", "both")) {
+    var_patterns <- c(
+      var_patterns,
+      "filtered_team_strength",
+      "filtered_team_hfa",
+      "filtered_league_hfa"
+    )
+  }
+
+  if (extract_type %in% c("predicted", "both")) {
+    var_patterns <- c(
+      var_patterns,
+      "predicted_team_strength",
+      "predicted_team_hfa",
+      "predicted_league_hfa"
+    )
+  }
+
+  # Add sigma_obs when available
+  has_sigma_obs <- "sigma_obs" %in% all_vars
+  if (has_sigma_obs) {
+    var_patterns <- c(var_patterns, "sigma_obs")
+  }
+
+  # Extract draws
+  draws <- fit_or_gq$draws(variables = var_patterns)
+
+  # Summarize
+  summary_draws <- summarise_draws(draws)
+
+  # Convert to rvars
+  rvars_draws <- as_draws_rvars(draws)
+
+  list(
+    draws_df = summary_draws,
+    rvars_df = rvars_draws,
+    sigma_obs = if (has_sigma_obs) {
+      summary_draws |> filter(str_detect(variable, "sigma_obs"))
+    } else {
+      tibble::tibble()
+    },
+    metadata = list(
+      extract_type = extract_type,
+      timestamp = Sys.time(),
+      variables_extracted = var_patterns
+    )
+  )
+}
+
+#' Run Sequential Backtest
+#'
+#' Runs sequential backtesting starting from an initial fit window
+#' @param skip_refit_if_incomplete Logical; when TRUE the routine skips refitting if the
+#'   next week in the backtest window lacks observed results (forecast-only weeks)
+#' @param retain_results Keep full per-week results in memory (default FALSE stores
+#'   only file paths + metadata to reduce RAM usage)
+run_sequential_backtest <- function(
+  fit_mod,
+  gq_mod,
+  schedule_df,
+  teams,
+  start_week,
+  end_week = NULL,
+  output_dir = "backtest_results",
+  fit_params = list(
+    chains = 4,
+    parallel_chains = 4,
+    init = 0,
+    sig_figs = 10,
+    iter_warmup = 1000,
+    iter_sampling = 1000,
+    thin = 1,
+    adapt_delta = 0.9,
+    max_treedepth = 10,
+    seed = 52
+  ),
+  verbose = TRUE,
+  use_simple_extraction = TRUE,
+  skip_refit_if_incomplete = TRUE,
+  retain_results = FALSE
+) {
+  # Setup
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  get_fp <- function(name, default) {
+    val <- fit_params[[name]]
+    if (is.null(val)) default else val
+  }
+
+  chains <- get_fp("chains", 4L)
+  init_val <- get_fp("init", 0)
+  sig_figs <- get_fp("sig_figs", 10)
+  iter_warmup <- get_fp("iter_warmup", 1000L)
+  iter_sampling <- get_fp("iter_sampling", 1000L)
+  thin <- get_fp("thin", 1L)
+  adapt_delta <- get_fp("adapt_delta", 0.9)
+  max_treedepth <- get_fp("max_treedepth", 10L)
+  seed <- get_fp("seed", 52L)
+  default_parallel <- as.integer(max(
+    1L,
+    min(
+      chains,
+      max(1L, parallel::detectCores() - 1L)
+    )
+  ))
+  parallel_chains <- as.integer(get_fp("parallel_chains", default_parallel))
+  if (parallel_chains < 1L) {
+    parallel_chains <- 1L
+  }
+
+  if (is.null(end_week)) {
+    end_week <- max(schedule_df$week_idx, na.rm = TRUE)
+  }
+
+  backtest_weeks <- start_week:end_week
+  results_list <- vector("list", length(backtest_weeks))
+  names(results_list) <- paste0("week_", backtest_weeks)
+
+  if (verbose) {
+    cat("Starting sequential backtest:\n")
+    cat("  Weeks:", min(backtest_weeks), "to", max(backtest_weeks), "\n")
+    cat("  Output dir:", output_dir, "\n")
+  }
+
+  # Choose extraction function
+  extract_fn <- if (use_simple_extraction) {
+    extract_latest_states_simple
+  } else {
+    extract_latest_states
+  }
+
+  # Initial fit up to start_week - 1
+  initial_fit_data <- build_fit_stan_data_until_week(
+    schedule_df,
+    start_week - 1
+  )
+
+  current_fit <- fit_mod$sample(
+    data = initial_fit_data,
+    chains = chains,
+    parallel_chains = parallel_chains,
+    init = init_val,
+    sig_figs = sig_figs,
+    iter_warmup = iter_warmup,
+    iter_sampling = iter_sampling,
+    thin = thin,
+    adapt_delta = adapt_delta,
+    max_treedepth = max_treedepth,
+    seed = seed
+  )
+
+  current_fit_data <- initial_fit_data
+
+  # Sequential loop
+  for (i in seq_along(backtest_weeks)) {
+    target_week_idx <- backtest_weeks[i]
+
+    if (verbose) {
+      cat(
+        "\n--- Week",
+        target_week_idx,
+        "(",
+        i,
+        "of",
+        length(backtest_weeks),
+        ") ---\n"
+      )
+    }
+
+    gq_current <- gq_for_targets(
+      gq_mod,
+      current_fit,
+      current_fit_data,
+      schedule_df,
+      target_week_idx,
+      seed = seed,
+      parallel_chains = parallel_chains
+    )
+
+    predicted_states <- extract_fn(
+      gq_current,
+      teams,
+      extract_type = "predicted"
+    )
+
+    oos_games <- schedule_df |>
+      filter(week_idx == .env$target_week_idx) |>
+      select(
+        game_id,
+        season,
+        week,
+        home_team,
+        away_team,
+        result,
+        season_idx,
+        week_idx,
+        home_idx,
+        away_idx,
+        hfa
+      )
+
+    oos_predictions <- extract_oos_predictions_from_gq(gq_current, oos_games)
+
+    target_week_rows <- schedule_df |>
+      dplyr::filter(week_idx == target_week_idx)
+    target_week_complete <- nrow(target_week_rows) > 0L &&
+      all(!is.na(target_week_rows$result))
+
+    refit_performed <- FALSE
+    if (target_week_complete || !isTRUE(skip_refit_if_incomplete)) {
+      next_fit_data <- roll_forward_fit_stan_data(
+        current_fit_data,
+        schedule_df,
+        weeks_ahead = 1
+      )
+
+      dims_current <- c(
+        N_games = current_fit_data$N_games,
+        N_weeks = current_fit_data$N_weeks,
+        N_seasons = current_fit_data$N_seasons,
+        N_teams = current_fit_data$N_teams
+      )
+      dims_next <- c(
+        N_games = next_fit_data$N_games,
+        N_weeks = next_fit_data$N_weeks,
+        N_seasons = next_fit_data$N_seasons,
+        N_teams = next_fit_data$N_teams
+      )
+      dims_match <- identical(as.integer(dims_current), as.integer(dims_next))
+
+      if (!dims_match && verbose) {
+        cat(
+          "  Data dimensions changed; skipping warm-start init/metric reuse.\n"
+        )
+      }
+
+      next_inits <- NULL
+      if (dims_match) {
+        next_inits <- try(
+          build_init_lists_from_fit(
+            current_fit,
+            fit_mod,
+            n_chains = chains,
+            seed = seed
+          ),
+          silent = TRUE
+        )
+        if (inherits(next_inits, "try-error")) {
+          next_inits <- NULL
+        }
+      }
+
+      next_metric <- NULL
+      if (dims_match) {
+        next_metric <- try(reuse_metric_from_fit(current_fit), silent = TRUE)
+        if (inherits(next_metric, "try-error")) {
+          next_metric <- NULL
+        }
+      }
+      if (is.null(next_metric)) {
+        next_metric <- list(metric = NULL, inv_metric = NULL)
+      }
+
+      current_fit <- fit_mod$sample(
+        data = next_fit_data,
+        chains = chains,
+        parallel_chains = parallel_chains,
+        init = if (is.null(next_inits)) init_val else next_inits,
+        sig_figs = sig_figs,
+        iter_warmup = max(200, iter_warmup %/% 2),
+        iter_sampling = iter_sampling,
+        thin = thin,
+        adapt_delta = adapt_delta,
+        max_treedepth = max_treedepth,
+        seed = seed,
+        metric = next_metric$metric,
+        inv_metric = next_metric$inv_metric
+      )
+
+      current_fit_data <- next_fit_data
+      refit_performed <- TRUE
+
+      filtered_states <- extract_fn(
+        current_fit,
+        teams,
+        extract_type = "filtered"
+      )
+    } else if (verbose) {
+      cat("  Skipping refit; target week results unavailable.\n")
+
+      filtered_states <- NULL
+    }
+
+    # filtered_states <- extract_fn(
+    #   current_fit,
+    #   teams,
+    #   extract_type = "filtered"
+    # )
+
+    next_week_idx <- if (i < length(backtest_weeks)) {
+      backtest_weeks[i + 1]
+    } else {
+      target_week_idx + 1L
+    }
+
+    # gq_next <- gq_for_targets(
+    #   gq_mod,
+    #   current_fit,
+    #   current_fit_data,
+    #   schedule_df,
+    #   next_week_idx,
+    #   seed = seed,
+    #   parallel_chains = parallel_chains
+    # )
+
+    # predicted_states <- extract_fn(
+    #   gq_next,
+    #   teams,
+    #   extract_type = "predicted"
+    # )
+
+    week_result <- list(
+      week_idx = target_week_idx,
+      refit_performed = refit_performed,
+      filtered_states = filtered_states,
+      predicted_states = predicted_states,
+      oos_predictions = oos_predictions,
+      oos_games = oos_games,
+      timestamp = Sys.time()
+    )
+
+    week_file <- file.path(
+      output_dir,
+      paste0("week_", sprintf("%03d", target_week_idx), "_results.rds")
+    )
+    week_result$result_file <- week_file
+    saveRDS(week_result, week_file)
+
+    if (verbose) {
+      cat("  Saved results to:", basename(week_file), "\n")
+      cat("  OOS games predicted:", nrow(oos_predictions), "\n")
+    }
+
+    results_list[[i]] <- if (isTRUE(retain_results)) {
+      week_result
+    } else {
+      list(
+        week_idx = target_week_idx,
+        refit_performed = refit_performed,
+        result_file = week_file
+      )
+    }
+  }
+
+  # Save summary
+  summary_result <- list(
+    start_week = start_week,
+    end_week = end_week,
+    total_weeks = length(backtest_weeks),
+    output_dir = output_dir,
+    completion_time = Sys.time()
+  )
+
+  saveRDS(summary_result, file.path(output_dir, "backtest_summary.rds"))
+
+  if (verbose) {
+    cat("\nBacktest complete!\n")
+  }
+
+  invisible(list(
+    results = results_list,
+    summary = summary_result
+  ))
+}
+
+#' Collect per-game OOS results from sequential backtest output
+#'
+#' @param results_list List element returned by run_sequential_backtest()$results
+#' @return Tibble with one row per OOS game including error diagnostics
+collect_backtest_oos <- function(results_list) {
+  if (!length(results_list)) {
+    return(tibble::tibble())
+  }
+
+  rows <- lapply(results_list, function(week_result) {
+    preds <- week_result$oos_predictions
+    games <- week_result$oos_games
+
+    if (
+      (is.null(preds) || is.null(games)) && !is.null(week_result$result_file)
+    ) {
+      if (file.exists(week_result$result_file)) {
+        loaded <- readRDS(week_result$result_file)
+        if (is.null(preds)) {
+          preds <- loaded$oos_predictions
+        }
+        if (is.null(games)) games <- loaded$oos_games
+      }
+    }
+
+    if (is.null(preds) || is.null(games) || !nrow(preds)) {
+      return(NULL)
+    }
+
+    joined <- preds |>
+      dplyr::left_join(
+        games |>
+          dplyr::transmute(
+            game_id,
+            actual_result = result,
+            actual_week = week,
+            actual_season = season
+          ),
+        by = "game_id"
+      ) |>
+      dplyr::mutate(
+        backtest_week_idx = as.integer(week_result$week_idx),
+        error = actual_result - mu_mean,
+        absolute_error = abs(error),
+        squared_error = error^2
+      )
+
+    joined
+  })
+
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (!length(rows)) {
+    return(tibble::tibble())
+  }
+
+  dplyr::bind_rows(rows)
+}
+
+#' Summarise sequential backtest diagnostics
+#'
+#' @param results_list List element returned by run_sequential_backtest()$results
+#' @return List with tibble of OOS predictions and tibble of aggregate metrics
+summarise_backtest_results <- function(results_list) {
+  oos_tbl <- collect_backtest_oos(results_list)
+
+  metrics_tbl <- if (!nrow(oos_tbl)) {
+    tibble::tibble(metric = character(0), value = numeric(0))
+  } else {
+    tibble::tibble(
+      metric = c("MAE", "RMSE"),
+      value = c(
+        mean(oos_tbl$absolute_error, na.rm = TRUE),
+        sqrt(mean(oos_tbl$squared_error, na.rm = TRUE))
+      )
+    )
+  }
+
+  list(
+    oos = oos_tbl,
+    metrics = metrics_tbl
   )
 }
